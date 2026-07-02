@@ -7,6 +7,8 @@ and verification commands.
 
 - [Polaris handbook](handbook/README.md): current-source guide for architecture,
   development, data/storage, module boundaries, and publication gates.
+- [Deployment guide](../DEPLOYMENT.md): local development, static web hosting,
+  backend origin setup, Worker example, and native wrapper builds.
 - [Documentation pack](open-source/README.md): design intent, architecture, module, backend, and publication-boundary docs.
 - [Data and storage handbook](handbook/DATA_AND_STORAGE.md): current fact-source, row ownership, backend, import, and verification contracts.
 - [Publication gate](handbook/PUBLICATION_GATE.md): source, security, architecture, and channel gates.

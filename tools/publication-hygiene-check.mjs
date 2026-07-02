@@ -7,6 +7,7 @@ const allowedRootMarkdownFiles = new Set([
   'CHANGELOG.md',
   'CODE_OF_CONDUCT.md',
   'CONTRIBUTING.md',
+  'DEPLOYMENT.md',
   'GOVERNANCE.md',
   'README.md',
   'SECURITY.md'

@@ -24,6 +24,7 @@ The core design idea is to build an environment that matches how an AI collabora
 Status files:
 
 - [docs/README.md](/docs/README.md): documentation map.
+- [DEPLOYMENT.md](/DEPLOYMENT.md): local development, web deployment, backend origin, and native build guide.
 - [docs/open-source/README.md](/docs/open-source/README.md): documentation pack for product intent, architecture, modules, backend, and verification.
 
 ## License
@@ -59,6 +60,7 @@ npm run dev
 `npm run dev` starts the frontend Vite server. It does not start a backend by itself. Web builds keep relative `/api` routes on the current origin, and Vite only proxies `/api` when `VITE_POLARIS_API_ORIGIN` is set. For split-origin dev proxying or native internal API routes, copy `.env.example` to `.env.local` and set `VITE_POLARIS_API_ORIGIN` to your own selfhost or relay origin.
 
 Backend/selfhost notes are in [docs/connect-your-own-backend.md](/docs/connect-your-own-backend.md).
+Deployment paths are in [DEPLOYMENT.md](/DEPLOYMENT.md).
 
 Common verification commands:
 
