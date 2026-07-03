@@ -11,6 +11,7 @@ import {
   getToolCommandSuggestions,
   type ToolCommandGroupId
 } from '../../../../engines/toolExecutorCommands';
+import { useI18n } from '../../../../i18n';
 
 type SlashCommandSuggestionsProps = {
   query: string | null;
@@ -18,15 +19,24 @@ type SlashCommandSuggestionsProps = {
 };
 
 export function SlashCommandSuggestions({ query, onPick }: SlashCommandSuggestionsProps) {
+  const { t } = useI18n();
   const [promptMenuOpen, setPromptMenuOpen] = useState(false);
   const [developerModeEnabled, setDeveloperModeEnabled] = useState(() => isDeveloperModeEnabled());
   const normalizedQuery = query?.toLowerCase() ?? '';
+  const promptLauncherTitle = t('chat.slash.promptLauncherTitle');
+  const promptLauncherAliases = [
+    promptLauncherTitle.toLowerCase(),
+    'card game prompts',
+    'card',
+    'game',
+    'prompt',
+    '卡片小游戏指令',
+    '卡片',
+    '小游戏'
+  ];
   const showPromptLauncher =
     normalizedQuery === ''
-    || '卡片小游戏指令'.includes(normalizedQuery)
-    || '卡片'.startsWith(normalizedQuery)
-    || '小游戏'.startsWith(normalizedQuery)
-    || 'prompt'.startsWith(normalizedQuery);
+    || promptLauncherAliases.some((alias) => alias.includes(normalizedQuery));
 
   useEffect(() => {
     const handleDeveloperModeUpdated = () => setDeveloperModeEnabled(isDeveloperModeEnabled());
@@ -51,7 +61,7 @@ export function SlashCommandSuggestions({ query, onPick }: SlashCommandSuggestio
   if (query === null || (suggestions.length === 0 && !showPromptLauncher)) return null;
 
   return (
-    <div className={`slash-command-menu ${promptMenuOpen ? 'prompt-library-open' : ''}`} role="listbox" aria-label="快捷指令">
+    <div className={`slash-command-menu ${promptMenuOpen ? 'prompt-library-open' : ''}`} role="listbox" aria-label={t('chat.slash.menuAria')}>
       {showPromptLauncher ? (
         <div className="slash-command-group">
           <button
@@ -61,11 +71,11 @@ export function SlashCommandSuggestions({ query, onPick }: SlashCommandSuggestio
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => setPromptMenuOpen((open) => !open)}
           >
-            <span className="slash-command-name">卡片小游戏指令</span>
-            <span className="slash-command-description">展开可玩的创作 prompt</span>
+            <span className="slash-command-name">{promptLauncherTitle}</span>
+            <span className="slash-command-description">{t('chat.slash.promptLauncherDescription')}</span>
           </button>
           {promptMenuOpen ? (
-            <div className="slash-prompt-library" role="group" aria-label="卡片小游戏指令">
+            <div className="slash-prompt-library" role="group" aria-label={t('chat.slash.promptLibraryAria')}>
               {CARD_GAME_PROMPT_CATEGORIES.map((category) => {
                 const prompts = CARD_GAME_PROMPTS.filter((item) => item.category === category.id);
                 if (prompts.length === 0) return null;

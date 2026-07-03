@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { ChatMemoryEvidence } from '../../../../types/domain';
+import { createTranslator } from '../../../../i18n';
 import { MessageMemoryEvidence } from './MessageMemoryEvidence';
 
 const evidence: ChatMemoryEvidence = {
@@ -97,5 +98,25 @@ describe('MessageMemoryEvidence', () => {
     expect(html).toContain('2 条记忆 · 1 条向量 · 1 条锚点');
     expect(html).toContain('向量索引');
     expect(html).not.toContain('message-memory-evidence-trigger');
+  });
+
+  it('localizes memory evidence chrome without translating evidence payload', () => {
+    const html = renderToStaticMarkup(
+      <MessageMemoryEvidence
+        evidence={mixedEvidence}
+        expanded={true}
+        onToggle={() => {}}
+        copy={createTranslator('en-US')}
+      />
+    );
+
+    expect(html).toContain('2 memories · 1 vector hit · 1 anchor hit');
+    expect(html).toContain('Memory sent into this turn');
+    expect(html).toContain('Vector match');
+    expect(html).toContain('Anchor hit');
+    expect(html).toContain('2 messages');
+    expect(html).toContain('Similarity 0.872');
+    expect(html).toContain('向量索引讨论 · 2026-06-07');
+    expect(html).toContain('记忆索引要能区分锚点命中和向量语义线索。');
   });
 });

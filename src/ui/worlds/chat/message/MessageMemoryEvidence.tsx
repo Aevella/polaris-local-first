@@ -1,4 +1,5 @@
 import type { ChatMemoryEvidence, ChatMemoryEvidenceChunkKind, ChatMemoryEvidenceItemKind } from '../../../../types/domain';
+import { useI18n, type I18nTranslator } from '../../../../i18n';
 import { Icon } from '../../../Icon';
 
 type MessageMemoryEvidenceProps = {
@@ -6,15 +7,18 @@ type MessageMemoryEvidenceProps = {
   expanded: boolean;
   onToggle: () => void;
   showTrigger?: boolean;
+  copy?: I18nTranslator;
 };
 
 type EvidenceTone = 'vector' | 'text' | 'tail' | 'voice';
+type Translate = I18nTranslator['t'];
+type FormatNumber = I18nTranslator['formatNumber'];
 
-function formatEvidenceKind(kind: ChatMemoryEvidenceItemKind) {
-  if (kind === 'recent_tail') return '接着聊';
-  if (kind === 'vector_match') return '向量片段';
-  if (kind === 'voice_anchor') return '语感锚点';
-  return '锚点命中';
+function formatEvidenceKind(kind: ChatMemoryEvidenceItemKind, t: Translate) {
+  if (kind === 'recent_tail') return t('memory.evidence.kindRecentTail');
+  if (kind === 'vector_match') return t('memory.evidence.kindVectorMatch');
+  if (kind === 'voice_anchor') return t('memory.evidence.kindVoiceAnchor');
+  return t('memory.evidence.kindMatchedContext');
 }
 
 function evidenceTone(kind: ChatMemoryEvidenceItemKind): EvidenceTone {
@@ -40,10 +44,10 @@ function triggerIcon(kind: ReturnType<typeof triggerKind>) {
   return 'openBook';
 }
 
-function formatChunkKind(kind: ChatMemoryEvidenceChunkKind | undefined) {
-  if (kind === 'dialogue_turn') return '对话轮';
-  if (kind === 'user_intent') return '用户意图';
-  if (kind === 'source_message') return '原文消息';
+function formatChunkKind(kind: ChatMemoryEvidenceChunkKind | undefined, t: Translate) {
+  if (kind === 'dialogue_turn') return t('memory.evidence.chunkDialogueTurn');
+  if (kind === 'user_intent') return t('memory.evidence.chunkUserIntent');
+  if (kind === 'source_message') return t('memory.evidence.chunkSourceMessage');
   return null;
 }
 
@@ -52,19 +56,36 @@ function formatScore(score: number | null) {
   return score > 1 ? score.toFixed(2) : score.toFixed(3);
 }
 
+function formatCount(
+  count: number,
+  singularKey: Parameters<Translate>[0],
+  pluralKey: Parameters<Translate>[0],
+  t: Translate,
+  formatNumber: FormatNumber
+) {
+  return t(count === 1 ? singularKey : pluralKey, { count: formatNumber(count) });
+}
+
 export function MessageMemoryEvidence({
   evidence,
   expanded,
   onToggle,
-  showTrigger = true
+  showTrigger = true,
+  copy
 }: MessageMemoryEvidenceProps) {
+  const defaultCopy = useI18n();
+  const { t, formatNumber } = copy ?? defaultCopy;
   const vectorCount = evidence.items.filter((item) => item.kind === 'vector_match').length;
   const textCount = evidence.items.filter((item) => item.kind === 'matched_context').length;
   const kind = triggerKind(evidence);
   const labelParts = [
-    `${evidence.items.length} 条记忆`,
-    vectorCount > 0 ? `${vectorCount} 条向量` : null,
-    textCount > 0 ? `${textCount} 条锚点` : null
+    formatCount(evidence.items.length, 'memory.evidence.memoryCountOne', 'memory.evidence.memoryCountOther', t, formatNumber),
+    vectorCount > 0
+      ? formatCount(vectorCount, 'memory.evidence.vectorCountOne', 'memory.evidence.vectorCountOther', t, formatNumber)
+      : null,
+    textCount > 0
+      ? formatCount(textCount, 'memory.evidence.anchorCountOne', 'memory.evidence.anchorCountOther', t, formatNumber)
+      : null
   ].filter(Boolean);
   const label = labelParts.join(' · ');
   const showPanel = expanded || !showTrigger;
@@ -77,7 +98,7 @@ export function MessageMemoryEvidence({
           className="message-memory-evidence-trigger"
           data-kind={kind}
           aria-expanded={expanded}
-          aria-label={expanded ? '收起本轮记忆来源' : '查看本轮记忆来源'}
+          aria-label={expanded ? t('memory.evidence.collapseAria') : t('memory.evidence.expandAria')}
           onClick={onToggle}
         >
           <Icon name={triggerIcon(kind)} size={15} />
@@ -87,21 +108,29 @@ export function MessageMemoryEvidence({
       {showPanel ? (
         <div className="message-memory-evidence-panel">
           <div className="message-memory-evidence-panel-head">
-            <span>{showTrigger ? '送入本轮的记忆' : label}</span>
-            <span>{evidence.strategy === 'semantic_index' ? '向量索引' : '本地检索'}</span>
+            <span>{showTrigger ? t('memory.evidence.panelTitle') : label}</span>
+            <span>{evidence.strategy === 'semantic_index' ? t('memory.evidence.strategySemanticIndex') : t('memory.evidence.strategyLocalScan')}</span>
           </div>
           <div className="message-memory-evidence-list">
             {evidence.items.map((item) => {
-              const chunkKind = formatChunkKind(item.memoryChunkKind);
+              const chunkKind = formatChunkKind(item.memoryChunkKind, t);
               const score = formatScore(item.score);
               const tone = evidenceTone(item.kind);
               return (
                 <article key={item.id} className={`message-memory-evidence-item ${item.kind}`} data-kind={tone}>
                   <div className="message-memory-evidence-item-head">
-                    <strong>{formatEvidenceKind(item.kind)}</strong>
-                    <span>{item.sourceMessageIds.length} 条消息</span>
+                    <strong>{formatEvidenceKind(item.kind, t)}</strong>
+                    <span>
+                      {formatCount(
+                        item.sourceMessageIds.length,
+                        'memory.evidence.messageCountOne',
+                        'memory.evidence.messageCountOther',
+                        t,
+                        formatNumber
+                      )}
+                    </span>
                     {chunkKind ? <span>{chunkKind}</span> : null}
-                    {score ? <span>相似 {score}</span> : null}
+                    {score ? <span>{t('memory.evidence.similarity', { score })}</span> : null}
                   </div>
                   <p className="message-memory-evidence-title">{item.label}</p>
                   <p className="message-memory-evidence-excerpt">{item.textExcerpt}</p>
