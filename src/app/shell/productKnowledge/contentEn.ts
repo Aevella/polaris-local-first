@@ -179,7 +179,7 @@ export const EN_PRODUCT_DOC_TRANSLATIONS: Partial<Record<ProductDocId, ProductDo
           'Truncated replies can involve output token fields, provider limits, model limits, or request budget.',
           'Image input depends on protocol image support, image serialization format, and whether attachments enter request context.',
           'Thinking/reasoning depends on model capability, how budget is sent, and provider-specific fields.',
-          'Caching depends on provider prompt caching capability and whether the current protocol needs explicit cache-control.'
+          'Caching depends on provider prompt caching capability and whether the current protocol needs explicit cache-control. Anthropic Messages requests send top-level cache_control so multi-turn history enters short-lived automatic caching, while stable system / tool prefixes also get explicit breakpoints.'
         ]
       },
       '状态证据和事实边界': {

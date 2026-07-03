@@ -160,7 +160,7 @@ function createContextWithAnthropicCachePlan(): AssistantRequestContext {
       minimumBreakpointTokens: 1024,
       requestApplication: {
         status: 'explicit_anthropic_cache_control',
-        label: 'Anthropic system prefix cache_control breakpoints sent',
+        label: 'Anthropic automatic conversation cache plus explicit prefix breakpoints sent',
         sendsExplicitCacheControl: true
       },
       breakpoints: [

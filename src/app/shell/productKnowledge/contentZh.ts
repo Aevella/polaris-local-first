@@ -184,7 +184,7 @@ export const PRODUCT_DOCS: ProductDoc[] = [
           '回复截断相关字段包括 output token 字段、供应商上限、模型自身限制和请求预算。',
           '图片输入相关条件包括协议图片能力、图片序列化格式和附件是否进入请求上下文。',
           'thinking/reasoning 相关条件包括模型能力、预算发送方式和供应商特殊字段要求。',
-          '缓存相关条件包括供应商 prompt caching 能力，以及当前协议是否需要显式 cache-control。'
+          '缓存相关条件包括供应商 prompt caching 能力，以及当前协议是否需要显式 cache-control。Anthropic Messages 请求会发送顶层 cache_control 让多轮历史自动进入短期缓存，同时给稳定 system / tool 前缀打显式断点。'
         ]
       },
       {

@@ -534,7 +534,7 @@ export const settings = {
   'settings.usage.phase.completed': 'Complete',
   'settings.usage.phase.failed': 'Failed',
   'settings.usage.phase.prepared': 'Prepared',
-  'settings.usage.cacheStatus.explicit': 'Explicit cache',
+  'settings.usage.cacheStatus.explicit': 'Anthropic auto + explicit cache',
   'settings.usage.cacheStatus.upstream': 'Provider-managed',
   'settings.usage.cacheStatus.uncategorized': 'Uncategorized',
   'settings.usage.breakpoint.identity': 'Identity breakpoint',

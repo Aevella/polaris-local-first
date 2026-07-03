@@ -532,7 +532,7 @@ export const settings = {
   'settings.usage.phase.completed': '完成',
   'settings.usage.phase.failed': '失败',
   'settings.usage.phase.prepared': '准备',
-  'settings.usage.cacheStatus.explicit': '显式缓存',
+  'settings.usage.cacheStatus.explicit': 'Anthropic 自动+显式缓存',
   'settings.usage.cacheStatus.upstream': '上游自动',
   'settings.usage.cacheStatus.uncategorized': '未归类',
   'settings.usage.breakpoint.identity': '身份断点',
