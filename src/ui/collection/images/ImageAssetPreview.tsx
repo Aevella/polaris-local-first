@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import { createPortal } from 'react-dom';
 import { publishImageAssetShare } from '../../../app/collection/imageAssetShare';
 import { isGenericImageTitle } from '../../../engines/imageAssetNaming';
+import { useI18n, type I18nTranslator } from '../../../i18n';
 import { writeTextToClipboard } from '../../../infrastructure/clipboard';
 import type { ImageAssetCard } from '../../../types/domain';
 import { runSuccessAction, triggerSuccessActionHaptic } from '../../haptics';
@@ -24,7 +25,8 @@ const QR_LONG_PRESS_MS = 720;
 const QR_LONG_PRESS_MOVE_THRESHOLD = 14;
 const DRAG_START_THRESHOLD = 10;
 const EDGE_DRAG_DAMPING = 0.28;
-const PUBLIC_SOURCE_LABEL = 'Polaris 北极星';
+
+type Translate = I18nTranslator['t'];
 
 type QrRecognitionState =
   | { status: 'idle' }
@@ -42,14 +44,16 @@ type PreviewPointerState = {
 
 function PreviewSlide({
   card,
-  slideStyle
+  slideStyle,
+  fallbackImageLabel
 }: {
   card: ImageAssetCard | null;
   slideStyle: CSSProperties;
+  fallbackImageLabel: string;
 }) {
   const imageUrl = useAssetObjectUrl(card?.assetId);
   const assetMeta = useAssetMeta(card?.assetId);
-  const label = card?.title || assetMeta?.name || '图片';
+  const label = card?.title || assetMeta?.name || fallbackImageLabel;
 
   return (
     <div
@@ -74,13 +78,14 @@ function buildAssetReference(assetId: string) {
   return `polaris-asset://${assetId}`;
 }
 
-function buildPublicAssetShareText(card: ImageAssetCard, publicUrl: string) {
-  const shareName = resolvePublicAssetShareName(card);
+function buildPublicAssetShareText(card: ImageAssetCard, publicUrl: string, t: Translate) {
+  const shareName = resolvePublicAssetShareName(card, t);
+  const sourceLabel = t('collection.image.previewShareSourceLabel');
   return [
-    'Polaris 北极星素材',
-    `来源：${PUBLIC_SOURCE_LABEL}`,
-    shareName ? `名称：${shareName}` : null,
-    `链接：${publicUrl}`
+    t('collection.image.previewShareTitle'),
+    t('collection.image.previewShareSource', { source: sourceLabel }),
+    shareName ? t('collection.image.previewShareName', { name: shareName }) : null,
+    t('collection.image.previewShareLink', { url: publicUrl })
   ].filter(Boolean).join('\n');
 }
 
@@ -88,10 +93,10 @@ function formatShortAssetId(assetId: string) {
   return assetId.replace(/^asset-/, '').slice(0, 8) || assetId.slice(0, 8);
 }
 
-function resolvePublicAssetShareName(card: ImageAssetCard) {
+function resolvePublicAssetShareName(card: ImageAssetCard, t: Translate) {
   const title = card.title.trim();
   if (title && !isGenericImageTitle(title)) return title;
-  return `素材 ${formatShortAssetId(card.assetId)}`;
+  return t('collection.image.previewShareFallbackName', { assetId: formatShortAssetId(card.assetId) });
 }
 
 async function copyTextToClipboard(text: string) {
@@ -105,6 +110,7 @@ export function ImageAssetPreview({
   onClose,
   onSharePublished
 }: ImageAssetPreviewProps) {
+  const { t } = useI18n();
   const [phase, setPhase] = useState<'opening' | 'open' | 'closing'>('opening');
   const [displayIndex, setDisplayIndex] = useState(activeIndex);
   const [trackOffsetPx, setTrackOffsetPx] = useState(0);
@@ -131,6 +137,7 @@ export function ImageAssetPreview({
   const displayCard = cards[displayIndex];
   const displayImageUrl = useAssetObjectUrl(displayCard?.assetId);
   const panelOpen = qrRecognition.status === 'success';
+  const fallbackImageLabel = t('collection.image.fallbackImage');
 
   useEffect(() => {
     setAssetReferenceCopied(false);
@@ -252,7 +259,13 @@ export function ImageAssetPreview({
     qrScanNonceRef.current = nonce;
 
     try {
-      const result = await scanQrCodeFromImage(displayImageUrl);
+      const result = await scanQrCodeFromImage(displayImageUrl, {
+        loadFailed: t('collection.image.qrLoadFailed'),
+        unsupportedEnvironment: t('collection.image.qrUnsupportedEnvironment'),
+        invalidSize: t('collection.image.qrInvalidSize'),
+        unsupportedDevice: t('collection.image.qrUnsupportedDevice'),
+        notFound: t('collection.image.qrNotFound')
+      });
       if (qrScanNonceRef.current !== nonce) return;
       setQrRecognition({
         status: 'success',
@@ -314,7 +327,7 @@ export function ImageAssetPreview({
           publicSharedAt: Date.now()
         });
       }
-      await runSuccessAction(() => copyTextToClipboard(buildPublicAssetShareText(displayCard, published.url)));
+      await runSuccessAction(() => copyTextToClipboard(buildPublicAssetShareText(displayCard, published.url, t)));
       setAssetShareCopied(true);
       setAssetReferenceCopied(false);
       setAssetShareStatus('idle');
@@ -325,16 +338,16 @@ export function ImageAssetPreview({
   };
 
   const assetShareButtonLabel = assetShareStatus === 'publishing'
-    ? '生成中'
+    ? t('collection.image.previewShareGenerating')
     : assetShareStatus === 'copying'
-      ? '复制中'
+      ? t('collection.image.previewShareCopying')
     : assetShareCopied
-      ? '已复制'
+      ? t('collection.image.previewCopied')
       : assetShareStatus === 'copyReady'
-        ? '复制链接'
+        ? t('collection.image.previewShareCopyLink')
         : assetShareStatus === 'error'
-        ? '重试'
-        : '带出门';
+        ? t('collection.image.previewShareRetry')
+        : t('collection.image.previewShareOut');
 
   const stopUtilityPanelPointer = (event: ReactPointerEvent<HTMLElement>) => {
     event.stopPropagation();
@@ -488,7 +501,7 @@ export function ImageAssetPreview({
       className={`asset-preview-overlay ${phase}`}
       role="dialog"
       aria-modal="true"
-      aria-label="查看图片"
+      aria-label={t('collection.image.previewDialogAria')}
       onClick={handleStageClick}
     >
       <div
@@ -533,16 +546,19 @@ export function ImageAssetPreview({
           key={previousCard?.id ?? `preview-empty-previous-${displayIndex}`}
           card={previousCard}
           slideStyle={buildSlideStyle(-1)}
+          fallbackImageLabel={fallbackImageLabel}
         />
         <PreviewSlide
           key={displayCard.id}
           card={displayCard}
           slideStyle={buildSlideStyle(0)}
+          fallbackImageLabel={fallbackImageLabel}
         />
         <PreviewSlide
           key={nextCard?.id ?? `preview-empty-next-${displayIndex}`}
           card={nextCard}
           slideStyle={buildSlideStyle(1)}
+          fallbackImageLabel={fallbackImageLabel}
         />
         <div
           className="asset-preview-reference-panel"
@@ -555,7 +571,9 @@ export function ImageAssetPreview({
             event.stopPropagation();
           }}
         >
-          <span className="asset-preview-reference-kicker">Polaris 素材 {assetShortId}</span>
+          <span className="asset-preview-reference-kicker">
+            {t('collection.image.previewReferenceKicker', { assetId: assetShortId })}
+          </span>
           <code title={assetReference}>{assetReference}</code>
           <div className="asset-preview-reference-actions">
             <button
@@ -566,10 +584,10 @@ export function ImageAssetPreview({
                 event.stopPropagation();
                 void copyAssetReference();
               }}
-              aria-label="复制 Polaris 内部素材引用"
+              aria-label={t('collection.image.previewCopyInternalAria')}
             >
               <Icon name={assetReferenceCopied ? 'check' : 'copy'} size={13} />
-              <span>{assetReferenceCopied ? '已复制' : '复制'}</span>
+              <span>{assetReferenceCopied ? t('collection.image.previewCopied') : t('collection.image.previewCopy')}</span>
             </button>
             <button
               type="button"
@@ -580,7 +598,7 @@ export function ImageAssetPreview({
                 void copyAssetShareReference();
               }}
               disabled={assetShareStatus === 'publishing' || assetShareStatus === 'copying'}
-              aria-label="复制带 Polaris 来源的素材分享文本"
+              aria-label={t('collection.image.previewCopyShareAria')}
             >
               <Icon
                 name={assetShareCopied ? 'check' : assetShareStatus === 'publishing' || assetShareStatus === 'copying' ? 'refresh' : 'send'}
@@ -602,20 +620,20 @@ export function ImageAssetPreview({
               event.stopPropagation();
             }}
           >
-            <strong>识别到了二维码</strong>
+            <strong>{t('collection.image.previewQrTitle')}</strong>
             <div className="asset-preview-qr-result success">
               <p>{qrRecognition.text}</p>
               <div className="asset-preview-qr-actions">
                 <button type="button" className="asset-preview-qr-btn primary" onClick={() => { void copyQrText(); }}>
-                  {qrRecognition.copied ? '已复制' : '复制内容'}
+                  {qrRecognition.copied ? t('collection.image.previewCopied') : t('collection.image.previewQrCopyContent')}
                 </button>
                 {qrRecognition.openUrl ? (
                   <button type="button" className="asset-preview-qr-btn" onClick={openQrUrl}>
-                    打开链接
+                    {t('collection.image.previewQrOpenLink')}
                   </button>
                 ) : null}
                 <button type="button" className="asset-preview-qr-btn" onClick={dismissQrPanel}>
-                  收起
+                  {t('collection.image.previewQrCollapse')}
                 </button>
               </div>
             </div>

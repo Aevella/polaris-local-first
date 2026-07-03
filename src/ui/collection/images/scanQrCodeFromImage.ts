@@ -7,12 +7,20 @@ export type QrCodeScanResult = {
   openUrl: string | null;
 };
 
-function loadImage(src: string) {
+export type QrCodeScanMessages = {
+  loadFailed: string;
+  unsupportedEnvironment: string;
+  invalidSize: string;
+  unsupportedDevice: string;
+  notFound: string;
+};
+
+function loadImage(src: string, messages: QrCodeScanMessages) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
     image.decoding = 'async';
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('图片加载失败，无法识别二维码。'));
+    image.onerror = () => reject(new Error(messages.loadFailed));
     image.src = src;
   });
 }
@@ -28,16 +36,19 @@ function resolveOpenUrl(text: string) {
   }
 }
 
-export async function scanQrCodeFromImage(src: string): Promise<QrCodeScanResult> {
+export async function scanQrCodeFromImage(
+  src: string,
+  messages: QrCodeScanMessages
+): Promise<QrCodeScanResult> {
   if (typeof window === 'undefined') {
-    throw new Error('当前环境不支持识别二维码。');
+    throw new Error(messages.unsupportedEnvironment);
   }
 
-  const image = await loadImage(src);
+  const image = await loadImage(src, messages);
   const sourceWidth = image.naturalWidth || image.width;
   const sourceHeight = image.naturalHeight || image.height;
   if (!sourceWidth || !sourceHeight) {
-    throw new Error('图片尺寸异常，无法识别二维码。');
+    throw new Error(messages.invalidSize);
   }
 
   const scale = Math.min(1, MAX_SCAN_EDGE / Math.max(sourceWidth, sourceHeight));
@@ -49,7 +60,7 @@ export async function scanQrCodeFromImage(src: string): Promise<QrCodeScanResult
 
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) {
-    throw new Error('当前设备不支持图片识别。');
+    throw new Error(messages.unsupportedDevice);
   }
 
   context.drawImage(image, 0, 0, width, height);
@@ -59,7 +70,7 @@ export async function scanQrCodeFromImage(src: string): Promise<QrCodeScanResult
   });
 
   if (!decoded?.data?.trim()) {
-    throw new Error('这张图里没认到二维码。');
+    throw new Error(messages.notFound);
   }
 
   const text = decoded.data.trim();
