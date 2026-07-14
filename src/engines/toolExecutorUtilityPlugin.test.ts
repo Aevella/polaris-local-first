@@ -12,6 +12,20 @@ function createUtilityContext(overrides: Partial<ToolContext> = {}) {
       summary: '已读取 Polaris 产品知识全文',
       detailText: '# Polaris 产品知识'
     })),
+    listCalendars: vi.fn(async () => ({
+      ok: true as const,
+      summary: '已读取可写系统日历 · 1 个',
+      detailText: '1. 个人 · 系统默认',
+      calendars: [{
+        calendarId: 'calendar-1',
+        calendarName: '个人',
+        sourceId: 'source-1',
+        sourceName: 'iCloud',
+        sourceType: 'calDAV',
+        isDefault: true,
+        allowsContentModifications: true
+      }]
+    })),
     readCalendarEvents: vi.fn(async () => ({
       ok: true as const,
       summary: '已读取系统日历 · 0 条',
@@ -27,7 +41,10 @@ function createUtilityContext(overrides: Partial<ToolContext> = {}) {
         title: '看牙',
         startDate: '2026-06-14T10:00:00Z',
         endDate: '2026-06-14T11:00:00Z',
+        calendarId: 'calendar-1',
         calendarName: '个人',
+        calendarSource: 'iCloud',
+        calendarSourceType: 'calDAV',
         allDay: false
       }
     })),
@@ -40,7 +57,10 @@ function createUtilityContext(overrides: Partial<ToolContext> = {}) {
         title: '看牙',
         startDate: '2026-06-14T12:00:00Z',
         endDate: '2026-06-14T13:00:00Z',
+        calendarId: 'calendar-1',
         calendarName: '个人',
+        calendarSource: 'iCloud',
+        calendarSourceType: 'calDAV',
         allDay: false
       }
     })),
@@ -53,7 +73,10 @@ function createUtilityContext(overrides: Partial<ToolContext> = {}) {
         title: '看牙',
         startDate: '2026-06-14T12:00:00Z',
         endDate: '2026-06-14T13:00:00Z',
+        calendarId: 'calendar-1',
         calendarName: '个人',
+        calendarSource: 'iCloud',
+        calendarSourceType: 'calDAV',
         allDay: false
       }
     })),
@@ -1015,6 +1038,12 @@ describe('utilityToolExecutorPlugin', () => {
     const ctx = createUtilityContext();
 
     await expect(utilityToolExecutorPlugin.execute({
+      kind: 'listCalendars'
+    }, ctx)).resolves.toMatchObject({
+      ok: true,
+      summary: '已读取可写系统日历 · 1 个'
+    });
+    await expect(utilityToolExecutorPlugin.execute({
       kind: 'readCalendarEvents',
       startDate: '2026-06-12',
       endDate: '2026-06-13',
@@ -1030,6 +1059,7 @@ describe('utilityToolExecutorPlugin', () => {
       query: 'meeting',
       maxEvents: 5
     });
+    expect(ctx.listCalendars).toHaveBeenCalledOnce();
   });
 
   it('delegates calendar write actions to native context ports', async () => {
@@ -1040,7 +1070,8 @@ describe('utilityToolExecutorPlugin', () => {
       title: '看牙',
       startDate: '2026-06-14T10:00:00Z',
       endDate: '2026-06-14T11:00:00Z',
-      location: '诊所'
+      location: '诊所',
+      calendarId: 'calendar-1'
     }, ctx)).resolves.toMatchObject({
       ok: true,
       summary: '已创建系统日历事件 · 看牙'
@@ -1068,7 +1099,8 @@ describe('utilityToolExecutorPlugin', () => {
       endDate: '2026-06-14T11:00:00Z',
       allDay: undefined,
       location: '诊所',
-      notes: undefined
+      notes: undefined,
+      calendarId: 'calendar-1'
     });
     expect(ctx.updateCalendarEvent).toHaveBeenCalledWith({
       eventId: 'event-1',

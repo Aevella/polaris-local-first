@@ -48,6 +48,7 @@ export type UtilityToolAction = Extract<
       | 'listEnvironmentNodes'
       | 'inspectEnvironmentNode'
       | 'searchEnvironmentNodes'
+      | 'listCalendars'
       | 'readCalendarEvents'
       | 'createCalendarEvent'
       | 'updateCalendarEvent'
@@ -243,6 +244,8 @@ async function executeUtilityToolAction(
         return { ok: false, error: '当前环境目录不可用。' };
       }
       return ctx.readEnvironmentDirectory(action);
+    case 'listCalendars':
+      return ctx.listCalendars();
     case 'readCalendarEvents':
       return ctx.readCalendarEvents({
         startDate: action.startDate,
@@ -257,7 +260,8 @@ async function executeUtilityToolAction(
         endDate: action.endDate,
         allDay: action.allDay,
         location: action.location,
-        notes: action.notes
+        notes: action.notes,
+        calendarId: action.calendarId
       });
     case 'updateCalendarEvent':
       return ctx.updateCalendarEvent({

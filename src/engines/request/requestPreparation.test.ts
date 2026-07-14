@@ -183,7 +183,8 @@ describe('prepareCollaboratorReplyRequest image capabilities', () => {
     mockedGetAssetBlob.mockReset();
   });
 
-  it('does not inline images for direct MiMo text models even when the provider preset is image-capable', async () => {
+  it('respects configured image capability without overriding it from the MiMo model name', async () => {
+    mockedGetAssetBlob.mockResolvedValue(new Blob(['image-bytes'], { type: 'image/png' }));
     const prepared = await prepareCollaboratorReplyRequest({
       api: {
         id: 'custom-mimo',
@@ -210,10 +211,9 @@ describe('prepareCollaboratorReplyRequest image capabilities', () => {
       ]
     });
     const conversationSegment = prepared.context.segments.find((segment) => segment.kind === 'conversation');
-    const requestMessage = conversationSegment?.messages.find((message) => message.content === '[图片附件：asset-mimo-text.png]');
 
-    expect(mockedGetAssetBlob).not.toHaveBeenCalled();
-    expect(requestMessage?.content).toBe('[图片附件：asset-mimo-text.png]');
+    expect(mockedGetAssetBlob).toHaveBeenCalledWith('asset-mimo-text');
+    expect(JSON.stringify(conversationSegment)).toContain('data:image/png;base64,');
   });
 
   it('uses the provider scoped image understanding model before sending images to a text-only provider', async () => {

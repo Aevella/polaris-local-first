@@ -158,10 +158,15 @@ describe('provider runtime characterization fixtures', () => {
     }));
   });
 
-  it('keeps direct Mimo model quirks inside canonical capabilities', () => {
+  it('keeps direct Mimo protocol quirks separate from configured image capability', () => {
     const mimoProvider = createProviderRuntimeTestProvider({
       baseUrl: 'https://api.xiaomimimo.com/v1',
-      model: 'mimo-v2-pro'
+      model: 'mimo-v2-pro',
+      capabilities: {
+        images: true,
+        streaming: true,
+        thinking: false
+      }
     });
     expect(resolveCanonicalProviderCapabilities(
       mimoProvider,
@@ -170,7 +175,7 @@ describe('provider runtime characterization fixtures', () => {
     expect(resolveCanonicalProviderCapabilities(
       mimoProvider,
       createProviderRuntimeAdvanced({ modelOverride: 'mimo-v2-pro' })
-    ).input.images).toBe('none');
+    ).input.images).toBe('data-url');
   });
 
   it('characterizes OpenAI-compatible native tool calls', () => {

@@ -10,7 +10,7 @@ import {
 
 type UtilityToolKind = Extract<
   AssistantToolActionKind,
-  'listEnvironmentNodes' | 'inspectEnvironmentNode' | 'searchEnvironmentNodes' | 'createQrCode' | 'webSearch' | 'readWebPage' | 'readCalendarEvents' | 'createCalendarEvent' | 'updateCalendarEvent' | 'deleteCalendarEvent' | 'runCode' | 'writeMemory' | 'writeMemoryDoc' | 'readMemoryDoc' | 'searchMemory' | 'openMemorySource' | 'readPolarisKnowledge' | 'startTask' | 'completeTask' | 'wait' | 'createProactiveMessageRule' | 'listProactiveMessageRules' | 'updateProactiveMessageRule' | 'deleteProactiveMessageRule'
+  'listEnvironmentNodes' | 'inspectEnvironmentNode' | 'searchEnvironmentNodes' | 'createQrCode' | 'webSearch' | 'readWebPage' | 'listCalendars' | 'readCalendarEvents' | 'createCalendarEvent' | 'updateCalendarEvent' | 'deleteCalendarEvent' | 'runCode' | 'writeMemory' | 'writeMemoryDoc' | 'readMemoryDoc' | 'searchMemory' | 'openMemorySource' | 'readPolarisKnowledge' | 'startTask' | 'completeTask' | 'wait' | 'createProactiveMessageRule' | 'listProactiveMessageRules' | 'updateProactiveMessageRule' | 'deleteProactiveMessageRule'
 >;
 
 const PROACTIVE_MESSAGE_RULES = [
@@ -175,6 +175,26 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
       '- readWebPage 只证明读到了网页文本，不证明看见了图片、视频、评论区或需要登录才能展开的内容。'
     ]
   },
+  listCalendars: {
+    name: 'listCalendars',
+    group: 'personalData',
+    followupDomain: 'tool-result',
+    resultReplayMode: 'full-detail',
+    brief: '读取可写系统日历',
+    schema: {
+      name: 'listCalendars',
+      description: '读取用户已授权设备上的可写系统日历，返回稳定 calendarId、账户来源和系统默认状态。',
+      parameters: objectParameters({
+        targetLabel: stringProperty('可选目标说明。')
+      })
+    },
+    rules: [
+      '系统资料动作：',
+      '1. listCalendars：读取可写系统日历及其 calendarId、账户来源和默认状态。',
+      '- 同名日历可能来自不同账户；需要指定写入位置时先读取真实列表，不要根据“个人”“工作”这类显示名猜来源。',
+      '- createCalendarEvent 可以使用返回的 calendarId 显式选择日历；不指定时才使用 iOS 系统默认日历。'
+    ]
+  },
   readCalendarEvents: {
     name: 'readCalendarEvents',
     group: 'personalData',
@@ -193,8 +213,7 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
       })
     },
     rules: [
-      '系统资料动作：',
-      '1. readCalendarEvents：读取用户已授权的本设备系统日历事件。',
+      '2. readCalendarEvents：读取用户已授权的本设备系统日历事件。',
       '- 这个工具读取日历事件，并返回 eventId；后续修改或删除已有日程必须使用这个 eventId。',
       '- 只有用户在设置里开启“系统资料”且当前设备原生桥可用时，它才会出现在工具目录。',
       '- 需要理解用户今天/近期安排、会议、时间冲突或某个关键词相关日程时使用。',
@@ -217,12 +236,14 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
         allDay: booleanProperty('是否全天事件。'),
         location: stringProperty('可选地点。'),
         notes: stringProperty('可选备注。'),
+        calendarId: stringProperty('可选目标系统日历 ID；来自 listCalendars。省略时使用 iOS 系统默认日历。'),
         targetLabel: stringProperty('可选目标说明。')
       }, ['title', 'startDate'])
     },
     rules: [
-      '2. createCalendarEvent：在系统日历里创建新日程。',
+      '3. createCalendarEvent：在系统日历里创建新日程。',
       '- 用户要求安排、添加、创建日程时使用；它会写入系统日历。',
+      '- 用户指定账户或日历、或设备上存在同名日历时，先用 listCalendars 取得 calendarId；不要硬编码 iCloud、Local、Exchange 或按日历名猜。',
       '- startDate 是工具边界的机器时间值：有具体时刻时优先写 ISO 8601 并带时区偏移，例如 2026-06-15T14:00:00+08:00；只有全天事件才只写日期。',
       '- 相对时间要先根据当前请求时间换算成具体 startDate；不要在参数里留下需要系统二次理解的时间描述。',
       '- 结束时间不明确时可以省略 endDate，让系统默认 1 小时，或在正文里说明你采用了默认时长。',
@@ -250,7 +271,7 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
       }, ['eventId'])
     },
     rules: [
-      '3. updateCalendarEvent：修改已有系统日历事件。',
+      '4. updateCalendarEvent：修改已有系统日历事件。',
       '- 修改已有日程前必须知道 eventId；不知道时先用 readCalendarEvents 定位。',
       '- 只传需要修改的字段；不要凭空改动用户没要求改的标题、时间、地点或备注。'
     ]
@@ -270,7 +291,7 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
       }, ['eventId'])
     },
     rules: [
-      '4. deleteCalendarEvent：删除已有系统日历事件。',
+      '5. deleteCalendarEvent：删除已有系统日历事件。',
       '- 删除已有日程前必须知道 eventId；不知道时先用 readCalendarEvents 定位。',
       '- 不要删除不确定是不是用户目标的事件；同名或时间相近时先读日历确认。'
     ]

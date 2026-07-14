@@ -1,5 +1,4 @@
-import { Capacitor } from '@capacitor/core';
-import { isAllowedProviderRelayTarget } from '../chat-api/providerRelay';
+import { canFallbackThroughProviderRelay } from '../chat-api/providerRelay';
 import {
   type ProviderHttpRequest,
   type CanonicalProviderError,
@@ -92,10 +91,7 @@ function shouldRetryThroughProviderRelay(
   if (signalAborted) return false;
   if (capability?.route.isBuiltInTrial) return false;
   if (!capability?.transport.relayAllowedWhenNetworkFails) return false;
-  if (!Capacitor.isNativePlatform()) return false;
-  const platform = Capacitor.getPlatform();
-  if (platform !== 'ios' && platform !== 'android') return false;
-  if (!isAllowedProviderRelayTarget(request.endpoint)) return false;
+  if (!canFallbackThroughProviderRelay(request.endpoint)) return false;
   if (!(error instanceof Error)) return false;
 
   return isProviderNetworkFailureMessage(error.message);
@@ -190,7 +186,7 @@ export function resolveProviderRuntimeRetry(
       input.signalAborted
     )
   ) {
-    return decision('provider-relay', 'native-relay-fallback');
+    return decision('provider-relay', 'provider-relay-fallback');
   }
 
   if (

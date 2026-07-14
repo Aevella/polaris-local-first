@@ -45,6 +45,11 @@ src/native/localTriggerNotifications.ts
 src/native/personalData.ts
 ```
 
+The personal-data bridge exposes EventKit calendar facts without guessing account ownership.
+`listCalendars` returns writable calendars with stable identifiers, source metadata, and the system
+default flag. `createCalendarEvent` accepts an optional `calendarId`; when it is absent, the bridge
+uses the default calendar selected in iOS settings.
+
 ## Data Flow
 
 Native capability:

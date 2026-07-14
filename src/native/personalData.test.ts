@@ -15,6 +15,7 @@ vi.mock('@capacitor/core', () => ({
   registerPlugin: vi.fn(() => ({
     getStatus: vi.fn(),
     requestCalendarAccess: vi.fn(),
+    listCalendars: vi.fn(),
     readCalendarEvents: vi.fn(),
     createCalendarEvent: vi.fn(),
     updateCalendarEvent: vi.fn(),

@@ -490,6 +490,13 @@ describe('parseAssistantToolAction', () => {
 
   it('parses explicit calendar read actions', () => {
     expect(parseAssistantToolAction({
+      kind: 'listCalendars'
+    }).action).toEqual({
+      kind: 'listCalendars',
+      targetLabel: undefined
+    });
+
+    expect(parseAssistantToolAction({
       kind: 'readCalendarEvents',
       startDate: '2026-06-12',
       query: 'meeting',
@@ -512,7 +519,8 @@ describe('parseAssistantToolAction', () => {
       endDate: '2026-06-14T11:00:00Z',
       allDay: false,
       location: '诊所',
-      notes: '带牙套'
+      notes: '带牙套',
+      calendarId: 'calendar-1'
     }).action).toEqual({
       kind: 'createCalendarEvent',
       title: '看牙',
@@ -521,6 +529,7 @@ describe('parseAssistantToolAction', () => {
       allDay: false,
       location: '诊所',
       notes: '带牙套',
+      calendarId: 'calendar-1',
       targetLabel: undefined
     });
 

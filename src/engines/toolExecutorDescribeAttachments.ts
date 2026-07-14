@@ -8,6 +8,7 @@ export type AttachmentsToolAction = Extract<
       | 'inspectAttachments'
       | 'webSearch'
       | 'readWebPage'
+      | 'listCalendars'
       | 'readCalendarEvents'
       | 'createCalendarEvent'
       | 'updateCalendarEvent'
@@ -58,6 +59,13 @@ export function describeAttachmentsToolAction(action: AttachmentsToolAction): To
         title: '读取网页',
         summary: `读取网页正文 · ${action.url}`,
         targetLabel: action.targetLabel ?? action.url
+      };
+    case 'listCalendars':
+      return {
+        kind: action.kind,
+        title: '读取可写日历',
+        summary: '读取设备上的可写系统日历',
+        targetLabel: action.targetLabel
       };
     case 'readCalendarEvents':
       return {

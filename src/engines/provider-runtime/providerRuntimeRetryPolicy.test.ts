@@ -208,7 +208,7 @@ describe('provider runtime retry policy', () => {
     });
   });
 
-  it('drives native relay fallback from request capability instead of provider protocol', () => {
+  it('drives relay fallback from request capability instead of provider protocol', () => {
     vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
     vi.mocked(Capacitor.getPlatform).mockReturnValue('ios');
     const error = new Error('Failed to fetch');
@@ -242,7 +242,7 @@ describe('provider runtime retry policy', () => {
       ))
     ).toMatchObject({
       kind: 'provider-relay',
-      reason: 'native-relay-fallback'
+      reason: 'provider-relay-fallback'
     });
 
     expect(
@@ -274,7 +274,7 @@ describe('provider runtime retry policy', () => {
       ))
     ).toMatchObject({
       kind: 'provider-relay',
-      reason: 'native-relay-fallback'
+      reason: 'provider-relay-fallback'
     });
   });
 
@@ -300,7 +300,7 @@ describe('provider runtime retry policy', () => {
       ))
     ).toMatchObject({
       kind: 'provider-relay',
-      reason: 'native-relay-fallback'
+      reason: 'provider-relay-fallback'
     });
   });
 

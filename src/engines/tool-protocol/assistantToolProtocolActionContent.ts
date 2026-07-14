@@ -419,6 +419,12 @@ export function parseContentToolAction(
         targetLabel: normalizeOptionalString(action.targetLabel)
       } };
     }
+    case 'listCalendars': {
+      return { action: {
+        kind: 'listCalendars',
+        targetLabel: normalizeOptionalString(action.targetLabel)
+      } };
+    }
     case 'readCalendarEvents': {
       return { action: {
         kind: 'readCalendarEvents',
@@ -442,6 +448,7 @@ export function parseContentToolAction(
         allDay: normalizeOptionalBoolean(action.allDay),
         location: typeof action.location === 'string' ? action.location.trim() : undefined,
         notes: typeof action.notes === 'string' ? action.notes.trim() : undefined,
+        calendarId: normalizeOptionalString(action.calendarId),
         targetLabel: normalizeOptionalString(action.targetLabel)
       } };
     }

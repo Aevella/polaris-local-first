@@ -130,6 +130,7 @@ export function describeToolAction(action: ToolAction): ToolActionDescription {
     case 'inspectAttachments':
     case 'webSearch':
     case 'readWebPage':
+    case 'listCalendars':
     case 'readCalendarEvents':
     case 'createCalendarEvent':
     case 'updateCalendarEvent':

@@ -38,7 +38,7 @@ into a focused `toolExecutorDescribe<Domain>.ts` module.
 | `toolExecutorDescribeToolInvocation.ts` | `invokeCodeCardTool`, `invokeMcpTool` |
 | `toolExecutorDescribeDesktop.ts` | the 18 `*Desktop*` kinds: file read/edit, directory/path ops, command/terminal sessions, workspace disk sync |
 | `toolExecutorDescribeKnowledgeEnvironment.ts` | `readPolarisKnowledge`, `listEnvironmentNodes`, `inspectEnvironmentNode`, `searchEnvironmentNodes` |
-| `toolExecutorDescribeAttachments.ts` | attachment / web / calendar / image / archive kinds + `runCode` (22 kinds) |
+| `toolExecutorDescribeAttachments.ts` | attachment / web / calendar / image / archive kinds + `runCode` (23 kinds) |
 | `toolExecutorDescribeWorkspace.ts` | the 30 workspace / room-project / code-card / project-file kinds (incl. `switchWorld`); owns the `summarizeCodeCardPatch` helper |
 | `toolExecutorDescribeThemeCss.ts` | the 11 theme/CSS kinds (`applyThemeCoordinates`, `applySurfaceTokens`, `patchRawCss`, the `*ThemeCss` edits, `applyPreset`, `inspectThemeRender`); owns `inferStableThemeScope` / `splitCssSelectorList` / `summarizeRawCssThemeTargets` |
 

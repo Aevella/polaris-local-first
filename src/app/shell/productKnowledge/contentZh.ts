@@ -67,7 +67,7 @@ export const PRODUCT_DOCS: ProductDoc[] = [
       {
         heading: '模型和请求入口',
         body: [
-          'Polaris 不把某一家模型当成唯一核心。你可以配置 OpenAI、Anthropic、Gemini 或 OpenAI 兼容接口，也可以走自建中转。网页端为了跨域稳定，完整 https 入口可能经当前配置的 relay 转发；原生端会优先直连，必要时再切回配置的 relay。',
+          'Polaris 不把某一家模型当成唯一核心。你可以配置 OpenAI、Anthropic、Gemini 或 OpenAI 兼容接口，也可以走自建中转。网页端和原生端都会先请求你填写的真实入口；只有直连没有拿到任何响应时，才会尝试当前部署提供的 relay。',
           'API Key 和模型供应商配置由你自己填写和管理。调用外部模型时，请求内容会发送给你选择的供应商或中转入口；不同供应商的保存、审核和日志策略由它们自己的服务条款决定。',
           '聊天模型、跨对话总结模型、向量检索模型、生图模型和语音朗读模型可以分开设置。生图在设置的生图页里选择供应商、模型和尺寸，适合接 OpenAI 兼容的图片生成接口；语音朗读在单独的语音页里直接填写 Base URL、API Key、接口路径、模型、音色和格式，不从语言模型供应商列表拉取，当前支持 OpenAI 兼容 audio/speech、MiniMax T2A 与 ElevenLabs TTS。'
         ]
@@ -165,7 +165,7 @@ export const PRODUCT_DOCS: ProductDoc[] = [
         body: [
           'Polaris 先把当前对话、协作者、工具上下文、工作区上下文、附件摘要、任务状态和运行配置整理成一次请求快照，再按当前供应商的协议生成真正发给外部模型的 HTTP 请求。供应商可以是内置线路、OpenAI 兼容接口、Anthropic Messages、OpenAI Responses、Gemini Generate Content，或用户自建中转。',
           '供应商配置里最关键的是 base URL、path、protocol、model 和 API Key。protocol 决定请求体形状、鉴权头、图片格式、工具调用格式、reasoning/thinking 参数、输出 token 字段和缓存写法。model 名不只是显示文字；很多兼容平台会根据 model 选择能力或路由，填错会导致 404、400、无工具调用、无流式输出或上下文预算异常。',
-          '请求入口分平台。base URL 写成相对路径时，通常走当前部署的内置接口；写成完整 https 入口时，网页端可能需要经当前配置的 relay 转发来避开浏览器跨域预检，原生端则优先直连以保留流式输出，网络失败或平台限制时才考虑 relay。不要把 relay 理解成“服务器保存对话”，它主要是请求转发层。'
+          '请求入口分平台。base URL 写成相对路径时，通常走当前部署的内置接口；写成完整 https 入口时，网页端和原生端先直连真实入口，只有网络或跨域限制让请求完全拿不到响应时才考虑当前部署的 relay。不要把 relay 理解成“服务器保存对话”，它主要是请求转发层。'
         ],
         bullets: [
           '模型不可用通常和供应商选择、model 真实性、protocol 匹配、base URL/path、Key 权限有关。',

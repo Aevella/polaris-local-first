@@ -38,6 +38,7 @@ export const CANONICAL_TOOL_ACTION_KINDS = [
   'inspectAttachments',
   'webSearch',
   'readWebPage',
+  'listCalendars',
   'readCalendarEvents',
   'createCalendarEvent',
   'updateCalendarEvent',

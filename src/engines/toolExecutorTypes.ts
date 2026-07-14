@@ -63,6 +63,7 @@ import type { ToolResult } from './toolResult';
 import type { WebSearchResult } from './webSearchTool';
 import type { CodeCardToolPatch, CodeCardToolDraft, ProjectFileToolDraft, RoomProjectToolPatch, ToolAction } from './toolActionTypes';
 import type {
+  NativeCalendarsResult,
   NativeCalendarEventsResult,
   NativeCalendarEventDelete,
   NativeCalendarEventDraft,
@@ -192,6 +193,7 @@ export type ToolContext = {
   inspectAttachments: (scope?: 'latest' | 'all', query?: string) => InspectAttachmentsResult;
   webSearch: (query: string, maxResults?: number) => Promise<WebSearchResult>;
   readWebPage: (url: string, maxChars?: number) => Promise<ReadWebPageResult>;
+  listCalendars: () => Promise<NativeCalendarsResult>;
   readCalendarEvents: (query: NativeCalendarQuery) => Promise<NativeCalendarEventsResult>;
   createCalendarEvent: (draft: NativeCalendarEventDraft) => Promise<NativeCalendarMutationResult>;
   updateCalendarEvent: (patch: NativeCalendarEventPatch) => Promise<NativeCalendarMutationResult>;

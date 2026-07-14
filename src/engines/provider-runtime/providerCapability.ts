@@ -1,10 +1,7 @@
-import type { PersonaAdvancedSettings, ProviderCapabilities, ProviderProfile, ProviderProtocol } from '../../types/domain';
+import type { PersonaAdvancedSettings, ProviderProfile, ProviderProtocol } from '../../types/domain';
 import type { ProviderCompatibilityMode, ProviderRouteLabelKey } from './internal/providerProfile';
 import { isPolarisBuiltInProvider } from '../freeProvider';
-import {
-  resolveProviderEffectiveCapabilities,
-  resolveProviderEffectiveModel
-} from './internal/providerEffectiveProfile';
+import { resolveProviderEffectiveModel } from './internal/providerEffectiveProfile';
 import {
   isClaudeModel,
   isDeepSeekHost,
@@ -185,13 +182,6 @@ function parsePositiveInteger(value: string | undefined) {
   return parsed;
 }
 
-function resolveEffectiveCapabilities(
-  provider: ProviderProfile,
-  model: string
-): ProviderCapabilities {
-  return resolveProviderEffectiveCapabilities(provider, model);
-}
-
 function resolveRuntimeProvider(
   provider: ProviderProfile,
   advanced?: ProviderCapabilityAdvanced
@@ -199,8 +189,7 @@ function resolveRuntimeProvider(
   const model = resolveProviderEffectiveModel(provider, advanced?.modelOverride);
   return {
     ...provider,
-    model,
-    capabilities: resolveEffectiveCapabilities(provider, model)
+    model
   };
 }
 
@@ -370,13 +359,8 @@ function resolveGeminiThoughtSignatureTransport(
 
 function resolveImageInputMode(args: {
   provider: ProviderProfile;
-  host: string;
   protocolShape: { imageInput: CanonicalProviderImageInputMode };
 }) {
-  if (isDeepSeekHost(args.host)) {
-    return 'none';
-  }
-
   return args.provider.capabilities.images ? args.protocolShape.imageInput : 'none';
 }
 
@@ -443,7 +427,6 @@ export function resolveProviderCapability(
   const streamingEnabled = runtimeProvider.capabilities.streaming && advanced?.streaming !== false;
   const inputImages = resolveImageInputMode({
     provider: runtimeProvider,
-    host,
     protocolShape
   });
   const reasoningMode = runtimeProvider.capabilities.thinking ? protocolShape.reasoningMode : 'none';

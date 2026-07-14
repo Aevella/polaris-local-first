@@ -12,6 +12,7 @@ This module is about native capability. Tablet adaptation is documented separate
 - File picker, photo, backup, and rollback file capabilities.
 - Native HTTP and WebView shell integration.
 - Local notifications and platform-specific capability availability.
+- Authorized system-calendar discovery and event mutations through stable calendar identifiers.
 
 ## Does Not Own
 
@@ -34,12 +35,15 @@ This module is about native capability. Tablet adaptation is documented separate
 - Platform capability state from Capacitor.
 - Native SQLite database contents through the plugin boundary.
 - Picked files and backup/rollback files selected by the user.
+- Writable EventKit calendar identifiers, account sources, and the user-selected default calendar.
 
 ## Data It Writes
 
 - Native SQLite rows through the LocalData backend.
 - User-selected file handles or imported file payloads handed back to shared code.
 - Notification scheduling state when native notifications are available.
+- Calendar events written to the explicit `calendarId`, or to the iOS system default when no target
+  is supplied.
 
 ## Important Failure States
 

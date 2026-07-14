@@ -122,21 +122,27 @@ describe('discoverProviderModels', () => {
     }));
   });
 
-  it('uses the configured app model-list relay for external browser requests', async () => {
+  it('falls back to the configured model-list relay only after direct browser transport fails', async () => {
     vi.stubGlobal('window', {
       location: {
         origin: 'https://selfhost.example.test'
       }
     });
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-      data: [{ id: 'relay-model' }]
-    }), { status: 200 }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === 'https://api.example.com/v1/models') {
+        throw new TypeError('Failed to fetch');
+      }
+      return new Response(JSON.stringify({
+        data: [{ id: 'relay-model' }]
+      }), { status: 200 });
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await discoverProviderModels({ api: createProvider() });
 
     expect(result.ok).toBe(true);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [url, init] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
     expect(url).toBe('https://selfhost.example.test/api/provider-models');
     expect(init.method).toBe('POST');
     expect(JSON.parse(String(init.body))).toEqual({
@@ -170,14 +176,11 @@ describe('discoverProviderModels', () => {
 
     expect(result.ok).toBe(true);
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(JSON.parse(String(init.body))).toEqual({
-      endpoint: 'https://api.anthropic.com/v1/models',
-      headers: {
-        Accept: 'application/json',
-        'anthropic-dangerous-direct-browser-access': 'true',
-        'anthropic-version': '2023-06-01',
-        'x-api-key': 'sk-test'
-      }
+    expect(init.headers).toEqual({
+      Accept: 'application/json',
+      'anthropic-dangerous-direct-browser-access': 'true',
+      'anthropic-version': '2023-06-01',
+      'x-api-key': 'sk-test'
     });
   });
 });

@@ -323,11 +323,13 @@ describe('assistantToolProtocolRequestTools', () => {
       visibleCards: []
     });
 
+    expect(unavailable.tools.some((tool) => tool.function.name === 'listCalendars')).toBe(false);
     expect(unavailable.tools.some((tool) => tool.function.name === 'readCalendarEvents')).toBe(false);
     expect(unavailable.tools.some((tool) => tool.function.name === 'createCalendarEvent')).toBe(false);
     expect(unavailable.tools.some((tool) => tool.function.name === 'updateCalendarEvent')).toBe(false);
     expect(unavailable.tools.some((tool) => tool.function.name === 'deleteCalendarEvent')).toBe(false);
     expect(unavailable.tools.some((tool) => tool.function.name === 'readHealthSummary')).toBe(false);
+    expect(calendarOnly.tools.some((tool) => tool.function.name === 'listCalendars')).toBe(true);
     expect(calendarOnly.tools.some((tool) => tool.function.name === 'readCalendarEvents')).toBe(true);
     expect(calendarOnly.tools.some((tool) => tool.function.name === 'createCalendarEvent')).toBe(true);
     expect(calendarOnly.tools.some((tool) => tool.function.name === 'updateCalendarEvent')).toBe(true);
@@ -354,6 +356,7 @@ describe('assistantToolProtocolRequestTools', () => {
       visibleCards: []
     });
 
+    expect(writeOnly.tools.some((tool) => tool.function.name === 'listCalendars')).toBe(false);
     expect(writeOnly.tools.some((tool) => tool.function.name === 'readCalendarEvents')).toBe(false);
     expect(writeOnly.tools.some((tool) => tool.function.name === 'createCalendarEvent')).toBe(true);
     expect(writeOnly.tools.some((tool) => tool.function.name === 'updateCalendarEvent')).toBe(false);

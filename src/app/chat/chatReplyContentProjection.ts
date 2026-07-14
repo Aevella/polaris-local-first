@@ -281,6 +281,7 @@ export function buildToolOnlyFallback(actions: AssistantToolAction[]) {
   if (
     kinds.has('webSearch')
     || kinds.has('readWebPage')
+    || kinds.has('listCalendars')
     || kinds.has('readCalendarEvents')
     || kinds.has('createCalendarEvent')
     || kinds.has('updateCalendarEvent')

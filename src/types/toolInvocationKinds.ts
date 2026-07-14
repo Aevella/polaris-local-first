@@ -64,6 +64,7 @@ export const TOOL_INVOCATION_KINDS = [
   'inspectAttachments',
   'webSearch',
   'readWebPage',
+  'listCalendars',
   'readCalendarEvents',
   'createCalendarEvent',
   'updateCalendarEvent',

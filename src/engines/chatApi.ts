@@ -193,7 +193,7 @@ export async function requestAssistantReply(params: RequestAssistantReplyParams)
           provider: request.provider,
           model: api.model,
           attempt: attempt + 1,
-          reason: retryDecision.reason ?? 'native-relay-fallback'
+          reason: retryDecision.reason ?? 'provider-relay-fallback'
         });
         attempt -= 1;
         continue;

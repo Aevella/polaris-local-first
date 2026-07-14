@@ -123,6 +123,20 @@ function createToolContext(overrides: Partial<ToolContext> = {}): ToolContext {
       detailText: '这个时间段里没有读到匹配的日历事件。',
       events: []
     })),
+    listCalendars: vi.fn(async () => ({
+      ok: true as const,
+      summary: '已读取可写系统日历 · 1 个',
+      detailText: '1. 个人 · 系统默认',
+      calendars: [{
+        calendarId: 'calendar-1',
+        calendarName: '个人',
+        sourceId: 'source-1',
+        sourceName: 'iCloud',
+        sourceType: 'calDAV',
+        isDefault: true,
+        allowsContentModifications: true
+      }]
+    })),
     createCalendarEvent: vi.fn(async () => ({
       ok: true as const,
       summary: '已创建系统日历事件 · 看牙',
@@ -132,7 +146,10 @@ function createToolContext(overrides: Partial<ToolContext> = {}): ToolContext {
         title: '看牙',
         startDate: '2026-06-14T10:00:00Z',
         endDate: '2026-06-14T11:00:00Z',
+        calendarId: 'calendar-1',
         calendarName: '个人',
+        calendarSource: 'iCloud',
+        calendarSourceType: 'calDAV',
         allDay: false
       }
     })),
@@ -145,7 +162,10 @@ function createToolContext(overrides: Partial<ToolContext> = {}): ToolContext {
         title: '看牙',
         startDate: '2026-06-14T12:00:00Z',
         endDate: '2026-06-14T13:00:00Z',
+        calendarId: 'calendar-1',
         calendarName: '个人',
+        calendarSource: 'iCloud',
+        calendarSourceType: 'calDAV',
         allDay: false
       }
     })),
@@ -158,7 +178,10 @@ function createToolContext(overrides: Partial<ToolContext> = {}): ToolContext {
         title: '看牙',
         startDate: '2026-06-14T12:00:00Z',
         endDate: '2026-06-14T13:00:00Z',
+        calendarId: 'calendar-1',
         calendarName: '个人',
+        calendarSource: 'iCloud',
+        calendarSourceType: 'calDAV',
         allDay: false
       }
     })),

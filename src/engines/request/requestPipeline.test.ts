@@ -13,16 +13,16 @@ vi.mock('../chatApi', () => ({
   requestAssistantReply: requestAssistantReplyMock
 }));
 
-const directMimoTextProvider: ProviderProfile = {
-  id: 'custom-mimo',
-  name: 'Xiaomi MiMo',
+const textProvider: ProviderProfile = {
+  id: 'custom-text',
+  name: 'Text Provider',
   protocol: 'openai-completions',
   baseUrl: 'https://api.xiaomimimo.com/v1',
   path: '/chat/completions',
   apiKey: 'sk-test',
-  model: 'mimo-v2-pro',
+  model: 'text-model',
   capabilities: {
-    images: true,
+    images: false,
     streaming: true,
     thinking: false
   }
@@ -70,7 +70,7 @@ describe('requestPipeline', () => {
 
   it('blocks image turns before sending when the effective model is text-only and OCR is unavailable', async () => {
     await expect(requestCollaboratorReply({
-      api: directMimoTextProvider,
+      api: textProvider,
       persona: null,
       messages: [imageMessage]
     })).rejects.toThrow('当前模型没有直接图片能力');
@@ -110,7 +110,7 @@ describe('requestPipeline', () => {
     vi.mocked(getAssetBlob).mockResolvedValue(new Blob(['image-bytes'], { type: 'image/png' }));
 
     await expect(requestCollaboratorReply({
-      api: directMimoTextProvider,
+      api: textProvider,
       providers: [visionProvider],
       imageUnderstanding: {
         enabled: true,
@@ -131,7 +131,7 @@ describe('requestPipeline', () => {
 
     const reply = await requestCollaboratorReply({
       api: {
-        ...directMimoTextProvider,
+        ...textProvider,
         imageUnderstanding: {
           enabled: true,
           providerId: visionProvider.id
@@ -149,8 +149,8 @@ describe('requestPipeline', () => {
     }));
     expect(requestAssistantReplyMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
       api: expect.objectContaining({
-        id: directMimoTextProvider.id,
-        model: directMimoTextProvider.model
+        id: textProvider.id,
+        model: textProvider.model
       })
     }));
     const mainRequestContext = requestAssistantReplyMock.mock.calls[1]?.[0]?.context;
@@ -165,7 +165,7 @@ describe('requestPipeline', () => {
 
     const reply = await requestCollaboratorReply({
       api: {
-        ...directMimoTextProvider,
+        ...textProvider,
         imageUnderstanding: {
           enabled: true,
           providerId: visionProvider.id,

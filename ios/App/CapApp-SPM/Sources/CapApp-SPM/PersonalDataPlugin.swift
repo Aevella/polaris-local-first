@@ -9,6 +9,7 @@ public class PersonalDataPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "getStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestCalendarAccess", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "listCalendars", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "readCalendarEvents", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "createCalendarEvent", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updateCalendarEvent", returnType: CAPPluginReturnPromise),
@@ -71,6 +72,32 @@ public class PersonalDataPlugin: CAPPlugin, CAPBridgedPlugin {
         ])
     }
 
+    @objc public func listCalendars(_ call: CAPPluginCall) {
+        guard calendarCanReadEvents() else {
+            call.reject("当前没有系统日历完整访问权限，不能读取可选日历。")
+            return
+        }
+
+        eventStore.refreshSourcesIfNecessary()
+        let defaultCalendarId = eventStore.defaultCalendarForNewEvents?.calendarIdentifier
+        let calendars = eventStore.calendars(for: .event)
+            .filter { $0.allowsContentModifications }
+            .sorted { lhs, rhs in
+                if lhs.calendarIdentifier == defaultCalendarId { return true }
+                if rhs.calendarIdentifier == defaultCalendarId { return false }
+                let sourceOrder = lhs.source.title.localizedCaseInsensitiveCompare(rhs.source.title)
+                if sourceOrder != .orderedSame { return sourceOrder == .orderedAscending }
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+            .map { serializeCalendar($0, defaultCalendarId: defaultCalendarId) }
+
+        call.resolve([
+            "summary": "已读取可写系统日历 · \(calendars.count) 个",
+            "detailText": formatCalendars(calendars),
+            "calendars": calendars
+        ])
+    }
+
     @objc public func createCalendarEvent(_ call: CAPPluginCall) {
         guard calendarCanWriteEvents() else {
             call.reject("当前没有系统日历写入权限。请在 Polaris 设置里开启系统资料，并在 iOS 权限弹窗里允许日历访问。")
@@ -86,9 +113,26 @@ public class PersonalDataPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         let parsedEndDate = parseDate(call.getString("endDate"))
         let endDate = parsedEndDate ?? Calendar.current.date(byAdding: .hour, value: 1, to: startDate) ?? startDate
-        guard let calendar = eventStore.defaultCalendarForNewEvents else {
-            call.reject("当前设备没有可写入的默认日历。")
-            return
+        eventStore.refreshSourcesIfNecessary()
+        let requestedCalendarId = trimmed(call.getString("calendarId"))
+        let calendar: EKCalendar
+        if let requestedCalendarId {
+            guard let selectedCalendar = eventStore.calendar(withIdentifier: requestedCalendarId) else {
+                call.reject("没有找到 calendarId 对应的系统日历。请先读取可写日历再重试。")
+                return
+            }
+            guard selectedCalendar.allowsContentModifications else {
+                call.reject("calendarId 对应的系统日历不可写。请改用其他可写日历。")
+                return
+            }
+            calendar = selectedCalendar
+        } else {
+            guard let defaultCalendar = eventStore.defaultCalendarForNewEvents,
+                  defaultCalendar.allowsContentModifications else {
+                call.reject("当前设备没有可写入的默认日历。请先在系统日历里设置默认日历。")
+                return
+            }
+            calendar = defaultCalendar
         }
 
         let event = EKEvent(eventStore: eventStore)
@@ -328,11 +372,59 @@ public class PersonalDataPlugin: CAPPlugin, CAPBridgedPlugin {
             "title": event.title ?? "未命名日程",
             "startDate": isoFormatter.string(from: event.startDate),
             "endDate": isoFormatter.string(from: event.endDate),
+            "calendarId": event.calendar.calendarIdentifier,
             "calendarName": event.calendar.title,
+            "calendarSource": event.calendar.source.title,
+            "calendarSourceType": sourceTypeLabel(event.calendar.source.sourceType),
             "allDay": event.isAllDay,
             "location": event.location ?? "",
             "notes": event.notes ?? ""
         ] as [String: Any]
+    }
+
+    private func serializeCalendar(_ calendar: EKCalendar, defaultCalendarId: String?) -> [String: Any] {
+        [
+            "calendarId": calendar.calendarIdentifier,
+            "calendarName": calendar.title,
+            "sourceId": calendar.source.sourceIdentifier,
+            "sourceName": calendar.source.title,
+            "sourceType": sourceTypeLabel(calendar.source.sourceType),
+            "isDefault": calendar.calendarIdentifier == defaultCalendarId,
+            "allowsContentModifications": calendar.allowsContentModifications
+        ] as [String: Any]
+    }
+
+    private func sourceTypeLabel(_ sourceType: EKSourceType) -> String {
+        switch sourceType {
+        case .local:
+            return "local"
+        case .exchange:
+            return "exchange"
+        case .calDAV:
+            return "calDAV"
+        case .mobileMe:
+            return "mobileMe"
+        case .subscribed:
+            return "subscribed"
+        case .birthdays:
+            return "birthdays"
+        @unknown default:
+            return "unknown"
+        }
+    }
+
+    private func formatCalendars(_ calendars: [[String: Any]]) -> String {
+        if calendars.isEmpty {
+            return "当前没有读到可写的系统日历。"
+        }
+        return calendars.enumerated().map { index, calendar in
+            let calendarId = calendar["calendarId"] as? String ?? ""
+            let calendarName = calendar["calendarName"] as? String ?? "未命名日历"
+            let sourceName = calendar["sourceName"] as? String ?? ""
+            let sourceType = calendar["sourceType"] as? String ?? "unknown"
+            let isDefault = calendar["isDefault"] as? Bool ?? false
+            return "\(index + 1). \(calendarName)\(isDefault ? " · 系统默认" : "")\n   calendarId=\(calendarId)\n   source=\(sourceName) · \(sourceType)"
+        }.joined(separator: "\n\n")
     }
 
     private func formatCalendarEvents(_ events: [[String: Any]]) -> String {
@@ -344,9 +436,12 @@ public class PersonalDataPlugin: CAPPlugin, CAPBridgedPlugin {
             let title = event["title"] as? String ?? "未命名日程"
             let startDate = event["startDate"] as? String ?? ""
             let endDate = event["endDate"] as? String ?? ""
+            let calendarId = event["calendarId"] as? String ?? ""
             let calendarName = event["calendarName"] as? String ?? ""
+            let calendarSource = event["calendarSource"] as? String ?? ""
+            let calendarSourceType = event["calendarSourceType"] as? String ?? ""
             let location = event["location"] as? String ?? ""
-            return "\(index + 1). \(title)\n   eventId=\(eventId)\n   \(startDate) - \(endDate)\n   calendar=\(calendarName)\(location.isEmpty ? "" : "\n   location=\(location)")"
+            return "\(index + 1). \(title)\n   eventId=\(eventId)\n   \(startDate) - \(endDate)\n   calendar=\(calendarName) · \(calendarSource) · \(calendarSourceType)\n   calendarId=\(calendarId)\(location.isEmpty ? "" : "\n   location=\(location)")"
         }.joined(separator: "\n\n")
     }
 

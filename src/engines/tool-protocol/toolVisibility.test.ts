@@ -141,6 +141,13 @@ describe('toolVisibility', () => {
   });
 
   it('shows personal data tools only for enabled and available native capabilities', () => {
+    expect(isPolarisNativeToolVisible(POLARIS_TOOL_REGISTRY_BY_NAME.listCalendars, {
+      enabledToolGroups: { personalData: true },
+      personalData: {
+        calendarAvailable: true,
+        calendarWriteAvailable: true
+      }
+    })).toBe(true);
     expect(isPolarisNativeToolVisible(POLARIS_TOOL_REGISTRY_BY_NAME.readCalendarEvents, {
       enabledToolGroups: { personalData: true }
     })).toBe(false);

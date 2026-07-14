@@ -1,5 +1,4 @@
 import { Capacitor } from '@capacitor/core';
-import type { ProviderProfile } from '../../types/domain';
 import type { BuiltRequest } from './chatApiTypes';
 export {
   hasProviderRelayAuthHeader,
@@ -36,24 +35,17 @@ export function shouldUseAnthropicBrowserDirectAccess(request: BuiltRequest) {
   return isOfficialAnthropicMessagesEndpoint(request);
 }
 
-export function shouldUseBrowserProviderRelay(api: ProviderProfile, request: BuiltRequest) {
-  if (typeof window === 'undefined' || Capacitor.isNativePlatform()) return false;
-  if (request.usesBuiltInTrial) return false;
-  if (shouldUseAnthropicBrowserDirectAccess(request)) return false;
-  if (!isAllowedProviderRelayTarget(request.endpoint)) return false;
+export function canFallbackThroughProviderRelay(endpointText: string) {
+  if (!isAllowedProviderRelayTarget(endpointText)) return false;
+  if (Capacitor.isNativePlatform()) return true;
+  if (typeof window === 'undefined') return false;
 
   const currentOrigin = window.location?.origin;
   if (typeof currentOrigin !== 'string' || !currentOrigin) return false;
 
-  let endpoint: URL;
   try {
-    endpoint = new URL(request.endpoint);
+    return new URL(endpointText).origin !== currentOrigin;
   } catch {
     return false;
   }
-
-  if (endpoint.origin === currentOrigin) return false;
-
-  void api;
-  return true;
 }

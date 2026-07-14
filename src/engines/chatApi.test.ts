@@ -383,7 +383,9 @@ describe('testApiConnection', () => {
 
     try {
       const result = await testApiConnection({
-        api: createProvider()
+        api: createProvider({
+          baseUrl: 'https://polaris.example.com/api'
+        })
       });
 
       expect(result.ok).toBe(true);
@@ -522,13 +524,13 @@ describe('testApiConnection', () => {
     }
   });
 
-  it('streams responses that pass through the browser provider relay', async () => {
+  it('streams directly in browsers when the upstream accepts the request', async () => {
     const originalFetch = globalThis.fetch;
-    const calls: RequestInit[] = [];
+    const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
     const progress: string[] = [];
     const restoreGlobals = installWindowTestGlobals();
-    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-      calls.push(init ?? {});
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
       return new Response([
         'data: {"choices":[{"delta":{"content":"你"},"finish_reason":null}]}',
         '',
@@ -578,9 +580,106 @@ describe('testApiConnection', () => {
       expect(reply.content).toBe('你好');
       expect(progress).toEqual(['你', '你好', '你好']);
       expect(calls).toHaveLength(1);
-      const relayPayload = JSON.parse(String(calls[0]?.body));
-      expect(relayPayload.endpoint).toBe('https://api.openai.com/v1/chat/completions');
-      expect(relayPayload.body.stream).toBe(true);
+      expect(String(calls[0].input)).toBe('https://api.openai.com/v1/chat/completions');
+      const directPayload = JSON.parse(String(calls[0].init?.body));
+      expect(directPayload.stream).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreGlobals();
+    }
+  });
+
+  it('falls back through the configured relay only when direct browser transport has no response', async () => {
+    vi.stubEnv('VITE_POLARIS_API_ORIGIN', 'https://selfhost.example.test');
+    const originalFetch = globalThis.fetch;
+    const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const restoreGlobals = installWindowTestGlobals();
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
+      if (calls.length === 1) {
+        throw new TypeError('Failed to fetch');
+      }
+
+      return new Response(JSON.stringify({
+        id: 'chatcmpl-relay',
+        choices: [{
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: 'pong'
+          }
+        }]
+      }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json'
+        }
+      });
+    }) as typeof fetch;
+
+    try {
+      const result = await testApiConnection({
+        api: createProvider({
+          baseUrl: 'https://example.tailnet.ts.net/v1',
+          capabilities: {
+            images: false,
+            streaming: false,
+            thinking: false
+          }
+        })
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        message: '已完成真实回复测试（模型 test-model，经配置 relay）'
+      });
+      expect(calls).toHaveLength(2);
+      expect(String(calls[0].input)).toBe('https://example.tailnet.ts.net/v1/chat/completions');
+      expect(String(calls[1].input)).toBe('https://polaris.example.com/api/provider-relay');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreGlobals();
+    }
+  });
+
+  it('keeps Tailscale MagicDNS providers direct when the browser receives a response', async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const restoreGlobals = installWindowTestGlobals();
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
+      return new Response(JSON.stringify({
+        id: 'chatcmpl-tailnet',
+        choices: [{
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: 'pong'
+          }
+        }]
+      }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json'
+        }
+      });
+    }) as typeof fetch;
+
+    try {
+      const result = await testApiConnection({
+        api: createProvider({
+          baseUrl: 'https://example.tailnet.ts.net/v1',
+          capabilities: {
+            images: false,
+            streaming: false,
+            thinking: false
+          }
+        })
+      });
+
+      expect(result.ok).toBe(true);
+      expect(calls).toHaveLength(1);
+      expect(String(calls[0].input)).toBe('https://example.tailnet.ts.net/v1/chat/completions');
     } finally {
       globalThis.fetch = originalFetch;
       restoreGlobals();

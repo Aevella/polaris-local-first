@@ -285,6 +285,10 @@ export type CanonicalToolAction =
       targetLabel?: string;
     }
   | {
+      kind: 'listCalendars';
+      targetLabel?: string;
+    }
+  | {
       kind: 'readCalendarEvents';
       startDate?: string;
       endDate?: string;
@@ -300,6 +304,7 @@ export type CanonicalToolAction =
       allDay?: boolean;
       location?: string;
       notes?: string;
+      calendarId?: string;
       targetLabel?: string;
     }
   | {

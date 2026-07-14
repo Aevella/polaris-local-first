@@ -8,8 +8,7 @@ import {
 import type { AssistantReplyProgress, BuiltRequest } from './chatApiTypes';
 import {
   ANTHROPIC_BROWSER_ACCESS_HEADER,
-  shouldUseAnthropicBrowserDirectAccess,
-  shouldUseBrowserProviderRelay
+  shouldUseAnthropicBrowserDirectAccess
 } from './providerRelay';
 import type { ProviderProfile } from '../../types/domain';
 import { resolveProviderRuntimeRequestAdapter } from '../provider-runtime/providerRuntimeAdapters';
@@ -46,7 +45,7 @@ export function resolveRequestTransportPath(params: {
   forceRelay?: boolean;
 }) {
   const { api, request, forceRelay = false } = params;
-  const shouldUseRelay = forceRelay || shouldUseBrowserProviderRelay(api, request);
+  const shouldUseRelay = forceRelay;
   const shouldUseIosXhrFallback = shouldUseNativeIosStreamingFallback(request);
   const requestedStreaming = requestBodyStreams(request.body);
   const endpoint = shouldUseRelay ? buildInternalApiEndpoint('/api/provider-relay') : request.endpoint;
@@ -120,7 +119,7 @@ export async function executeBuiltRequest(params: {
   rawProviderError?: boolean;
 }) {
   const { api, request, forceRelay = false, signal, onProgress, onChunk, rawProviderError = false } = params;
-  const shouldUseRelay = forceRelay || shouldUseBrowserProviderRelay(api, request);
+  const shouldUseRelay = forceRelay;
   const endpoint = shouldUseRelay ? buildInternalApiEndpoint('/api/provider-relay') : request.endpoint;
   const headers = shouldUseRelay ? { 'Content-Type': 'application/json' } : resolveDirectRequestHeaders(request);
   const body = shouldUseRelay

@@ -52,6 +52,14 @@ Implementation evidence:
 - `src/engines/toolExecutorCollectionCodeCards.ts`
 - `src/engines/toolExecutorCollectionRoomProjects.ts`
 
+### External facts stay inspectable
+
+Tools expose stable external identifiers instead of making decisions from display names or
+provider/model word lists. System-calendar tools list writable calendars with `calendarId` and
+source metadata before an explicit target is chosen. Provider image capability comes from the
+configured route; transport adapters format that capability but do not silently replace it from a
+model-name allowlist.
+
 ## Adjacent Responsibilities
 
 - Feature domains own their durable rows and visual presentation.

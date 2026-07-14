@@ -10,7 +10,7 @@ Same-origin means the deployment/runtime actually serves both the frontend and A
 
 The backend can provide:
 
-- provider relay for browser CORS or native transport cases
+- provider relay fallback when browser or native direct transport receives no response
 - built-in chat route for selected upstream providers
 - embeddings relay
 - image relay

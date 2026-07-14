@@ -201,6 +201,8 @@ const ACTION_KIND_ALIASES: Record<string, string> = {
   attachimage: 'sendImageAttachment',
   websearch: 'webSearch',
   readwebpage: 'readWebPage',
+  listcalendars: 'listCalendars',
+  listcalendar: 'listCalendars',
   readcalendarevents: 'readCalendarEvents',
   readcalendar: 'readCalendarEvents',
   createcalendarevent: 'createCalendarEvent',

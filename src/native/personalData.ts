@@ -25,10 +25,33 @@ export type NativeCalendarEvent = {
   title: string;
   startDate: string;
   endDate: string;
+  calendarId: string;
   calendarName: string;
+  calendarSource: string;
+  calendarSourceType: string;
   allDay: boolean;
   location?: string;
   notes?: string;
+};
+
+export type NativeCalendar = {
+  calendarId: string;
+  calendarName: string;
+  sourceId: string;
+  sourceName: string;
+  sourceType: string;
+  isDefault: boolean;
+  allowsContentModifications: boolean;
+};
+
+type NativeCalendarsPayload = {
+  summary: string;
+  detailText: string;
+  calendars: NativeCalendar[];
+};
+
+export type NativeCalendarsResult = NativeCalendarsPayload & {
+  ok: true;
 };
 
 type NativeCalendarEventsPayload = {
@@ -65,6 +88,7 @@ export type NativeCalendarEventDraft = {
   allDay?: boolean;
   location?: string;
   notes?: string;
+  calendarId?: string;
 };
 
 export type NativeCalendarEventPatch = Partial<NativeCalendarEventDraft> & {
@@ -78,6 +102,7 @@ export type NativeCalendarEventDelete = {
 type PersonalDataPlugin = {
   getStatus(): Promise<NativePersonalDataStatus>;
   requestCalendarAccess(): Promise<NativePersonalDataStatus>;
+  listCalendars(): Promise<NativeCalendarsPayload>;
   readCalendarEvents(options: NativeCalendarQuery): Promise<NativeCalendarEventsPayload>;
   createCalendarEvent(options: NativeCalendarEventDraft): Promise<NativeCalendarMutationPayload>;
   updateCalendarEvent(options: NativeCalendarEventPatch): Promise<NativeCalendarMutationPayload>;
@@ -171,6 +196,22 @@ export async function readNativeCalendarEvents(options: NativeCalendarQuery = {}
     await requestNativeCalendarAccess();
   }
   const result = await PersonalData.readCalendarEvents(options);
+  await refreshNativePersonalDataStatus();
+  return {
+    ok: true as const,
+    ...result
+  };
+}
+
+export async function listNativeCalendars() {
+  if (!canUseNativePersonalData()) {
+    throw new Error('当前平台暂未接入系统日历读取。');
+  }
+  const status = await refreshNativePersonalDataStatus();
+  if (status.calendar.permission === 'notDetermined') {
+    await requestNativeCalendarAccess();
+  }
+  const result = await PersonalData.listCalendars();
   await refreshNativePersonalDataStatus();
   return {
     ok: true as const,

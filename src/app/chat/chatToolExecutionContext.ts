@@ -39,6 +39,7 @@ import {
   createNativeCalendarEvent,
   deleteNativeCalendarEvent,
   getNativePersonalDataToolAvailability,
+  listNativeCalendars,
   readNativeCalendarEvents,
   updateNativeCalendarEvent
 } from '../../native/personalData';
@@ -601,6 +602,7 @@ export function buildDirectToolExecutionContext({
     inspectAttachments: (scope, query) => inspectConversationAttachments(getConversationMessages(), scope, query),
     webSearch: (query, maxResults) => runWebSearch(query, maxResults, runtime.search),
     readWebPage: (url, maxChars) => readWebPageContent(url, maxChars),
+    listCalendars: () => listNativeCalendars(),
     readCalendarEvents: (query) => readNativeCalendarEvents(query),
     createCalendarEvent: (draft) => createNativeCalendarEvent(draft),
     updateCalendarEvent: (patch) => updateNativeCalendarEvent(patch),

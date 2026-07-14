@@ -63,6 +63,7 @@ const TOOL_ICON_NAME_BY_KIND = {
   inspectAttachments: 'folder',
   webSearch: 'search',
   readWebPage: 'search',
+  listCalendars: 'inbox',
   readCalendarEvents: 'inbox',
   createCalendarEvent: 'filePlus',
   updateCalendarEvent: 'edit',

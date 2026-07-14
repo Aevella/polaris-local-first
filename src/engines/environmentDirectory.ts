@@ -322,6 +322,7 @@ function buildDirectory(snapshot: EnvironmentDirectorySnapshot): DirectoryIndex 
     status: `日历读取${snapshot.calendarAvailable ? '可用' : '不可用'} · 写入${snapshot.calendarWriteAvailable ? '可用' : '不可用'}`,
     childIds: [],
     actions: [
+      { label: '读取可写日历', toolName: 'listCalendars' },
       { label: '读取日历事件', toolName: 'readCalendarEvents' },
       { label: '创建日历事件', toolName: 'createCalendarEvent' }
     ],

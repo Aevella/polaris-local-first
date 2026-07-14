@@ -125,7 +125,7 @@ function hasAvailableMemorySearch(context?: PolarisToolVisibilityContext) {
 }
 
 function hasAvailablePersonalDataTool(tool: PolarisToolDefinition, context?: PolarisToolVisibilityContext) {
-  if (tool.name === 'readCalendarEvents') {
+  if (tool.name === 'listCalendars' || tool.name === 'readCalendarEvents') {
     return context?.personalData?.calendarAvailable === true;
   }
   if (tool.name === 'createCalendarEvent') {

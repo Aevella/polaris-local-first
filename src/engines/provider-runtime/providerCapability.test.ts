@@ -104,7 +104,7 @@ describe('resolveProviderCapability', () => {
     expect(capability.context.omitVolatileSystemMessages).toBe(false);
   });
 
-  it('does not expose image input for official DeepSeek routes even when an old config enables images', () => {
+  it('respects explicit image capability for official DeepSeek routes', () => {
     const capability = resolveProviderCapability(createProviderRuntimeTestProvider({
       baseUrl: 'https://api.deepseek.com/v1',
       model: 'deepseek-v4-pro',
@@ -115,10 +115,10 @@ describe('resolveProviderCapability', () => {
       }
     }));
 
-    expect(capability.input.images).toBe('none');
+    expect(capability.input.images).toBe('data-url');
   });
 
-  it('keeps direct Mimo model overrides and prompt injection eligibility together', () => {
+  it('keeps model-specific request policy separate from user-owned image capability', () => {
     const provider = createProviderRuntimeTestProvider({
       baseUrl: 'https://api.xiaomimimo.com/v1',
       model: 'mimo-v2-pro',
@@ -131,7 +131,7 @@ describe('resolveProviderCapability', () => {
 
     expect(resolveProviderCapability(provider, createProviderRuntimeAdvanced({
       modelOverride: 'mimo-v2-omni'
-    })).input.images).toBe('data-url');
+    })).input.images).toBe('none');
 
     const proCapability = resolveProviderCapability(provider, createProviderRuntimeAdvanced({
       modelOverride: 'mimo-v2.5-pro'
@@ -144,7 +144,7 @@ describe('resolveProviderCapability', () => {
     }]);
   });
 
-  it('recognizes image capability only for Mimo omni routes', () => {
+  it('allows any configured route to declare image capability without a model allowlist', () => {
     expect(resolveProviderCapability(createProviderRuntimeTestProvider({
       baseUrl: 'https://api.xiaomimimo.com/v1',
       model: 'mimo-v2-pro',
@@ -153,10 +153,10 @@ describe('resolveProviderCapability', () => {
         streaming: true,
         thinking: false
       }
-    })).input.images).toBe('none');
+    })).input.images).toBe('data-url');
   });
 
-  it('resolves Mimo omni image capability through the provider capability contract', () => {
+  it('does not turn image capability on from a recognized model name', () => {
     expect(resolveProviderCapability(createProviderRuntimeTestProvider({
       baseUrl: 'https://api.xiaomimimo.com/v1',
       model: 'mimo-v2-omni',
@@ -165,7 +165,7 @@ describe('resolveProviderCapability', () => {
         streaming: true,
         thinking: false
       }
-    })).input.images).toBe('data-url');
+    })).input.images).toBe('none');
   });
 
   it('centralizes SiliconFlow Kimi execution and streaming policy', () => {

@@ -52,7 +52,7 @@ The `api/` directory contains Vercel-style handlers. These are the closest match
 | Route | Purpose | Notes |
 | --- | --- | --- |
 | `/api/chat/completions` | Optional built-in/free chat route | Requires upstream provider keys such as `POLARIS_FREE_UPSTREAM_API_KEY`, `OPENROUTER_API_KEY`, `MIMO_API_KEY`, or `SILICONFLOW_API_KEY` depending on model route. |
-| `/api/provider-relay` | Text/chat provider relay | For browser CORS and native fallback. Requires the client to send upstream auth headers; validates public HTTPS upstream targets. |
+| `/api/provider-relay` | Text/chat provider relay | Fallback when browser or native direct transport receives no response. Requires the client to send upstream auth headers; validates public HTTPS upstream targets. |
 | `/api/provider-models` | Provider model-list relay | Referenced by the frontend, but this repository does not currently include a matching `api/provider-models.ts` handler. Add one before relying on model discovery through relay. |
 | `/api/provider-embeddings` | Embedding relay | Used by cross-chat vector search when browser direct calls need relay. |
 | `/api/provider-images` | Image generation relay | Used by configured image generation providers when relay is needed. |

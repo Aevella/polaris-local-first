@@ -1,12 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ProviderProfile } from '../../types/domain';
-import type { BuiltRequest } from './chatApiTypes';
 import {
+  canFallbackThroughProviderRelay,
   hasProviderRelayAuthHeader,
   isAllowedProviderRelayTarget,
   isProviderModelListRelayTarget,
-  sanitizeProviderRelayHeaders,
-  shouldUseBrowserProviderRelay
+  sanitizeProviderRelayHeaders
 } from './providerRelay';
 
 const nativePlatform = vi.hoisted(() => ({ value: false }));
@@ -17,42 +15,7 @@ vi.mock('@capacitor/core', () => ({
   }
 }));
 
-function createProvider(overrides: Partial<ProviderProfile> = {}): ProviderProfile {
-  return {
-    id: 'provider-1',
-    name: 'Custom',
-    protocol: 'openai-completions',
-    baseUrl: 'https://relay.example.com/v1',
-    path: '/chat/completions',
-    apiKey: 'sk-test',
-    model: 'gpt-test',
-    capabilities: {
-      images: false,
-      streaming: true,
-      thinking: false
-    },
-    ...overrides
-  };
-}
-
-function createRequest(overrides: Partial<BuiltRequest> = {}): BuiltRequest {
-  return {
-    endpoint: 'https://relay.example.com/v1/chat/completions',
-    headers: {
-      Authorization: 'Bearer sk-test',
-      'Content-Type': 'application/json'
-    },
-    body: {
-      model: 'gpt-test',
-      messages: [{ role: 'user', content: 'ping' }]
-    },
-    provider: 'openai-completions',
-    compatibilityMode: 'proxy',
-    ...overrides
-  };
-}
-
-describe('shouldUseBrowserProviderRelay', () => {
+describe('canFallbackThroughProviderRelay', () => {
   beforeEach(() => {
     nativePlatform.value = false;
     vi.stubGlobal('window', {
@@ -60,39 +23,18 @@ describe('shouldUseBrowserProviderRelay', () => {
     });
   });
 
-  it('keeps native providers off the browser relay so iOS streaming can stay direct', () => {
+  it('allows native requests to use the configured relay only as a fallback', () => {
     nativePlatform.value = true;
     vi.stubGlobal('window', {
       location: { origin: 'capacitor://localhost' }
     });
 
-    expect(shouldUseBrowserProviderRelay(createProvider(), createRequest())).toBe(false);
+    expect(canFallbackThroughProviderRelay('https://relay.example.com/v1/chat/completions')).toBe(true);
   });
 
-  it('routes custom direct providers through the browser relay', () => {
-    vi.stubGlobal('window', {
-      location: { origin: 'https://polaris-public-demo.vercel.app' }
-    });
-
-    expect(shouldUseBrowserProviderRelay(createProvider(), createRequest())).toBe(true);
-  });
-
-  it('routes official direct providers through the browser relay too', () => {
-    vi.stubGlobal('window', {
-      location: { origin: 'https://polaris-public-demo.vercel.app' }
-    });
-
-    expect(
-      shouldUseBrowserProviderRelay(
-        createProvider({
-          baseUrl: 'https://api.openai.com/v1'
-        }),
-        createRequest({
-          endpoint: 'https://api.openai.com/v1/chat/completions',
-          compatibilityMode: 'standard'
-        })
-      )
-    ).toBe(true);
+  it('allows public cross-origin endpoints without classifying domain suffixes', () => {
+    expect(canFallbackThroughProviderRelay('https://example.tailnet.ts.net/v1/chat/completions')).toBe(true);
+    expect(canFallbackThroughProviderRelay('https://api.openai.com/v1/chat/completions')).toBe(true);
   });
 
   it('keeps same-origin requests off the relay', () => {
@@ -100,76 +42,11 @@ describe('shouldUseBrowserProviderRelay', () => {
       location: { origin: 'https://polaris-public-demo.vercel.app' }
     });
 
-    expect(
-      shouldUseBrowserProviderRelay(
-        createProvider({
-          baseUrl: 'https://polaris-public-demo.vercel.app/api'
-        }),
-        createRequest({
-          endpoint: 'https://polaris-public-demo.vercel.app/api/chat/completions'
-        })
-      )
-    ).toBe(false);
+    expect(canFallbackThroughProviderRelay('https://polaris-public-demo.vercel.app/api/chat/completions')).toBe(false);
   });
 
-  it('keeps built-in trial requests off the relay even on native', () => {
-    nativePlatform.value = true;
-    vi.stubGlobal('window', {
-      location: { origin: 'capacitor://localhost' }
-    });
-
-    expect(
-      shouldUseBrowserProviderRelay(
-        createProvider(),
-        createRequest({
-          usesBuiltInTrial: true
-        })
-      )
-    ).toBe(false);
-  });
-
-  it('keeps official Anthropic messages requests direct in browsers', () => {
-    vi.stubGlobal('window', {
-      location: { origin: 'https://polaris-public-demo.vercel.app' }
-    });
-
-    expect(
-      shouldUseBrowserProviderRelay(
-        createProvider({
-          protocol: 'anthropic-messages',
-          baseUrl: 'https://api.anthropic.com/v1',
-          path: '/messages',
-          model: 'claude-sonnet-4-5'
-        }),
-        createRequest({
-          endpoint: 'https://api.anthropic.com/v1/messages',
-          provider: 'anthropic-messages',
-          compatibilityMode: 'standard'
-        })
-      )
-    ).toBe(false);
-  });
-
-  it('still routes Anthropic-compatible proxy hosts through the browser relay', () => {
-    vi.stubGlobal('window', {
-      location: { origin: 'https://polaris-public-demo.vercel.app' }
-    });
-
-    expect(
-      shouldUseBrowserProviderRelay(
-        createProvider({
-          protocol: 'anthropic-messages',
-          baseUrl: 'https://www.packyapi.com/v1',
-          path: '/messages',
-          model: 'claude-opus-4-6'
-        }),
-        createRequest({
-          endpoint: 'https://www.packyapi.com/v1/messages',
-          provider: 'anthropic-messages',
-          compatibilityMode: 'proxy'
-        })
-      )
-    ).toBe(true);
+  it('keeps private targets outside the relay fallback boundary', () => {
+    expect(canFallbackThroughProviderRelay('https://127.0.0.1/v1/chat/completions')).toBe(false);
   });
 });
 

@@ -1,4 +1,3 @@
-import { Capacitor } from '@capacitor/core';
 import { buildApiEndpoint, buildInternalApiEndpoint } from './chat-api/chatApiEndpoint';
 import { ANTHROPIC_VERSION } from './provider-runtime/requestShared/headers';
 import { resolveProviderCapability } from './provider-runtime/providerCapability';
@@ -6,8 +5,8 @@ import { inferProviderProtocol } from './providerProtocol';
 import type { ProviderProfile } from '../types/domain';
 import {
   ANTHROPIC_BROWSER_ACCESS_HEADER,
+  canFallbackThroughProviderRelay,
   isOfficialAnthropicApiEndpoint,
-  isAllowedProviderRelayTarget,
   sanitizeProviderRelayHeaders
 } from './chat-api/providerRelay';
 
@@ -123,20 +122,6 @@ function isAbsoluteProviderBaseUrl(baseUrl: string) {
   return /^https?:\/\//i.test(baseUrl.trim());
 }
 
-function shouldUseProviderModelRelay(endpoint: string) {
-  if (typeof window === 'undefined' || Capacitor.isNativePlatform()) return false;
-  if (!isAllowedProviderRelayTarget(endpoint)) return false;
-
-  const currentOrigin = window.location?.origin;
-  if (typeof currentOrigin !== 'string' || !currentOrigin) return false;
-
-  try {
-    return new URL(endpoint).origin !== currentOrigin;
-  } catch {
-    return false;
-  }
-}
-
 function buildProviderModelHeaders(api: ProviderProfile): Record<string, string> {
   const apiKey = api.apiKey.trim();
   const capability = resolveProviderCapability(api);
@@ -191,25 +176,27 @@ export async function discoverProviderModels(params: {
   try {
     const endpoint = buildProviderModelListEndpoint(api);
     const upstreamHeaders = buildProviderModelHeaders(api);
-    const useRelay = shouldUseProviderModelRelay(endpoint);
-    const res = await fetch(
-      useRelay ? buildInternalApiEndpoint('/api/provider-models') : endpoint,
-      useRelay
-        ? {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              endpoint,
-              headers: sanitizeProviderRelayHeaders(upstreamHeaders)
-            }),
-            signal
-          }
-        : {
-            method: 'GET',
-            headers: upstreamHeaders,
-            signal
-          }
-    );
+    let res: Response;
+    try {
+      res = await fetch(endpoint, {
+        method: 'GET',
+        headers: upstreamHeaders,
+        signal
+      });
+    } catch (error) {
+      if (signal?.aborted || !canFallbackThroughProviderRelay(endpoint)) {
+        throw error;
+      }
+      res = await fetch(buildInternalApiEndpoint('/api/provider-models'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint,
+          headers: sanitizeProviderRelayHeaders(upstreamHeaders)
+        }),
+        signal
+      });
+    }
     const payload = await readProviderModelResponse(res);
     const models = normalizeProviderModelList(api, payload);
     if (!models.length) {
