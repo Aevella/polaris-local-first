@@ -13,6 +13,10 @@ const capacitorRuntime = vi.hoisted(() => ({
   nativePlatform: false,
   platform: 'web'
 }));
+const nativeProviderRuntime = vi.hoisted(() => ({
+  available: true,
+  execute: vi.fn()
+}));
 
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
@@ -21,9 +25,16 @@ vi.mock('@capacitor/core', () => ({
   }
 }));
 
+vi.mock('../native/providerHttp', () => ({
+  canUseNativeProviderHttp: () => nativeProviderRuntime.available,
+  executeNativeProviderHttpRequest: (...args: unknown[]) => nativeProviderRuntime.execute(...args)
+}));
+
 beforeEach(() => {
   capacitorRuntime.nativePlatform = false;
   capacitorRuntime.platform = 'web';
+  nativeProviderRuntime.available = true;
+  nativeProviderRuntime.execute.mockReset();
   vi.unstubAllEnvs();
   clearProviderRuntimeCompatibilityCache();
 });
@@ -308,12 +319,20 @@ describe('testApiConnection', () => {
     }
   });
 
-  it('adds Anthropic browser direct access on native Capacitor smoke tests', async () => {
+  it('keeps Anthropic native smoke tests off browser headers and fetch', async () => {
     const originalFetch = globalThis.fetch;
     const calls: RequestInit[] = [];
     const restoreGlobals = installWindowTestGlobals();
     capacitorRuntime.nativePlatform = true;
     capacitorRuntime.platform = 'ios';
+    nativeProviderRuntime.execute.mockImplementation(async (args) => {
+      args.onResponse({ status: 200, contentType: 'application/json' });
+      args.onTextChunk(JSON.stringify({
+        id: 'msg-test',
+        content: [{ type: 'text', text: 'pong' }]
+      }));
+      return { status: 200, contentType: 'application/json' };
+    });
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       calls.push(init ?? {});
       return new Response(JSON.stringify({
@@ -343,9 +362,11 @@ describe('testApiConnection', () => {
       });
 
       expect(result.ok).toBe(true);
-      expect(calls[0]?.headers).toMatchObject({
-        'anthropic-dangerous-direct-browser-access': 'true'
-      });
+      expect(calls).toHaveLength(0);
+      expect(nativeProviderRuntime.execute).toHaveBeenCalledTimes(1);
+      const nativeRequest = nativeProviderRuntime.execute.mock.calls[0]?.[0];
+      expect(nativeRequest.url).toBe('https://api.anthropic.com/v1/messages');
+      expect(nativeRequest.headers).not.toHaveProperty('anthropic-dangerous-direct-browser-access');
     } finally {
       globalThis.fetch = originalFetch;
       restoreGlobals();
@@ -401,10 +422,23 @@ describe('testApiConnection', () => {
     }
   });
 
-  it('falls back through provider relay when a native iOS Gemini connection test hits CORS before response', async () => {
+  it('runs native iOS Gemini connection tests through the native provider bridge', async () => {
     capacitorRuntime.nativePlatform = true;
     capacitorRuntime.platform = 'ios';
-    vi.stubEnv('VITE_POLARIS_API_ORIGIN', 'https://selfhost.example.test');
+    nativeProviderRuntime.execute.mockImplementation(async (args) => {
+      args.onResponse({ status: 200, contentType: 'application/json' });
+      args.onTextChunk(JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{ text: 'pong' }],
+            role: 'model'
+          },
+          finishReason: 'STOP'
+        }],
+        modelVersion: 'gemini-3.1-pro-preview'
+      }));
+      return { status: 200, contentType: 'application/json' };
+    });
     const originalFetch = globalThis.fetch;
     const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
     const restoreGlobals = installWindowTestGlobals();
@@ -435,7 +469,7 @@ describe('testApiConnection', () => {
       const result = await testApiConnection({
         api: createProvider({
           protocol: 'gemini-generate-content',
-          baseUrl: 'https://api.dzzi.ai/v1',
+          baseUrl: 'https://provider.example.com/v1',
           path: '/models/{model}:generateContent',
           model: 'gemini-3.1-pro-preview',
           capabilities: {
@@ -448,14 +482,13 @@ describe('testApiConnection', () => {
 
       expect(result).toEqual({
         ok: true,
-        message: '已完成真实回复测试（模型 gemini-3.1-pro-preview，经配置 relay）'
+        message: '已完成真实回复测试（模型 gemini-3.1-pro-preview，经 App 原生网络）'
       });
-      expect(calls).toHaveLength(2);
-      expect(String(calls[0].input)).toBe('https://api.dzzi.ai/v1/models/gemini-3.1-pro-preview:generateContent');
-      expect(String(calls[1].input)).toBe('https://selfhost.example.test/api/provider-relay');
-      const relayPayload = JSON.parse(String(calls[1].init?.body));
-      expect(relayPayload.endpoint).toBe('https://api.dzzi.ai/v1/models/gemini-3.1-pro-preview:generateContent');
-      expect(relayPayload.body.generationConfig).toEqual({
+      expect(calls).toHaveLength(0);
+      expect(nativeProviderRuntime.execute).toHaveBeenCalledTimes(1);
+      const nativeRequest = nativeProviderRuntime.execute.mock.calls[0]?.[0];
+      expect(nativeRequest.url).toBe('https://provider.example.com/v1/models/gemini-3.1-pro-preview:generateContent');
+      expect(JSON.parse(nativeRequest.body).generationConfig).toEqual({
         maxOutputTokens: 32
       });
     } finally {
@@ -464,10 +497,23 @@ describe('testApiConnection', () => {
     }
   });
 
-  it('falls back through provider relay when a native iOS Gemini connection test reports fetch aborted before response', async () => {
+  it('does not route native Gemini smoke tests through a server relay', async () => {
     capacitorRuntime.nativePlatform = true;
     capacitorRuntime.platform = 'ios';
-    vi.stubEnv('VITE_POLARIS_API_ORIGIN', 'https://selfhost.example.test');
+    nativeProviderRuntime.execute.mockImplementation(async (args) => {
+      args.onResponse({ status: 200, contentType: 'application/json' });
+      args.onTextChunk(JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{ text: 'pong' }],
+            role: 'model'
+          },
+          finishReason: 'STOP'
+        }],
+        modelVersion: 'gemini-2.5-pro'
+      }));
+      return { status: 200, contentType: 'application/json' };
+    });
     const originalFetch = globalThis.fetch;
     const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
     const restoreGlobals = installWindowTestGlobals();
@@ -511,13 +557,12 @@ describe('testApiConnection', () => {
 
       expect(result).toEqual({
         ok: true,
-        message: '已完成真实回复测试（模型 gemini-2.5-pro，经配置 relay）'
+        message: '已完成真实回复测试（模型 gemini-2.5-pro，经 App 原生网络）'
       });
-      expect(calls).toHaveLength(2);
-      expect(String(calls[0].input)).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent');
-      expect(String(calls[1].input)).toBe('https://selfhost.example.test/api/provider-relay');
-      const relayPayload = JSON.parse(String(calls[1].init?.body));
-      expect(relayPayload.endpoint).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent');
+      expect(calls).toHaveLength(0);
+      expect(nativeProviderRuntime.execute).toHaveBeenCalledTimes(1);
+      expect(nativeProviderRuntime.execute.mock.calls[0]?.[0].url)
+        .toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent');
     } finally {
       globalThis.fetch = originalFetch;
       restoreGlobals();
@@ -686,10 +731,23 @@ describe('testApiConnection', () => {
     }
   });
 
-  it('falls back through provider relay when native iOS direct streaming is blocked before response', async () => {
+  it('streams native iOS provider responses without using fetch or server relay', async () => {
     capacitorRuntime.nativePlatform = true;
     capacitorRuntime.platform = 'ios';
-    vi.stubEnv('VITE_POLARIS_API_ORIGIN', 'https://selfhost.example.test');
+    nativeProviderRuntime.execute.mockImplementation(async (args) => {
+      args.onResponse({ status: 200, contentType: 'text/event-stream' });
+      args.onTextChunk([
+        'data: {"choices":[{"delta":{"content":"你"},"finish_reason":null}]}',
+        '',
+        'data: {"choices":[{"delta":{"content":"好"},"finish_reason":null}]}',
+        '',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+        '',
+        'data: [DONE]',
+        ''
+      ].join('\n'));
+      return { status: 200, contentType: 'text/event-stream' };
+    });
     const originalFetch = globalThis.fetch;
     const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
     const progress: string[] = [];
@@ -749,12 +807,11 @@ describe('testApiConnection', () => {
 
       expect(reply.content).toBe('你好');
       expect(progress).toEqual(['你', '你好', '你好']);
-      expect(calls).toHaveLength(2);
-      expect(String(calls[0].input)).toBe('https://opencode.ai/zen/v1/chat/completions');
-      expect(String(calls[1].input)).toBe('https://selfhost.example.test/api/provider-relay');
-      const relayPayload = JSON.parse(String(calls[1].init?.body));
-      expect(relayPayload.endpoint).toBe('https://opencode.ai/zen/v1/chat/completions');
-      expect(relayPayload.body.stream).toBe(true);
+      expect(calls).toHaveLength(0);
+      expect(nativeProviderRuntime.execute).toHaveBeenCalledTimes(1);
+      const nativeRequest = nativeProviderRuntime.execute.mock.calls[0]?.[0];
+      expect(nativeRequest.url).toBe('https://opencode.ai/zen/v1/chat/completions');
+      expect(JSON.parse(nativeRequest.body).stream).toBe(true);
     } finally {
       globalThis.fetch = originalFetch;
       restoreGlobals();

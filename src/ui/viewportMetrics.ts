@@ -18,12 +18,6 @@ export type ViewportMetrics = {
   viewportTop: number;
 };
 
-export function resolveStableNativeShellHeight(appHeight: number, screenHeight?: number) {
-  const measuredAppHeight = Number.isFinite(appHeight) ? Math.max(0, appHeight) : 0;
-  const measuredScreenHeight = Number.isFinite(screenHeight) ? Math.max(0, screenHeight ?? 0) : 0;
-  return Math.max(measuredAppHeight, measuredScreenHeight);
-}
-
 type ViewportMetricInput = {
   innerHeight: number;
   nativeKeyboard?: NativeKeyboardSnapshot;

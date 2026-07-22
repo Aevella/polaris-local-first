@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateViewportMetrics, isViewportKeyboardOpen, resolveStableNativeShellHeight } from './viewportMetrics';
+import { calculateViewportMetrics, isViewportKeyboardOpen } from './viewportMetrics';
 
 describe('calculateViewportMetrics', () => {
   it('uses measured viewport offset when no native keyboard snapshot exists', () => {
@@ -54,17 +54,6 @@ describe('calculateViewportMetrics', () => {
     expect(metrics.keyboardOffset).toBe(0);
     expect(metrics.measuredKeyboardOffset).toBe(300);
     expect(metrics.keyboardBridgeOffset).toBe(-300);
-  });
-});
-
-describe('resolveStableNativeShellHeight', () => {
-  it('uses the measured app height when it is already at least the screen height', () => {
-    expect(resolveStableNativeShellHeight(852, 852)).toBe(852);
-    expect(resolveStableNativeShellHeight(900, 852)).toBe(900);
-  });
-
-  it('uses screen height as the native startup floor when app height is transiently short', () => {
-    expect(resolveStableNativeShellHeight(520, 852)).toBe(852);
   });
 });
 

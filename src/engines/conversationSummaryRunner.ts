@@ -122,7 +122,6 @@ function buildConversationSummaryUserPrompt(persona: Persona, batch: Conversatio
   const userName = CONVERSATION_SUMMARY_USER_SUBJECT_LABEL;
   const collaboratorName = resolveSummarySubjectName(persona.name, '协作者');
   return [
-    `协作者 ID：${persona.id}`,
     `名字表：${userName} = 历史来源中 role:user 的说话人；${collaboratorName} = 历史来源中 role:assistant 的说话人。`,
     `批次：${batch.sequence}`,
     `来源对话数：${batch.sourceConversationIds.length}`,

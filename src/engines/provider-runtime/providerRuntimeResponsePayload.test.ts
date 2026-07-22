@@ -67,6 +67,32 @@ describe('extractOpenAiCompatibleReply', () => {
     });
   });
 
+  it('parses Anthropic-style cache usage fields returned by OpenAI-compatible aggregators', () => {
+    const reply = extractOpenAiCompatibleReply({
+      model: 'anthropic/claude-4.6-sonnet-20260217',
+      usage: {
+        input_tokens: 1000,
+        output_tokens: 40,
+        cache_read_input_tokens: 700,
+        cache_creation_input_tokens: 300,
+        cache_miss_input_tokens: 300
+      },
+      choices: [{
+        message: {
+          content: 'ok'
+        }
+      }]
+    }, 'fallback-model');
+
+    expect(reply.tokenUsage).toEqual({
+      inputTokens: 1000,
+      outputTokens: 40,
+      cachedInputTokens: 700,
+      cacheMissInputTokens: 300,
+      cacheCreationInputTokens: 300
+    });
+  });
+
   it('reads OpenAI-compatible usage from the first choice when providers put stream usage there', () => {
     const reply = extractOpenAiCompatibleReply({
       model: 'kimi-k2.6',

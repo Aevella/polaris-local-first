@@ -132,6 +132,21 @@ describe('installBootRescueSurface', () => {
     expect(collectText(root)).toBe('Polaris 已挂载');
   });
 
+  it('does not mistake an early post-mount rejection for a boot failure', () => {
+    vi.useFakeTimers();
+    const { root, emit } = createBrowserGlobals();
+    const rescue = installBootRescueSurface({ root: root as unknown as HTMLElement, timeoutMs: 10 });
+    const mounted = new FakeElement('main');
+    mounted.textContent = 'Polaris 已挂载';
+    root.replaceChildren(mounted);
+
+    emit('unhandledrejection', { reason: new Error('optional native plugin unavailable') });
+    rescue.watchReactRoot();
+    vi.advanceTimersByTime(10);
+
+    expect(collectText(root)).toBe('Polaris 已挂载');
+  });
+
   it('keeps the rescue card alive when persisted backup export fails', async () => {
     vi.useFakeTimers();
     const { root } = createBrowserGlobals();

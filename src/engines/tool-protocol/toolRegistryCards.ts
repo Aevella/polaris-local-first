@@ -145,7 +145,7 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'patchRoomProject',
       description: '修改当前工作区自己的外壳信息。适合给手动新建的工作区补封面、改标题、小字、标签或封面 CSS；不修改任何项目文件正文。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
         title: stringProperty('可选。新的工作区标题。'),
         slug: stringProperty('可选。新的工作区 slug。'),
         tags: stringArrayProperty('可选。新的工作区标签。'),
@@ -273,8 +273,8 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'appendProjectFile',
       description: '续写现有工作区文件的一段内容。适合长代码、工作区文件、连续生成、分块续写，不需要重发整份文件；HTML 文件已闭合时系统会把片段落回文档结构内。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
-        filePath: stringProperty('目标工作区文件路径；入口文件也要明确传 index.html，不要写 active。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
+        filePath: stringProperty('目标工作区文件路径（入口文件写 index.html，不写 active）。'),
         code: stringProperty('要续写的新内容片段。需要换行就把换行写进这个字段；系统会按原样写入。'),
         targetLabel: stringProperty('可选的目标说明。'),
         openInCollection: booleanProperty('可选。追加后是否在收藏区打开这张卡。')
@@ -295,8 +295,8 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'insertProjectFile',
       description: '在现有工作区文件里的某个原文锚点或行号前后插入一段新内容，不替换锚点本身。适合补 CSS 规则、插入一段 HTML、给函数前后加逻辑。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
-        filePath: stringProperty('目标工作区文件路径；入口文件也要明确传 index.html，不要写 active。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
+        filePath: stringProperty('目标工作区文件路径（入口文件写 index.html，不写 active）。'),
         beforeString: stringProperty('可选。把 code 插到这段原文前面。必须和当前文件中某一处完全一致。'),
         afterString: stringProperty('可选。把 code 插到这段原文后面。必须和当前文件中某一处完全一致。'),
         lineNumber: numberProperty('可选。把 code 插到这个行号前或后。行号可以来自 readProjectFileContext 或 searchProjectFiles 的结果。'),
@@ -325,7 +325,7 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'writeProjectFiles',
       description: '在当前工作区里一次写入多个文件。适合把 HTML/CSS/JS 拆分、同步重写多个互相引用的项目文件；默认整份覆盖目标文件。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
         files: {
           type: 'array',
           description: '要写入的工作区文件列表。默认 replaceContent=true，即整份覆盖；只有明确续写时才传 replaceContent=false。',
@@ -363,7 +363,7 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'listProjectFiles',
       description: '列出当前工作区里的文件路径、语言、角色和入口标记。它只返回目录，不返回文件正文。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
         targetLabel: stringProperty('可选的目标说明。')
       })
     },
@@ -382,7 +382,7 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'searchProjectFiles',
       description: '在当前工作区全部文件里定位一个代码片段、符号或路径片段，返回命中文件、行号、匹配原因和附近上下文。适合定位函数名、类名、锚点、缺失符号，或在局部替换前确认出现次数。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
         query: stringProperty('要定位的代码片段、符号、文件路径片段或原文锚点。不要写正则；需要看函数就搜函数名，需要找锚点就搜原文片段。'),
         maxResults: numberProperty('可选。最多返回多少条命中；不传默认 20。'),
         targetLabel: stringProperty('可选的目标说明。')
@@ -404,7 +404,7 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'readWorkspacePreviewState',
       description: '读取当前工作区托管预览已经同步给 Polaris 宿主的状态。只包含这个工作区 preview room 的 PolarisRoom、预览内 localStorage/sessionStorage shim 和自动保存的表单字段；不读取项目文件、真实浏览器存储、本机文件或其他工作区。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
         targetLabel: stringProperty('可选的目标说明。')
       })
     },
@@ -426,7 +426,7 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'listWorkspaceReferences',
       description: '列出当前工作区里的参考资料标题、摘要和 docId。它只返回目录，不返回资料全文。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
         targetLabel: stringProperty('可选的目标说明。')
       })
     },
@@ -445,7 +445,7 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'searchWorkspaceReferences',
       description: '在当前工作区参考资料的标题、摘要和正文里搜索，返回命中的资料、匹配类型和片段。适合在读全文前判断哪份设定或小说材料相关。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
         query: stringProperty('要搜索的背景、角色、设定、关键词或原文片段。不要写正则。'),
         maxResults: numberProperty('可选。最多返回多少条命中；不传默认 12。'),
         targetLabel: stringProperty('可选的目标说明。')
@@ -466,7 +466,7 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'readWorkspaceReference',
       description: '读取当前工作区某一份参考资料的完整正文。它只读背景材料，不修改产物文件。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
         docId: stringProperty('参考资料 id。优先使用 listWorkspaceReferences 或 searchWorkspaceReferences 返回的 docId。'),
         title: stringProperty('可选。没有 docId 时可用精确标题读取；多个同名会失败。'),
         targetLabel: stringProperty('可选的目标说明。')
@@ -486,7 +486,7 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'promoteWorkspaceReferenceToProjectFile',
       description: '把当前工作区参考资料移动成项目文件。原参考资料会移出参考资料区，新文件进入可编辑、可运行的工作区产物区。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
         docId: stringProperty('参考资料 id。优先使用 listWorkspaceReferences 或 searchWorkspaceReferences 返回的 docId。'),
         title: stringProperty('可选。没有 docId 时可用精确标题匹配参考资料。'),
         filePath: stringProperty('要生成的工作区文件路径，比如 docs/source.md、story/chapter-01.md、data/notes.json。'),
@@ -513,7 +513,7 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'pinProjectFileAsReference',
       description: '把当前工作区文件移动成参考资料。原项目文件会移出产物区，新参考资料只用于模型理解背景，不参与运行。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
         filePath: stringProperty('要钉为参考资料的工作区文件路径。'),
         target: stringProperty('可选。兼容旧目标写法；工作区文件优先传 filePath。'),
         title: stringProperty('可选。新参考资料标题；不传就用文件路径。'),
@@ -539,7 +539,7 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'searchReadableContext',
       description: '辅助搜索当前可读取材料，返回候选来源和推荐的下一步读取工具。它不返回完整正文，不替代 readProjectFile、readWorkspaceReference 或 readMemoryDoc。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
         query: stringProperty('要找的主题、文件、角色、设定、片段或关键词。'),
         maxResults: numberProperty('可选。最多返回多少条候选；不传默认 12。'),
         targetLabel: stringProperty('可选的目标说明。')
@@ -560,7 +560,7 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'checkProjectPreview',
       description: '轻量检查当前工作区能否形成预览：是否有 HTML 入口、入口文件是哪一个、本地 CSS/JS 引用是否能找到，并对入口引用的脚本做 parse 阶段语法预检，返回文件、行号和片段证据。不做视觉截图，也不自动修复。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
         targetLabel: stringProperty('可选的目标说明。')
       })
     },
@@ -579,7 +579,7 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'inspectProjectRuntime',
       description: '在离屏预览 iframe 中实际运行当前工作区入口页，收集 console.log/warn/error、window error、unhandled rejection、资源加载失败、body 空态、可见节点、文本量和文档尺寸。适合写完或修完项目后确认真实运行错误。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
         settleMs: numberProperty('可选。页面 load 后继续等待多少毫秒再采集；不传默认 1000。'),
         targetLabel: stringProperty('可选的目标说明。')
       })
@@ -620,8 +620,8 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'editProjectFileText',
       description: '对现有工作区文件做精确局部替换。适合只改几行、修一个函数、插入一段 UI，不需要重发整份文件。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
-        filePath: stringProperty('目标工作区文件路径；入口文件也要明确传 index.html，不要写 active。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
+        filePath: stringProperty('目标工作区文件路径（入口文件写 index.html，不写 active）。'),
         oldString: stringProperty('要被替换的原文片段。必须和当前文件中某一处完全一致。'),
         newString: stringProperty('替换后的新片段。可以为空字符串，表示删除 oldString。'),
         targetLabel: stringProperty('可选的目标说明。'),
@@ -645,8 +645,8 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'replaceProjectFileLines',
       description: '对现有工作区文件按行号替换一段完整行。适合已经用 readProjectFileContext 或 searchProjectFiles 看到目标行号后，替换某几行而不手拼 oldString。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
-        filePath: stringProperty('目标工作区文件路径；入口文件也要明确传 index.html，不要写 active。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
+        filePath: stringProperty('目标工作区文件路径（入口文件写 index.html，不写 active）。'),
         startLine: numberProperty('要替换的起始行号，来自 readProjectFileContext 或 searchProjectFiles 返回。'),
         endLine: numberProperty('可选。要替换的结束行号；不传时只替换 startLine 这一行。'),
         code: stringProperty('替换后的完整行内容。可以为空字符串，表示删除这段行。'),
@@ -669,8 +669,8 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'deleteProjectFile',
       description: '删除当前工作区里的一个文件。适合清理误建文件、废弃旧文件或删除不再被项目引用的文件；删除文件内容片段请用 editProjectFileText，把 newString 设为空字符串。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
-        filePath: stringProperty('目标工作区文件路径；入口文件也要明确传 index.html，不要写 active。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
+        filePath: stringProperty('目标工作区文件路径（入口文件写 index.html，不写 active）。'),
         targetLabel: stringProperty('可选的目标说明。'),
         openInCollection: booleanProperty('可选。删除后是否在收藏区打开工作区。')
       }, ['filePath'])
@@ -691,8 +691,8 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'readProjectFile',
       description: '读取某个工作区文件的完整正文。它返回全文；用于上下文没有目标文件正文、用户要看全文，或需要确认完整文件结构。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
-        filePath: stringProperty('目标工作区文件路径；入口文件也要明确传 index.html，不要写 active。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
+        filePath: stringProperty('目标工作区文件路径（入口文件写 index.html，不写 active）。'),
         targetLabel: stringProperty('可选的目标说明。')
       }, ['filePath'])
     },
@@ -711,8 +711,8 @@ export const CARD_TOOL_DEFINITION_MAP = {
       name: 'readProjectFileContext',
       description: '读取某个工作区文件中指定 query 或 lineNumber 附近的局部上下文，返回带行号的片段。适合在长文件里定位修改点，不需要全文。',
       parameters: objectParameters({
-        projectId: stringProperty('可选。只允许传当前对话绑定的工作区 id；通常直接省略即可。'),
-        filePath: stringProperty('目标工作区文件路径；入口文件也要明确传 index.html，不要写 active。'),
+        projectId: stringProperty('可选，默认当前工作区，通常省略。'),
+        filePath: stringProperty('目标工作区文件路径（入口文件写 index.html，不写 active）。'),
         query: stringProperty('可选。要定位的精确字符串。和 lineNumber 二选一；两个都传时，query 是定位锚点。'),
         lineNumber: numberProperty('可选。要定位的行号。'),
         before: numberProperty('可选。返回锚点前多少行；不传默认 8。'),

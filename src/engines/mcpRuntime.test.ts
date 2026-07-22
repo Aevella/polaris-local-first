@@ -579,7 +579,7 @@ describe('mcpRuntime', () => {
 
     expect(result).toEqual({
       ok: true,
-      detailText: 'Current weather: sunny\n\n[image image/png]\n\n[audio audio/mpeg]\n\n[resource docs://guide/readme.md]\n\n{\n  "replies": [\n    {\n      "id": 8891\n    }\n  ]\n}',
+      detailText: 'Current weather: sunny\n\n[image image/png]\n\n[audio audio/mpeg]\n\n[resource docs://guide/readme.md]\n\n{"replies":[{"id":8891}]}',
       isError: false,
       attachmentContent: [
         {
@@ -687,7 +687,7 @@ describe('mcpRuntime', () => {
 
     expect(result).toEqual({
       ok: true,
-      detailText: 'Permission denied\n\n{\n  "code": "permission_denied",\n  "retryable": false\n}',
+      detailText: 'Permission denied\n\n{"code":"permission_denied","retryable":false}',
       isError: true,
       structuredContent: {
         code: 'permission_denied',

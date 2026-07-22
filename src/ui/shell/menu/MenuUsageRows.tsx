@@ -67,12 +67,18 @@ export function MetricTile({ label, value, detail, tone = 'normal' }: {
 }
 
 function resolveCacheReadDenominator(inputTokens: number, observedTokens: number) {
-  return inputTokens > 0 ? inputTokens : observedTokens;
+  return observedTokens > 0 ? observedTokens : inputTokens;
 }
 
-function formatCacheReadRate(cachedTokens: number, inputTokens: number, observedTokens: number, copy: UsageCopy) {
+export function formatCacheReadRate(
+  cachedTokens: number,
+  inputTokens: number,
+  observedTokens: number,
+  cacheReadReported: boolean,
+  copy: UsageCopy
+) {
   const denominator = resolveCacheReadDenominator(inputTokens, observedTokens);
-  if (denominator <= 0 || cachedTokens <= 0) return copy.t('settings.usage.notRecorded');
+  if (!cacheReadReported || denominator <= 0) return copy.t('settings.usage.notRecorded');
   return `${Math.round((cachedTokens / denominator) * 100)}%`;
 }
 
@@ -91,7 +97,14 @@ export function formatCacheReportStatus(status: MenuCacheReportStatus, copy: Usa
 export function ModelUsageGroupRow({ group }: { group: MenuModelUsageGroup }) {
   const copy = useI18n();
   const { t, formatNumber } = copy;
-  const cacheRate = formatCacheReadRate(group.cachedInputTokens, group.inputTokens, group.cacheObservedInputTokens, copy);
+  const cacheReadReported = group.cachedInputTokens > 0 || group.cacheZeroReadReplyCount > 0;
+  const cacheRate = formatCacheReadRate(
+    group.cachedInputTokens,
+    group.inputTokens,
+    group.cacheObservedInputTokens,
+    cacheReadReported,
+    copy
+  );
   const cacheBarWidth = resolveCacheReadBarWidth(group.cachedInputTokens, group.inputTokens, group.cacheObservedInputTokens);
   const assistantLabel = group.assistantNames.length > 0 ? group.assistantNames.join(' / ') : t('settings.usage.unrecordedAssistant');
 
@@ -117,7 +130,7 @@ export function ModelUsageGroupRow({ group }: { group: MenuModelUsageGroup }) {
         <span>{t('settings.usage.reportedShort')} {formatNumber(group.cacheReportedReplyCount)}/{formatNumber(group.replyCount)}</span>
         {group.cacheUnreportedReplyCount > 0 ? <span>{t('settings.usage.unreportedShort')} {formatNumber(group.cacheUnreportedReplyCount)}</span> : null}
         {group.cacheZeroReadReplyCount > 0 ? <span>{t('settings.usage.zeroReadShort')} {formatNumber(group.cacheZeroReadReplyCount)}</span> : null}
-        <span>{t('settings.usage.cacheRead')} {formatTokens(group.cachedInputTokens, copy)}</span>
+        <span>{t('settings.usage.cacheRead')} {cacheReadReported ? formatReportedTokens(group.cachedInputTokens, copy) : t('settings.usage.notRecorded')}</span>
         <span>{t('settings.usage.cacheMissShortLabel')} {formatTokens(group.cacheMissInputTokens, copy)}</span>
         <span>{t('settings.usage.cacheWriteShort')} {formatTokens(group.cacheCreationInputTokens, copy)}</span>
         {group.reasoningTokens > 0 ? <span>{t('settings.usage.reasoningShort')} {formatTokens(group.reasoningTokens, copy)}</span> : null}
@@ -129,7 +142,14 @@ export function ModelUsageGroupRow({ group }: { group: MenuModelUsageGroup }) {
 export function ProviderUsageGroupRow({ group }: { group: MenuProviderUsageGroup }) {
   const copy = useI18n();
   const { t, formatNumber } = copy;
-  const cacheRate = formatCacheReadRate(group.cachedInputTokens, group.inputTokens, group.cacheObservedInputTokens, copy);
+  const cacheReadReported = group.cachedInputTokens > 0 || group.cacheZeroReadReplyCount > 0;
+  const cacheRate = formatCacheReadRate(
+    group.cachedInputTokens,
+    group.inputTokens,
+    group.cacheObservedInputTokens,
+    cacheReadReported,
+    copy
+  );
   const cacheBarWidth = resolveCacheReadBarWidth(group.cachedInputTokens, group.inputTokens, group.cacheObservedInputTokens);
   const modelLabel = group.modelNames.length > 0 ? group.modelNames.join(' / ') : t('settings.usage.unrecordedModel');
   const assistantLabel = group.assistantNames.length > 0 ? group.assistantNames.join(' / ') : t('settings.usage.unrecordedAssistant');
@@ -156,7 +176,7 @@ export function ProviderUsageGroupRow({ group }: { group: MenuProviderUsageGroup
         <span>{t('settings.usage.reportedShort')} {formatNumber(group.cacheReportedReplyCount)}/{formatNumber(group.replyCount)}</span>
         {group.cacheUnreportedReplyCount > 0 ? <span>{t('settings.usage.unreportedShort')} {formatNumber(group.cacheUnreportedReplyCount)}</span> : null}
         {group.cacheZeroReadReplyCount > 0 ? <span>{t('settings.usage.zeroReadShort')} {formatNumber(group.cacheZeroReadReplyCount)}</span> : null}
-        <span>{t('settings.usage.cacheRead')} {formatTokens(group.cachedInputTokens, copy)}</span>
+        <span>{t('settings.usage.cacheRead')} {cacheReadReported ? formatReportedTokens(group.cachedInputTokens, copy) : t('settings.usage.notRecorded')}</span>
         <span>{t('settings.usage.cacheMissShortLabel')} {formatTokens(group.cacheMissInputTokens, copy)}</span>
         <span>{t('settings.usage.cacheWriteShort')} {formatTokens(group.cacheCreationInputTokens, copy)}</span>
         {group.reasoningTokens > 0 ? <span>{t('settings.usage.reasoningShort')} {formatTokens(group.reasoningTokens, copy)}</span> : null}

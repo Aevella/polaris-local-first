@@ -12,6 +12,8 @@ import {
   createProviderRuntimeTestProvider
 } from './providerRuntimeFixtures';
 import { resolveCanonicalProviderCapabilities } from './providerRuntimeCapabilities';
+import type { AssistantRequestCachePlan } from '../request/requestCachePlan';
+import type { AssistantRequestContext } from '../request/requestContext';
 import type { ProviderRuntimeRequestInput } from './providerRuntimeRequestTypes';
 
 type OpenAiCompatibleAdapterParityCase = {
@@ -128,6 +130,37 @@ function createContextWithStableAndVolatileSystemLayers() {
         ]
       }
     ]
+  };
+}
+
+function withOpenRouterClaudeCachePlan(
+  context: ReturnType<typeof createContextWithStableAndVolatileSystemLayers>
+): AssistantRequestContext {
+  const cachePlan: AssistantRequestCachePlan = {
+    minimumBreakpointTokens: 1024,
+    requestApplication: {
+      status: 'explicit_anthropic_cache_control',
+      label: 'Explicit prefix and conversation cache_control sent without top-level automatic cache control',
+      sendsExplicitCacheControl: true,
+      sendsTopLevelCacheControl: false,
+      automaticMessageHistoryCache: false
+    },
+    breakpoints: [{
+      name: 'identity_prefix',
+      label: 'identity prefix',
+      partNames: ['system_identity'],
+      estimatedTokens: 2048,
+      minimumTokens: 1024,
+      ttl: '1h',
+      enabled: true,
+      eligible: true,
+      reason: null
+    }]
+  };
+
+  return {
+    ...context,
+    cachePlan
   };
 }
 
@@ -249,6 +282,55 @@ const parityCases: OpenAiCompatibleAdapterParityCase[] = [
     },
     verifyCapabilities: expect.objectContaining({
       cache: expect.objectContaining({ mode: 'automatic-or-unknown' })
+    })
+  },
+  {
+    id: 'openrouter-anthropic-claude-cache-control',
+    input: {
+      api: createProviderRuntimeTestProvider({
+        baseUrl: 'https://openrouter.ai/api/v1',
+        path: '/chat/completions',
+        model: 'anthropic/claude-4.6-sonnet-20260217',
+        capabilities: {
+          images: true,
+          streaming: true,
+          thinking: false
+        }
+      }),
+      context: withOpenRouterClaudeCachePlan(createContextWithStableAndVolatileSystemLayers()),
+      sessionId: 'conversation-openrouter-1',
+      advanced: createProviderRuntimeAdvanced()
+    },
+    verify(request) {
+      expect(request.body).not.toHaveProperty('cache_control');
+      expect(request.body.session_id).toBe('conversation-openrouter-1');
+      expect(request.body.messages).toEqual([
+        expect.objectContaining({
+          role: 'system',
+          content: [{
+            type: 'text',
+            text: 'Stable identity.',
+            cache_control: { type: 'ephemeral', ttl: '1h' }
+          }]
+        }),
+        expect.objectContaining({ role: 'system', content: 'Stable memory lane.' }),
+        expect.objectContaining({ role: 'user', content: 'Earlier turn.' }),
+        expect.objectContaining({ role: 'assistant', content: 'Earlier answer.' }),
+        expect.objectContaining({
+          role: 'user',
+          content: [{
+            type: 'text',
+            text: 'Latest turn.',
+            cache_control: { type: 'ephemeral' }
+          }]
+        }),
+        expect.objectContaining({ role: 'system', content: 'Current model runtime hint.' }),
+        expect.objectContaining({ role: 'system', content: 'Volatile semantic recall.' }),
+        expect.objectContaining({ role: 'system', content: 'Append-only system feedback should not become a stable prefix.' })
+      ]);
+    },
+    verifyCapabilities: expect.objectContaining({
+      cache: { mode: 'explicit-cache-control', promptCaching: true }
     })
   },
   {
@@ -377,6 +459,73 @@ describe('openAiCompatibleChatAdapter', () => {
     });
 
     expect(request.body.temperature).toBeUndefined();
+  });
+
+  it('keeps an OpenRouter Claude connection-test ping free of top-level cache control', () => {
+    const request = buildOpenAiCompatibleRequest({
+      api: createProviderRuntimeTestProvider({
+        baseUrl: 'https://openrouter.ai/api/v1',
+        path: '/chat/completions',
+        model: 'anthropic/claude-sonnet-4.6'
+      }),
+      context: {
+        memorySlots: { session: [], profile: [], pin: [] },
+        attachmentSlots: { enabled: false, pending: [] },
+        segments: [{
+          kind: 'conversation',
+          messages: [{ role: 'user', content: 'ping' }]
+        }]
+      }
+    });
+
+    expect(request.body).not.toHaveProperty('cache_control');
+    expect(request.body.messages).toEqual([{
+      role: 'user',
+      content: [{
+        type: 'text',
+        text: 'ping',
+        cache_control: { type: 'ephemeral' }
+      }]
+    }]);
+  });
+
+  it('preserves user image parts when tool history falls back to transcript messages', () => {
+    const request = buildOpenAiCompatibleRequest({
+      api: createProviderRuntimeTestProvider({
+        capabilities: {
+          images: true,
+          streaming: true,
+          thinking: false
+        }
+      }),
+      context: createProviderRuntimeTestContext({
+        withImage: true,
+        withTools: true,
+        withToolHistory: true
+      }),
+      openAiToolHistoryMode: 'transcript'
+    });
+
+    const messages = request.body.messages;
+    expect(Array.isArray(messages)).toBe(true);
+    const imageMessage = (messages as Array<Record<string, unknown>>).find((message) =>
+      Array.isArray(message.content)
+      && message.content.some((part) => (
+        part
+        && typeof part === 'object'
+        && (part as { type?: unknown }).type === 'image_url'
+      ))
+    );
+
+    expect(imageMessage).toEqual(expect.objectContaining({
+      role: 'user',
+      content: expect.arrayContaining([
+        {
+          type: 'image_url',
+          image_url: { url: 'data:image/png;base64,ZmFrZQ==' }
+        }
+      ])
+    }));
   });
 
   it('collapses multiple system layers for SenseNova chat completions', () => {

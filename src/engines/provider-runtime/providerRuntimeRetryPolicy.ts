@@ -86,15 +86,11 @@ function shouldRetryThroughProviderRelay(
   forceRelayFallback: boolean,
   signalAborted: boolean
 ) {
-  if (forceRelayFallback) return false;
-  if (sawProgress) return false;
-  if (signalAborted) return false;
+  if (forceRelayFallback || sawProgress || signalAborted) return false;
   if (capability?.route.isBuiltInTrial) return false;
   if (!capability?.transport.relayAllowedWhenNetworkFails) return false;
   if (!canFallbackThroughProviderRelay(request.endpoint)) return false;
-  if (!(error instanceof Error)) return false;
-
-  return isProviderNetworkFailureMessage(error.message);
+  return error instanceof Error && isProviderNetworkFailureMessage(error.message);
 }
 
 function resolveOutputTokenField(request: ProviderHttpRequest): OutputTokenField | null {

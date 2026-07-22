@@ -1,9 +1,27 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BuiltRequest } from './chatApiTypes';
 import { executeBuiltRequest } from './chatApiTransport';
 import { createProviderRuntimeTestProvider } from '../provider-runtime/providerRuntimeFixtures';
 
 const originalFetch = globalThis.fetch;
+const nativeRuntime = vi.hoisted(() => ({
+  nativePlatform: false,
+  platform: 'web',
+  available: true,
+  execute: vi.fn()
+}));
+
+vi.mock('@capacitor/core', () => ({
+  Capacitor: {
+    isNativePlatform: () => nativeRuntime.nativePlatform,
+    getPlatform: () => nativeRuntime.platform
+  }
+}));
+
+vi.mock('../../native/providerHttp', () => ({
+  canUseNativeProviderHttp: () => nativeRuntime.available,
+  executeNativeProviderHttpRequest: (...args: unknown[]) => nativeRuntime.execute(...args)
+}));
 
 function createNonStreamRequest(body: Record<string, unknown> = {}): BuiltRequest {
   return {
@@ -20,6 +38,13 @@ function createNonStreamRequest(body: Record<string, unknown> = {}): BuiltReques
 }
 
 describe('executeBuiltRequest non-stream responses', () => {
+  beforeEach(() => {
+    nativeRuntime.nativePlatform = false;
+    nativeRuntime.platform = 'web';
+    nativeRuntime.available = true;
+    nativeRuntime.execute.mockReset();
+  });
+
   afterEach(() => {
     globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
@@ -77,5 +102,56 @@ describe('executeBuiltRequest non-stream responses', () => {
       api: createProviderRuntimeTestProvider(),
       request: createNonStreamRequest()
     })).rejects.toThrow();
+  });
+
+  it('uses the dedicated native bridge only for absolute provider endpoints', async () => {
+    nativeRuntime.nativePlatform = true;
+    nativeRuntime.platform = 'ios';
+    globalThis.fetch = vi.fn<typeof fetch>();
+    nativeRuntime.execute.mockImplementation(async (args) => {
+      args.onResponse({ status: 200, contentType: 'application/json' });
+      args.onTextChunk(JSON.stringify({
+        choices: [{ message: { role: 'assistant', content: '原生网络已连通' } }]
+      }));
+      return { status: 200, contentType: 'application/json' };
+    });
+
+    const onChunk = vi.fn();
+    const reply = await executeBuiltRequest({
+      api: createProviderRuntimeTestProvider(),
+      request: createNonStreamRequest(),
+      onChunk
+    });
+
+    expect(reply.content).toBe('原生网络已连通');
+    expect(nativeRuntime.execute).toHaveBeenCalledTimes(1);
+    expect(nativeRuntime.execute.mock.calls[0]?.[0]).toMatchObject({
+      url: 'https://example.com/v1/chat/completions'
+    });
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps app-internal endpoints on fetch instead of the provider bridge', async () => {
+    nativeRuntime.nativePlatform = true;
+    nativeRuntime.platform = 'android';
+    globalThis.fetch = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      choices: [{ message: { role: 'assistant', content: '内部接口仍由应用网络负责' } }]
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    }));
+
+    const reply = await executeBuiltRequest({
+      api: createProviderRuntimeTestProvider(),
+      request: {
+        ...createNonStreamRequest(),
+        endpoint: '/api/client-diagnostics'
+      }
+    });
+
+    expect(reply.content).toBe('内部接口仍由应用网络负责');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/client-diagnostics', expect.any(Object));
+    expect(nativeRuntime.execute).not.toHaveBeenCalled();
   });
 });

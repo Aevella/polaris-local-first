@@ -8,6 +8,7 @@ import {
 import { appendAnthropicToolCall, appendOpenAiToolCalls } from './providerRuntimeResponseToolCalls';
 import { extractStructuredText, extractTextPayload, extractThinkingPayload } from './providerRuntimeResponseText';
 import { mergeToolCallArgumentsText } from './providerRuntimeToolArguments';
+import { parseOpenAiCompatibleUsage } from './providerRuntimeUsage';
 
 function readNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
@@ -42,37 +43,6 @@ function applyTokenUsage(target: ReplyAccumulator, usage: ChatTokenUsage | undef
   if (typeof totalTokens === 'number') {
     target.tokenCount = totalTokens;
   }
-}
-
-function parseOpenAiUsage(rawUsage: unknown): ChatTokenUsage | undefined {
-  const usage = readObject(rawUsage);
-  if (!usage) return undefined;
-  const promptDetails = readObject(usage.prompt_tokens_details);
-  const completionDetails = readObject(usage.completion_tokens_details);
-  const inputDetails = readObject(usage.input_tokens_details);
-  const outputDetails = readObject(usage.output_tokens_details);
-  const inputTokens = readNumber(usage.prompt_tokens) ?? readNumber(usage.input_tokens);
-  const cachedInputTokens =
-    readNumber(usage.prompt_cache_hit_tokens)
-    ?? readNumber(promptDetails?.cached_tokens)
-    ?? readNumber(inputDetails?.cached_tokens);
-  const explicitCacheMissInputTokens = readNumber(usage.prompt_cache_miss_tokens);
-  const cacheMissInputTokens =
-    explicitCacheMissInputTokens
-    ?? (
-      typeof inputTokens === 'number' && typeof cachedInputTokens === 'number'
-        ? Math.max(inputTokens - cachedInputTokens, 0)
-        : undefined
-    );
-
-  return compactTokenUsage({
-    totalTokens: readNumber(usage.total_tokens),
-    inputTokens,
-    outputTokens: readNumber(usage.completion_tokens) ?? readNumber(usage.output_tokens),
-    cachedInputTokens,
-    cacheMissInputTokens,
-    reasoningTokens: readNumber(completionDetails?.reasoning_tokens) ?? readNumber(outputDetails?.reasoning_tokens)
-  });
 }
 
 function parseAnthropicUsage(rawUsage: unknown): ChatTokenUsage | undefined {
@@ -226,7 +196,7 @@ export function appendResponsesPayload(target: ReplyAccumulator, payload: unknow
     target.model = parsed.model;
   }
 
-  applyTokenUsage(target, parseOpenAiUsage(parsed.usage));
+  applyTokenUsage(target, parseOpenAiCompatibleUsage(parsed.usage));
 
   const outputText = extractStructuredText(parsed.output_text);
   if (outputText) {
@@ -415,7 +385,7 @@ export function appendChunk(target: ReplyAccumulator, payload: unknown) {
   if (typeof parsed.model === 'string') {
     target.model = parsed.model;
   }
-  applyTokenUsage(target, parseOpenAiUsage(parsed.usage ?? parsed.choices?.[0]?.usage));
+  applyTokenUsage(target, parseOpenAiCompatibleUsage(parsed.usage ?? parsed.choices?.[0]?.usage));
 
   const finishReason = parsed.choices?.[0]?.finish_reason;
   if (typeof finishReason === 'string' && finishReason) {

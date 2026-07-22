@@ -6,6 +6,7 @@ const capacitorState = vi.hoisted(() => ({
   pluginAvailable: false,
   plugin: {
     get: vi.fn(),
+    readJsonChunk: vi.fn(),
     set: vi.fn(),
     beginJsonWrite: vi.fn(),
     appendJsonWriteChunk: vi.fn(),
@@ -127,6 +128,60 @@ describe('native persistence backend', () => {
       key: 'runtime-providers-v2',
       value: { providers: [{ name: 'Custom' }] }
     }]);
+  });
+
+  it('reads large native JSON through verified bridge chunks', async () => {
+    const { createNativePersistenceBackend } = await import('./nativePersistenceBackend');
+    const backend = createNativePersistenceBackend('kv');
+    const payload = { body: '星'.repeat(120 * 1024), tail: '完整结尾' };
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    capacitorState.plugin.get.mockResolvedValue({
+      exists: true,
+      key: 'large-conversation',
+      kind: 'json',
+      readMode: 'chunked',
+      byteLength: bytes.length,
+      checksum: fnv1a32Hex(bytes)
+    });
+    capacitorState.plugin.readJsonChunk.mockImplementation(async ({ offset, length }) => {
+      const chunk = bytes.subarray(offset, offset + length);
+      return {
+        chunkBase64: Buffer.from(chunk).toString('base64'),
+        byteLength: chunk.length
+      };
+    });
+
+    await expect(backend.dbStoreGet('kv', 'large-conversation')).resolves.toEqual(payload);
+
+    expect(capacitorState.plugin.get).toHaveBeenCalledOnce();
+    expect(capacitorState.plugin.readJsonChunk.mock.calls.length).toBeGreaterThan(1);
+    expect(capacitorState.plugin.readJsonChunk.mock.calls.every(([options]) => options.length <= 48 * 1024)).toBe(true);
+  });
+
+  it('rejects a large native JSON read when chunk integrity does not match', async () => {
+    const { createNativePersistenceBackend } = await import('./nativePersistenceBackend');
+    const backend = createNativePersistenceBackend('kv');
+    const bytes = new TextEncoder().encode(JSON.stringify({ body: 'x'.repeat(300 * 1024) }));
+    capacitorState.plugin.get.mockResolvedValue({
+      exists: true,
+      key: 'corrupt-conversation',
+      kind: 'json',
+      readMode: 'chunked',
+      byteLength: bytes.length,
+      checksum: '00000000'
+    });
+    capacitorState.plugin.readJsonChunk.mockImplementation(async ({ offset, length }) => {
+      const chunk = bytes.subarray(offset, offset + length);
+      return {
+        chunkBase64: Buffer.from(chunk).toString('base64'),
+        byteLength: chunk.length
+      };
+    });
+
+    await expect(backend.dbStoreGet('kv', 'corrupt-conversation')).rejects.toThrow(
+      '原生存储 JSON 分片读取校验失败'
+    );
+    expect(capacitorState.plugin.get).toHaveBeenCalledOnce();
   });
 
   it('lists native keys without reading entry payloads', async () => {

@@ -37,7 +37,7 @@ export function shouldUseAnthropicBrowserDirectAccess(request: BuiltRequest) {
 
 export function canFallbackThroughProviderRelay(endpointText: string) {
   if (!isAllowedProviderRelayTarget(endpointText)) return false;
-  if (Capacitor.isNativePlatform()) return true;
+  if (Capacitor.isNativePlatform()) return false;
   if (typeof window === 'undefined') return false;
 
   const currentOrigin = window.location?.origin;

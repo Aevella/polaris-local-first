@@ -8,6 +8,7 @@ public class NativePersistencePlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "NativePersistence"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "get", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "readJsonChunk", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "set", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "beginJsonWrite", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "appendJsonWriteChunk", returnType: CAPPluginReturnPromise),
@@ -23,6 +24,7 @@ public class NativePersistencePlugin: CAPPlugin, CAPBridgedPlugin {
     ]
     private let maxEncodedKeyStemLength = 180
     private let maxLegacyFallbackStemLength = 245
+    private let chunkedJsonBridgeThreshold = 256 * 1024
 
     @objc public func get(_ call: CAPPluginCall) {
         guard let request = readStoreKey(call) else { return }
@@ -31,6 +33,27 @@ public class NativePersistencePlugin: CAPPlugin, CAPBridgedPlugin {
             do {
                 try self.recoverInterruptedStoreReplacement(request.storeName)
                 if let jsonUrl = self.existingJsonUrl(storeName: request.storeName, key: request.key) {
+                    let fileSize = try jsonUrl.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                    if fileSize > self.chunkedJsonBridgeThreshold {
+                        let stats = try self.readJsonStats(jsonUrl)
+                        try self.verifyJsonMetaStats(
+                            stats,
+                            payloadUrl: jsonUrl,
+                            storeName: request.storeName,
+                            key: request.key
+                        )
+                        DispatchQueue.main.async {
+                            call.resolve([
+                                "exists": true,
+                                "key": request.key,
+                                "kind": "json",
+                                "readMode": "chunked",
+                                "byteLength": stats.byteLength,
+                                "checksum": stats.checksum
+                            ])
+                        }
+                        return
+                    }
                     let data = try Data(contentsOf: jsonUrl)
                     try self.verifyJsonMeta(data, storeName: request.storeName, key: request.key)
                     let jsonText = try self.jsonText(data)
@@ -68,6 +91,38 @@ public class NativePersistencePlugin: CAPPlugin, CAPBridgedPlugin {
             } catch {
                 DispatchQueue.main.async {
                     call.reject(self.nativeFailureMessage("读取原生存储失败", error), nil, error)
+                }
+            }
+        }
+    }
+
+    @objc public func readJsonChunk(_ call: CAPPluginCall) {
+        guard let request = readStoreKey(call) else { return }
+        guard let offset = callInt(call, "offset"), offset >= 0,
+              let length = callInt(call, "length"), length > 0 else {
+            call.reject("原生 JSON 读取分片范围不正确。")
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try self.recoverInterruptedStoreReplacement(request.storeName)
+                guard let jsonUrl = self.existingJsonUrl(storeName: request.storeName, key: request.key) else {
+                    throw NativePersistenceError.invalidKey
+                }
+                let handle = try FileHandle(forReadingFrom: jsonUrl)
+                defer { try? handle.close() }
+                try handle.seek(toOffset: UInt64(offset))
+                let data = try handle.read(upToCount: length) ?? Data()
+                DispatchQueue.main.async {
+                    call.resolve([
+                        "chunkBase64": data.base64EncodedString(),
+                        "byteLength": data.count
+                    ])
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    call.reject(self.nativeFailureMessage("读取原生 JSON 分片失败", error), nil, error)
                 }
             }
         }
@@ -490,6 +545,11 @@ public class NativePersistencePlugin: CAPPlugin, CAPBridgedPlugin {
         let checksum: String
     }
 
+    private struct JsonReadStats {
+        let byteLength: Int
+        let checksum: String
+    }
+
     private enum NativePersistenceError: LocalizedError {
         case invalidPayload
         case invalidKey
@@ -570,6 +630,24 @@ public class NativePersistencePlugin: CAPPlugin, CAPBridgedPlugin {
             hash = hash &* 16777619
         }
         return String(format: "%08x", hash)
+    }
+
+    private func readJsonStats(_ url: URL) throws -> JsonReadStats {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var byteLength = 0
+        var hash: UInt32 = 2166136261
+        while let data = try handle.read(upToCount: 64 * 1024), !data.isEmpty {
+            byteLength += data.count
+            for byte in data {
+                hash ^= UInt32(byte)
+                hash = hash &* 16777619
+            }
+        }
+        return JsonReadStats(
+            byteLength: byteLength,
+            checksum: String(format: "%08x", hash)
+        )
     }
 
     private func jsonWriteStats(
@@ -1029,6 +1107,35 @@ public class NativePersistencePlugin: CAPPlugin, CAPBridgedPlugin {
                 key: key,
                 reason: "原生 JSON 读取校验值不一致（expectedHash=\(meta.checksum) actualHash=\(actualChecksum)）。"
             )
+        }
+    }
+
+    private func verifyJsonMetaStats(
+        _ stats: JsonReadStats,
+        payloadUrl: URL,
+        storeName: String,
+        key: String
+    ) throws {
+        guard isSafeStoreName(storeName), !key.isEmpty else { throw NativePersistenceError.invalidKey }
+        let directory = storeDirectory(storeName)
+        guard let url = storageStems(key).map({ jsonMetaUrl(in: directory, stem: $0) }).first(where: {
+            FileManager.default.fileExists(atPath: $0.path)
+        }) else {
+            return
+        }
+
+        let meta: JsonIntegrityMeta
+        do {
+            meta = try JSONDecoder().decode(JsonIntegrityMeta.self, from: try Data(contentsOf: url))
+        } catch {
+            let data = try Data(contentsOf: payloadUrl)
+            try verifyJsonMeta(data, storeName: storeName, key: key)
+            return
+        }
+
+        if meta.byteLength != stats.byteLength || meta.checksum != stats.checksum {
+            let data = try Data(contentsOf: payloadUrl)
+            try verifyJsonMeta(data, storeName: storeName, key: key)
         }
     }
 

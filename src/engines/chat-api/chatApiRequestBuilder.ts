@@ -7,6 +7,7 @@ import type { OpenAiToolHistoryMode } from '../provider-runtime/providerRuntimeO
 export function buildApiRequest(params: {
   api: ProviderProfile;
   context: AssistantRequestContext;
+  sessionId?: string;
   advanced?: PersonaAdvancedSettings;
   bodyOverrides?: Record<string, unknown>;
   openAiToolHistoryMode?: OpenAiToolHistoryMode;

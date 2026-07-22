@@ -5,6 +5,7 @@ import type {
 } from './providerRuntimeTypes';
 import { extractStructuredText } from './providerRuntimeResponseText';
 import { mergeToolCallArgumentsText } from './providerRuntimeToolArguments';
+import { parseOpenAiCompatibleUsage } from './providerRuntimeUsage';
 
 function readObject(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -20,36 +21,6 @@ function compactUsage(usage: ChatTokenUsage): ChatTokenUsage | undefined {
   const entries = Object.entries(usage)
     .filter(([, value]) => typeof value === 'number' && Number.isFinite(value));
   return entries.length ? Object.fromEntries(entries) as ChatTokenUsage : undefined;
-}
-
-function parseOpenAiUsage(rawUsage: unknown): ChatTokenUsage | undefined {
-  const usage = readObject(rawUsage);
-  if (!usage) return undefined;
-  const promptDetails = readObject(usage.prompt_tokens_details);
-  const completionDetails = readObject(usage.completion_tokens_details);
-  const inputDetails = readObject(usage.input_tokens_details);
-  const outputDetails = readObject(usage.output_tokens_details);
-  const inputTokens = readNumber(usage.prompt_tokens) ?? readNumber(usage.input_tokens);
-  const cachedInputTokens =
-    readNumber(usage.prompt_cache_hit_tokens)
-    ?? readNumber(promptDetails?.cached_tokens)
-    ?? readNumber(inputDetails?.cached_tokens);
-  const cacheMissInputTokens =
-    readNumber(usage.prompt_cache_miss_tokens)
-    ?? (
-      typeof inputTokens === 'number' && typeof cachedInputTokens === 'number'
-        ? Math.max(inputTokens - cachedInputTokens, 0)
-        : undefined
-    );
-
-  return compactUsage({
-    totalTokens: readNumber(usage.total_tokens),
-    inputTokens,
-    outputTokens: readNumber(usage.completion_tokens) ?? readNumber(usage.output_tokens),
-    cachedInputTokens,
-    cacheMissInputTokens,
-    reasoningTokens: readNumber(completionDetails?.reasoning_tokens) ?? readNumber(outputDetails?.reasoning_tokens)
-  });
 }
 
 function parseAnthropicUsage(rawUsage: unknown): ChatTokenUsage | undefined {
@@ -200,7 +171,7 @@ function parseResponsesStreamEvent(payload: Record<string, unknown>): CanonicalP
     if (Array.isArray(response?.output)) {
       response.output.forEach((item) => pushResponsesOutputItemEvents(events, item));
     }
-    pushUsage(events, parseOpenAiUsage(response?.usage));
+    pushUsage(events, parseOpenAiCompatibleUsage(response?.usage));
     events.push({ type: 'done', finishReason: 'stop' });
     return events;
   }
@@ -267,7 +238,7 @@ function parseOpenAiCompatibleStreamEvent(payload: Record<string, unknown>): Can
   const events: CanonicalProviderStreamEvent[] = [];
   const choice = Array.isArray(payload.choices) ? readObject(payload.choices[0]) : undefined;
   const message = readObject(choice?.delta) ?? readObject(choice?.message);
-  const usage = parseOpenAiUsage(payload.usage ?? choice?.usage);
+  const usage = parseOpenAiCompatibleUsage(payload.usage ?? choice?.usage);
   if (typeof payload.model === 'string') {
     events.push({ type: 'metadata', model: payload.model });
   }

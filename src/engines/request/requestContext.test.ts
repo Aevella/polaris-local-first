@@ -209,9 +209,8 @@ describe('assembleAssistantContext', () => {
         content: expect.stringContaining('[跨对话前文片段]')
       }
     ]);
-    expect(semanticRecall?.messages[0]?.content).toContain('你们不是第一次认识');
-    expect(semanticRecall?.messages[0]?.content).toContain('表达方式、语气');
-    expect(semanticRecall?.messages[0]?.content).toContain('在之前的旧对话里，用户曾经和你聊过：');
+    expect(semanticRecall?.messages[0]?.content).toContain('不要机械复述');
+    expect(semanticRecall?.messages[0]?.content).not.toContain('在之前的旧对话里，用户曾经和你聊过：');
     expect(semanticRecall?.messages[0]?.content).not.toContain('2026-05-20');
     expect(semanticRecall?.messages[0]?.content).not.toContain('约3个月前');
     expect(semanticRecall?.messages[0]?.content).not.toContain('candidateId');
@@ -268,9 +267,8 @@ describe('assembleAssistantContext', () => {
 
     const summary = context.segments.find((segment) => segment.kind === 'conversation_summary');
     expect(summary?.messages[0]?.content).toContain('[跨对话总结]');
-    expect(summary?.messages[0]?.content).toContain('不是逐字原文，也不是硬规则');
+    expect(summary?.messages[0]?.content).toContain('不是逐字原文也不是硬规则');
     expect(summary?.messages[0]?.content).toContain('对象: 用户 ↔ Nova');
-    expect(summary?.messages[0]?.content).toContain('人称残留');
     expect(summary?.messages[0]?.content).toContain('对象标签');
     expect(summary?.messages[0]?.content).not.toContain('summaryId');
     expect(summary?.messages[0]?.content).not.toContain('sourceChars');

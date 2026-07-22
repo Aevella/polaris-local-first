@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   DESKTOP_SIDEBAR_AUTO_COLLAPSE_WIDTH,
+  NATIVE_IOS_TABLET_LAYOUT_QUERY,
   TABLET_LAYOUT_QUERY,
   normalizeAppLayoutSurface,
   resolveAppLayoutSurfaceFromMatches,
@@ -22,8 +23,13 @@ function resolveViewportLayoutSurface(): AppLayoutSurface {
     return 'phone';
   }
 
+  const root = document.documentElement;
+  const nativeIos = root.dataset.polarisNative === 'true' && root.dataset.polarisPlatform === 'ios';
+
   return resolveAppLayoutSurfaceFromMatches({
     desktop: false,
+    nativeIos,
+    nativeIosTablet: window.matchMedia(NATIVE_IOS_TABLET_LAYOUT_QUERY).matches,
     tablet: window.matchMedia(TABLET_LAYOUT_QUERY).matches
   });
 }
@@ -40,7 +46,10 @@ export function useAppLayoutSurface() {
       return undefined;
     }
 
-    const mediaQueries = [window.matchMedia(TABLET_LAYOUT_QUERY)];
+    const mediaQueries = [
+      window.matchMedia(TABLET_LAYOUT_QUERY),
+      window.matchMedia(NATIVE_IOS_TABLET_LAYOUT_QUERY)
+    ];
     const refreshSurface = () => {
       setSurface(resolveAppLayoutSurface());
     };

@@ -199,7 +199,7 @@ export function formatToolsCallResult(result: ToolsCallResult) {
     .filter((item) => item && item.trim());
 
   if (result.structuredContent !== undefined) {
-    parts.push(JSON.stringify(result.structuredContent, null, 2));
+    parts.push(JSON.stringify(result.structuredContent));
   }
 
   return parts.join('\n\n').trim() || '（MCP 工具无文本输出）';

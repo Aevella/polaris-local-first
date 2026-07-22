@@ -22,6 +22,7 @@ import { classifyProviderRuntimeError, resolveProviderRuntimeRetry } from './pro
 import { parseOpenAiResponsesStreamEvents } from './providerRuntimeStreamEvents';
 import { extractOpenAiCompatibleReply } from './providerRuntimeResponsePayload';
 import { setConnectionTestOutputTokenField } from './providerRuntimeConnectionTest';
+import { resolveOpenRouterSessionId } from './providerRuntimeOpenRouterSession';
 import {
   canonicalProviderCapabilitiesFromContract,
   resolveProviderCapability,
@@ -122,7 +123,7 @@ function resolveResponsesReasoningEffort(thinkingBudget: number) {
 }
 
 export function buildResponsesRequest(input: ProviderRuntimeRequestInput) {
-  const { api, context, advanced, bodyOverrides } = input;
+  const { api, context, sessionId, advanced, bodyOverrides } = input;
   const endpoint = buildApiEndpoint(api.baseUrl, api.path);
   const {
     apiKey,
@@ -141,6 +142,10 @@ export function buildResponsesRequest(input: ProviderRuntimeRequestInput) {
     model,
     input: buildResponsesInput(context, providerCapability)
   };
+  const openRouterSessionId = resolveOpenRouterSessionId(api.baseUrl, sessionId);
+  if (openRouterSessionId) {
+    body.session_id = openRouterSessionId;
+  }
   if (shouldSendTemperature(providerCapability, topP, temperature)) {
     body.temperature = temperature;
   }

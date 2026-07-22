@@ -84,12 +84,16 @@ describe('requestPipeline', () => {
       api: visionProvider,
       imageUnderstanding: { enabled: false },
       persona: null,
+      activeConversationId: 'conversation-vision-1',
       messages: [imageMessage]
     });
 
     expect(reply.content).toBe('主模型直接看到了图片');
     expect(getAssetBlob).toHaveBeenCalledWith('asset-1');
     expect(requestAssistantReplyMock).toHaveBeenCalledTimes(1);
+    expect(requestAssistantReplyMock).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'conversation-vision-1'
+    }));
     const mainRequestContext = requestAssistantReplyMock.mock.calls[0]?.[0]?.context;
     expect(JSON.stringify(mainRequestContext)).toContain('data:image/png;base64,');
   });
@@ -101,6 +105,27 @@ describe('requestPipeline', () => {
       api: visionProvider,
       persona: null,
       messages: [imageMessage]
+    })).rejects.toThrow('图片附件没有成功进入模型请求');
+
+    expect(requestAssistantReplyMock).not.toHaveBeenCalled();
+  });
+
+  it('does not let a tool followup bypass failed image hydration', async () => {
+    vi.mocked(getAssetBlob).mockResolvedValue(null);
+
+    await expect(requestCollaboratorReply({
+      api: visionProvider,
+      persona: null,
+      messages: [
+        imageMessage,
+        {
+          id: 'tool-followup',
+          role: 'system',
+          content: '图片属性工具已经执行，请继续回答用户。',
+          timestamp: 2,
+          origin: 'tool-runtime'
+        }
+      ]
     })).rejects.toThrow('图片附件没有成功进入模型请求');
 
     expect(requestAssistantReplyMock).not.toHaveBeenCalled();

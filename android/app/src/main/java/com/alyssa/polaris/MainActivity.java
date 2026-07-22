@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(SystemFilePlugin.class);
         registerPlugin(LocalDataSqlitePlugin.class);
+        registerPlugin(NativeProviderHttpPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -47,6 +47,7 @@ Tools make model-visible actions reliable across prompt visibility, parsing, exe
 - Parser cannot canonicalize a model action into a supported command.
 - Target object is missing, not writable, or outside the allowed boundary.
 - Execution succeeds visually but does not leave replayable evidence; this is a protocol failure and must be fixed at the tool result layer.
+- Request replay removes structured parameters, links, or result fields merely because a human-readable detail is also present.
 
 ## Tests And Verification
 

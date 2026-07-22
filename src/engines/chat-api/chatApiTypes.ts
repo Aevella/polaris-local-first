@@ -19,6 +19,7 @@ export type BuiltRequest = ProviderHttpRequest;
 export type RequestAssistantReplyParams = {
   api: ProviderProfile;
   context: AssistantRequestContext;
+  sessionId?: string;
   advanced?: PersonaAdvancedSettings;
   preferredOpenAiToolHistoryMode?: OpenAiToolHistoryMode;
   signal?: AbortSignal;

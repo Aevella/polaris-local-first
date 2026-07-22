@@ -14,6 +14,7 @@ import { classifyProviderRuntimeError, resolveProviderRuntimeRetry } from './pro
 import { parseAnthropicMessagesStreamEvents } from './providerRuntimeStreamEvents';
 import { extractAnthropicReply } from './providerRuntimeResponsePayload';
 import { setConnectionTestOutputTokenField } from './providerRuntimeConnectionTest';
+import { resolveOpenRouterSessionId } from './providerRuntimeOpenRouterSession';
 import {
   canonicalProviderCapabilitiesFromContract,
   resolveProviderCapability
@@ -265,7 +266,7 @@ function buildAnthropicTools(tools: AssistantRequestTool[] | undefined) {
 }
 
 export function buildAnthropicRequest(input: ProviderRuntimeRequestInput) {
-  const { api, context, advanced, bodyOverrides } = input;
+  const { api, context, sessionId, advanced, bodyOverrides } = input;
   const endpoint = buildApiEndpoint(api.baseUrl, api.path);
   const {
     apiKey,
@@ -289,9 +290,15 @@ export function buildAnthropicRequest(input: ProviderRuntimeRequestInput) {
   const body: Record<string, unknown> = {
     model,
     max_tokens: maxTokens ?? DEFAULT_ANTHROPIC_MAX_TOKENS,
-    cache_control: { type: 'ephemeral' },
     messages: anthropicMessages
   };
+  if (providerCapability.cache.sendsTopLevelCacheControl) {
+    body.cache_control = { type: 'ephemeral' };
+  }
+  const openRouterSessionId = resolveOpenRouterSessionId(api.baseUrl, sessionId);
+  if (openRouterSessionId) {
+    body.session_id = openRouterSessionId;
+  }
   if (shouldSendTemperature(providerCapability, topP, temperature)) {
     body.temperature = temperature;
   }

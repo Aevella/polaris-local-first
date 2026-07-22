@@ -310,7 +310,7 @@ const parityCases: GeminiAdapterParityCase[] = [
       streaming: expect.objectContaining({ text: false, toolCalls: false, reasoning: false }),
       tools: expect.objectContaining({ mode: 'native', choiceControl: 'auto', requiredChoice: false }),
       budgets: expect.objectContaining({ promptBudgetPolicy: 'advisory', reasoningBudget: true }),
-      transport: expect.objectContaining({ modes: ['direct', 'browser-relay', 'native-relay'] })
+      transport: expect.objectContaining({ modes: ['direct', 'browser-relay', 'native-direct'] })
     })
   }
 ];

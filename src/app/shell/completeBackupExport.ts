@@ -19,6 +19,7 @@ import {
 } from '../../native/systemBackupFiles';
 import { useChatStore } from '../../stores/chatStore';
 import { useCollectionStore } from '../../stores/collectionStore';
+import { loadWorkspaceReferenceDocsContent } from '../../stores/workspaceReferenceDocContentPersistence';
 import { usePersonaStore } from '../../stores/personaStore';
 import { serializePersistedSpaceState } from '../../stores/spaceStorePersistence';
 import { useRuntimeStore } from '../../stores/runtimeStore';
@@ -95,7 +96,19 @@ export function buildCurrentExportSnapshot(): StructuredExportSnapshot {
 
 export async function prepareCompleteExportSnapshot() {
   await useChatStore.getState().persistToDb();
-  return buildCurrentExportSnapshot();
+  const snapshot = buildCurrentExportSnapshot();
+  const collectionState = snapshot.collectionState;
+  if (!collectionState) return snapshot;
+
+  return {
+    ...snapshot,
+    collectionState: {
+      ...collectionState,
+      workspaceReferenceDocs: await loadWorkspaceReferenceDocsContent(
+        collectionState.workspaceReferenceDocs
+      )
+    }
+  };
 }
 
 export async function buildCurrentExportPackage(options: {

@@ -15,6 +15,7 @@ import type { ProviderRuntimeCompatibilityState } from './providerRuntimeCompati
 export type ProviderRuntimeRequestInput = {
   api: ProviderProfile;
   context: AssistantRequestContext;
+  sessionId?: string;
   advanced?: PersonaAdvancedSettings;
   bodyOverrides?: Record<string, unknown>;
   openAiToolHistoryMode?: OpenAiToolHistoryMode;

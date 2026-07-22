@@ -287,4 +287,19 @@ describe('anthropicMessagesAdapter', () => {
       ).toEqual(testCase.verifyCapabilities);
     }
   });
+
+  it('sends the real conversation id as OpenRouter sticky routing metadata', () => {
+    const request = buildAnthropicRequest({
+      api: createProviderRuntimeTestProvider({
+        protocol: 'anthropic-messages',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        path: '/messages',
+        model: 'anthropic/claude-opus-4.7'
+      }),
+      context: createProviderRuntimeTestContext({ withTools: false }),
+      sessionId: 'conversation-anthropic-1'
+    });
+
+    expect(request.body.session_id).toBe('conversation-anthropic-1');
+  });
 });

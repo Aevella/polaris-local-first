@@ -18,6 +18,12 @@ function hasExplicitMaxTokens(advanced?: PersonaAdvancedSettings) {
   return Boolean(advanced?.maxTokens?.trim());
 }
 
+function connectionTransportLabel(endpoint: string) {
+  return Capacitor.isNativePlatform() && /^https?:\/\//i.test(endpoint.trim())
+    ? '，经 App 原生网络'
+    : '';
+}
+
 export async function testApiConnection(params: {
   api: ProviderProfile;
   advanced?: PersonaAdvancedSettings;
@@ -125,12 +131,13 @@ export async function testApiConnection(params: {
         });
       }
       const testedModel = typeof request.body.model === 'string' ? request.body.model.trim() : api.model.trim();
+      const transportLabel = connectionTransportLabel(request.endpoint);
       return {
         ok: true,
         message:
           request.body.stream === true
-            ? `已完成真实回复测试（含流式，模型 ${testedModel}）`
-            : `已完成真实回复测试（模型 ${testedModel}）`
+            ? `已完成真实回复测试（含流式，模型 ${testedModel}${transportLabel}）`
+            : `已完成真实回复测试（模型 ${testedModel}${transportLabel}）`
       };
     } finally {
       window.clearTimeout(timeoutId);

@@ -59,6 +59,25 @@ describe('resolveRequestCachePlan', () => {
     expect(resolveAnthropicMinimumCacheTokens('claude-sonnet-4-6')).toBe(1024);
   });
 
+  it('reports explicit-only caching when the provider cannot accept top-level cache control', () => {
+    const identity = createPart({
+      name: 'system_identity',
+      layer: 'identity',
+      content: '稳定身份。'.repeat(300)
+    });
+    const plan = resolveRequestCachePlan({
+      promptParts: [identity],
+      providerCacheMode: 'explicit-cache-control',
+      providerSendsTopLevelCacheControl: false,
+      providerAutomaticMessageHistoryCache: false,
+      minimumBreakpointTokens: 1
+    });
+
+    expect(plan.requestApplication.sendsExplicitCacheControl).toBe(true);
+    expect(plan.requestApplication.sendsTopLevelCacheControl).toBe(false);
+    expect(plan.requestApplication.automaticMessageHistoryCache).toBe(false);
+  });
+
   it('does not mark sub-threshold Opus prefixes as cache eligible', () => {
     const identity = createPart({
       name: 'system_identity',

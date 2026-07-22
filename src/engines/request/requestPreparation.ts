@@ -752,6 +752,8 @@ export async function prepareCollaboratorReplyRequest(params: {
   const cachePlan = resolveRequestCachePlan({
     promptParts: selectedPromptParts,
     providerCacheMode: providerCapabilities.cache.mode,
+    providerSendsTopLevelCacheControl: providerCapability.cache.sendsTopLevelCacheControl,
+    providerAutomaticMessageHistoryCache: providerCapability.cache.automaticMessageHistoryCache,
     modelId
   });
   const cachePlanMs = runtimeNow() - stepStartedAt;

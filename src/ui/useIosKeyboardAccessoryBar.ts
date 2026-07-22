@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
-import { Capacitor } from '@capacitor/core';
 import { Keyboard } from '@capacitor/keyboard';
+import { canUseIosNativeKeyboard } from './iosKeyboardCapability';
 
 export function useIosKeyboardAccessoryBar() {
   useEffect(() => {
-    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'ios') return;
-    void Keyboard.setAccessoryBarVisible({ isVisible: false });
+    if (!canUseIosNativeKeyboard()) return;
+    void Keyboard.setAccessoryBarVisible({ isVisible: false }).catch(() => undefined);
   }, []);
 }

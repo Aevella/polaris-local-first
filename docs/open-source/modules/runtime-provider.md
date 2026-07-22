@@ -9,6 +9,7 @@ Runtime and provider code decides how model requests are configured, which capab
 - Provider profiles and model capability metadata.
 - Request capability decisions.
 - Direct provider calls, relay routing, and native HTTP transport choices.
+- Provider-specific cache controls, stable request-session identifiers, and normalized usage evidence.
 - Runtime settings that affect model/tool availability.
 
 ## Does Not Own
@@ -46,6 +47,8 @@ Runtime and provider code decides how model requests are configured, which capab
 - Model capability is unavailable for the requested action.
 - Relay/backend route is not configured or rejects the target.
 - Native HTTP transport is unavailable and browser transport cannot satisfy the request.
+- A browser network failure may retry through the configured relay; native provider calls do not cross that relay boundary.
+- A provider omits cache usage fields, which is distinct from reporting a zero cache read.
 
 ## Tests And Verification
 

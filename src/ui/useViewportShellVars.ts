@@ -5,11 +5,11 @@ import {
   IOS_NATIVE_KEYBOARD_ANIMATION_DURATION_MS,
   IOS_NATIVE_KEYBOARD_ANIMATION_EASING,
   isViewportKeyboardOpen,
-  resolveStableNativeShellHeight,
   resolveViewportMetrics,
   type NativeKeyboardSnapshot
 } from './viewportMetrics';
 import { syncFocusedElementIntoKeyboardViewport } from './viewportFocusVisibility';
+import { canUseIosNativeKeyboard } from './iosKeyboardCapability';
 
 type ViewportDebugState = {
   activeTag: string;
@@ -55,15 +55,14 @@ export function useViewportShellVars() {
     const root = document.documentElement;
     const debugEnabled = new URLSearchParams(window.location.search).get('debugViewport') === '1';
     const isNativePlatform = Capacitor.isNativePlatform();
-    const usesNativeKeyboardMotion = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
-    const usesStableNativeShellHeight = usesNativeKeyboardMotion;
+    const usesNativeKeyboardMotion = canUseIosNativeKeyboard();
     const drivesAppHeight = shouldViewportDriveAppHeight();
     const resetsDocumentScrollAfterKeyboardClose = !drivesAppHeight;
     let previousKeyboardOpen = false;
     let pendingKeyboardCloseReset = 0;
     let nativeKeyboardSnapshot: NativeKeyboardSnapshot | undefined;
     let latestKeyboardOffset = 0;
-    const keyboardListenerHandles: Array<Promise<PluginListenerHandle>> = [];
+    const keyboardListenerHandles: Array<Promise<PluginListenerHandle | null>> = [];
     const pendingFocusVisibilityTimeoutIds: number[] = [];
     const clearPendingFocusVisibilityPasses = () => {
       pendingFocusVisibilityTimeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
@@ -84,10 +83,7 @@ export function useViewportShellVars() {
       latestKeyboardOffset = metrics.keyboardOffset;
 
       if (drivesAppHeight) {
-        const appHeight = usesStableNativeShellHeight
-          ? resolveStableNativeShellHeight(metrics.appHeight, window.screen?.height)
-          : metrics.appHeight;
-        root.style.setProperty('--app-height', roundViewportValue(appHeight));
+        root.style.setProperty('--app-height', roundViewportValue(metrics.appHeight));
       } else {
         root.style.removeProperty('--app-height');
       }
@@ -134,33 +130,33 @@ export function useViewportShellVars() {
 
     if (usesNativeKeyboardMotion) {
       root.dataset.nativeKeyboardOverlay = 'true';
-      void Keyboard.setResizeMode({ mode: KeyboardResize.None });
-      void Keyboard.setScroll({ isDisabled: true });
+      void Keyboard.setResizeMode({ mode: KeyboardResize.None }).catch(() => undefined);
+      void Keyboard.setScroll({ isDisabled: true }).catch(() => undefined);
       root.style.setProperty('--keyboard-animation-duration', `${IOS_NATIVE_KEYBOARD_ANIMATION_DURATION_MS}ms`);
       root.style.setProperty('--keyboard-animation-ease', IOS_NATIVE_KEYBOARD_ANIMATION_EASING);
       keyboardListenerHandles.push(
         Keyboard.addListener('keyboardWillShow', ({ keyboardHeight }) => {
           nativeKeyboardSnapshot = { height: keyboardHeight, visible: true };
           applyViewportVars();
-        })
+        }).catch(() => null)
       );
       keyboardListenerHandles.push(
         Keyboard.addListener('keyboardDidShow', ({ keyboardHeight }) => {
           nativeKeyboardSnapshot = { height: keyboardHeight, visible: true };
           applyViewportVars();
-        })
+        }).catch(() => null)
       );
       keyboardListenerHandles.push(
         Keyboard.addListener('keyboardWillHide', () => {
           nativeKeyboardSnapshot = { height: 0, visible: false };
           applyViewportVars();
-        })
+        }).catch(() => null)
       );
       keyboardListenerHandles.push(
         Keyboard.addListener('keyboardDidHide', () => {
           nativeKeyboardSnapshot = { height: 0, visible: false };
           applyViewportVars();
-        })
+        }).catch(() => null)
       );
     }
 
@@ -205,13 +201,13 @@ export function useViewportShellVars() {
       delete root.dataset.polarisPlatform;
       delete root.dataset.nativeKeyboardOverlay;
       if (usesNativeKeyboardMotion) {
-        void Keyboard.setScroll({ isDisabled: false });
-        void Keyboard.setResizeMode({ mode: KeyboardResize.Native });
+        void Keyboard.setScroll({ isDisabled: false }).catch(() => undefined);
+        void Keyboard.setResizeMode({ mode: KeyboardResize.Native }).catch(() => undefined);
       }
       void Promise.allSettled(keyboardListenerHandles).then((handles) => {
         handles.forEach((result) => {
-          if (result.status === 'fulfilled') {
-            void result.value.remove();
+          if (result.status === 'fulfilled' && result.value) {
+            void result.value.remove().catch(() => undefined);
           }
         });
       });

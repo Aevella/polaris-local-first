@@ -67,6 +67,7 @@ describe('provider runtime retry policy', () => {
   afterEach(() => {
     vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false);
     vi.mocked(Capacitor.getPlatform).mockReturnValue('web');
+    vi.unstubAllGlobals();
   });
 
   it('classifies retryable rate limits as canonical provider errors', () => {
@@ -208,9 +209,8 @@ describe('provider runtime retry policy', () => {
     });
   });
 
-  it('drives relay fallback from request capability instead of provider protocol', () => {
-    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
-    vi.mocked(Capacitor.getPlatform).mockReturnValue('ios');
+  it('drives browser relay fallback from request capability instead of provider protocol', () => {
+    vi.stubGlobal('window', { location: { origin: 'https://app.example.test' } });
     const error = new Error('Failed to fetch');
     const relayCapability = {
       route: {
@@ -260,7 +260,7 @@ describe('provider runtime retry policy', () => {
     });
   });
 
-  it('uses the native relay fallback on Android provider network failures', () => {
+  it('does not send Android provider network failures through a server relay', () => {
     vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
     vi.mocked(Capacitor.getPlatform).mockReturnValue('android');
     const error = new Error('NetworkError when attempting to fetch resource.');
@@ -272,13 +272,10 @@ describe('provider runtime retry policy', () => {
         error,
         { disableStreamingFallback: true }
       ))
-    ).toMatchObject({
-      kind: 'provider-relay',
-      reason: 'provider-relay-fallback'
-    });
+    ).toMatchObject({ kind: 'none' });
   });
 
-  it('treats native iOS fetch aborts before response as relayable network failures', () => {
+  it('classifies native iOS fetch aborts without inventing a relay retry', () => {
     vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
     vi.mocked(Capacitor.getPlatform).mockReturnValue('ios');
     const error = new Error('Fetch is aborted');
@@ -298,10 +295,7 @@ describe('provider runtime retry policy', () => {
         error,
         { disableStreamingFallback: true }
       ))
-    ).toMatchObject({
-      kind: 'provider-relay',
-      reason: 'provider-relay-fallback'
-    });
+    ).toMatchObject({ kind: 'none' });
   });
 
   it('does not relay a fetch abort caused by Polaris aborting the request', () => {

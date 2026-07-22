@@ -24,6 +24,8 @@ export type AssistantRequestCachePlan = {
     status: 'explicit_anthropic_cache_control' | 'provider_automatic_or_unknown' | 'not_applied';
     label: string;
     sendsExplicitCacheControl: boolean;
+    sendsTopLevelCacheControl?: boolean;
+    automaticMessageHistoryCache?: boolean;
   };
   breakpoints: AssistantRequestCacheBreakpoint[];
 };
@@ -46,6 +48,8 @@ export function resolveAnthropicMinimumCacheTokens(modelId?: string | null): num
 export function resolveRequestCachePlan(args: {
   promptParts: AssistantPromptPart[];
   providerCacheMode?: CanonicalProviderCacheMode;
+  providerSendsTopLevelCacheControl?: boolean;
+  providerAutomaticMessageHistoryCache?: boolean;
   providerProtocol?: ProviderProtocol;
   modelId?: string | null;
   minimumBreakpointTokens?: number;
@@ -72,6 +76,12 @@ export function resolveRequestCachePlan(args: {
   const capabilityParts = enabledParts.filter((part) => part.layer === 'capability');
   const identityTokens = identityParts.reduce((total, part) => total + estimateTextTokens(part.content), 0);
   const capabilityTokens = capabilityParts.reduce((total, part) => total + estimateTextTokens(part.content), 0);
+  const sendsTopLevelCacheControl =
+    providerCacheMode === 'explicit-cache-control'
+    && args.providerSendsTopLevelCacheControl !== false;
+  const automaticMessageHistoryCache =
+    sendsTopLevelCacheControl
+    && args.providerAutomaticMessageHistoryCache !== false;
 
   const identityBreakpoint: AssistantRequestCacheBreakpoint = {
     name: 'identity_prefix',
@@ -113,19 +123,27 @@ export function resolveRequestCachePlan(args: {
       providerCacheMode === 'explicit-cache-control'
         ? {
             status: 'explicit_anthropic_cache_control',
-            label: 'Anthropic system prefix cache_control breakpoints sent',
-            sendsExplicitCacheControl: true
+            label: sendsTopLevelCacheControl
+              ? 'Anthropic explicit prefix cache_control plus automatic message-history cache sent'
+              : 'Explicit prefix and conversation cache_control sent without top-level automatic cache control',
+            sendsExplicitCacheControl: true,
+            sendsTopLevelCacheControl,
+            automaticMessageHistoryCache
           }
         : providerCacheMode === 'automatic-or-unknown'
           ? {
               status: 'provider_automatic_or_unknown',
               label: 'Provider may apply automatic prefix cache; Polaris sends no explicit marker',
-              sendsExplicitCacheControl: false
+              sendsExplicitCacheControl: false,
+              sendsTopLevelCacheControl: false,
+              automaticMessageHistoryCache: false
             }
           : {
               status: 'not_applied',
               label: 'No request cache integration for this protocol',
-              sendsExplicitCacheControl: false
+              sendsExplicitCacheControl: false,
+              sendsTopLevelCacheControl: false,
+              automaticMessageHistoryCache: false
             },
     breakpoints: [identityBreakpoint, capabilityBreakpoint]
   };

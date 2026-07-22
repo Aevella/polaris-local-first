@@ -301,7 +301,7 @@ function resolveCacheReportStatus(usage: ChatTokenUsage | null | undefined): Men
 }
 
 function hasZeroCacheRead(usage: ChatTokenUsage | null | undefined) {
-  return resolveCacheReportStatus(usage) === 'reported' && sumToken(usage?.cachedInputTokens) === 0;
+  return hasReportedToken(usage?.cachedInputTokens) && usage?.cachedInputTokens === 0;
 }
 
 function normalizeModelLabel(model: string) {

@@ -58,6 +58,7 @@ export async function requestAssistantReply(params: RequestAssistantReplyParams)
   const {
     api,
     context,
+    sessionId,
     advanced,
     preferredOpenAiToolHistoryMode = 'native',
     signal,
@@ -85,6 +86,7 @@ export async function requestAssistantReply(params: RequestAssistantReplyParams)
       api,
       advanced,
       context: retryContext,
+      sessionId,
       bodyOverrides: disableStreamingFallback ? { stream: false } : undefined,
       openAiToolHistoryMode
     });
@@ -94,6 +96,7 @@ export async function requestAssistantReply(params: RequestAssistantReplyParams)
         api,
         advanced,
         context: retryContext,
+        sessionId,
         bodyOverrides: disableStreamingFallback ? { stream: false } : undefined,
         openAiToolHistoryMode
       });

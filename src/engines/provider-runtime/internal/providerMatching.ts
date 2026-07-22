@@ -32,6 +32,11 @@ export function isOpenRouterHost(host: string) {
   return host.includes('openrouter.ai');
 }
 
+export function isOpenRouterAnthropicClaudeModel(modelId?: string | null) {
+  const model = normalizeProviderText(modelId).replace(/^~/, '');
+  return model.startsWith('anthropic/') && model.includes('claude');
+}
+
 export function isOpenAiHost(host: string) {
   return host.includes('openai.com');
 }

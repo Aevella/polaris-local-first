@@ -58,7 +58,7 @@ export type CanonicalProviderOutputTokenField =
 export type CanonicalProviderTransportMode =
   | 'direct'
   | 'browser-relay'
-  | 'native-relay'
+  | 'native-direct'
   | 'built-in-gateway';
 
 export type CanonicalProviderCacheMode =

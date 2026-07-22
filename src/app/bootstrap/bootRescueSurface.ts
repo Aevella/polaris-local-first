@@ -150,12 +150,12 @@ export function installBootRescueSurface({
   };
 
   const onWindowError = (event: ErrorEvent) => {
-    if (reactRootMounted) return;
+    if (reactRootMounted || rootHasMountedContent(root)) return;
     showRescue(describeError(event.error ?? event.message));
   };
 
   const onUnhandledRejection = (event: PromiseRejectionEvent) => {
-    if (reactRootMounted) return;
+    if (reactRootMounted || rootHasMountedContent(root)) return;
     showRescue(describeError(event.reason));
   };
 

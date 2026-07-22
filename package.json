@@ -53,7 +53,8 @@
     "android:build-debug": "npm run android:sync && cd android && ANDROID_HOME=${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools} ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-/opt/homebrew/share/android-commandlinetools} ./gradlew clean assembleDebug",
     "android:build-release": "npm run android:sync && cd android && ANDROID_HOME=${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools} ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-/opt/homebrew/share/android-commandlinetools} ./gradlew clean assembleRelease",
     "ios:open": "npx cap open ios",
-    "ios:sync": "npm run build && npx cap sync ios",
+    "ios:verify-native-plugins": "node scripts/verify_ios_native_plugins.mjs",
+    "ios:sync": "npm run build && npx cap sync ios && npm run ios:verify-native-plugins",
     "ios:build-sim": "npm run ios:sync && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build",
     "ios:build-device": "npm run ios:sync && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination generic/platform=iOS CODE_SIGNING_ALLOWED=NO build"
   },

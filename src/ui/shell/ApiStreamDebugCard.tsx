@@ -50,16 +50,15 @@ function buildLatestRequestSummary(entries: StreamDebugEntry[], t: I18nTranslato
     [...entries]
       .reverse()
       .find((entry) =>
-        (entry.phase === 'fetch-stream-first-chunk' || entry.phase === 'xhr-first-chunk') && entry.at >= requestAt
+        (entry.phase === 'fetch-stream-first-chunk' || entry.phase === 'native-stream-first-chunk') && entry.at >= requestAt
       ) ?? null;
   const latestFinish =
     [...entries]
       .reverse()
       .find((entry) =>
         (entry.phase === 'fetch-stream-finish'
-          || entry.phase === 'xhr-load'
-          || entry.phase === 'xhr-error'
-          || entry.phase === 'xhr-abort')
+          || entry.phase === 'native-stream-finish'
+          || entry.phase === 'native-stream-error')
           && entry.at >= requestAt
       ) ?? null;
 
@@ -86,12 +85,12 @@ function summarizeLatestPath(entries: StreamDebugEntry[], t: I18nTranslator['t']
     typeof latestPath?.meta?.personaStreamingEnabled === 'boolean'
       ? latestPath.meta.personaStreamingEnabled
       : null;
-  const latestXhrLoad = findLatestEntry(entries, 'xhr-load');
+  const latestNativeFinish = findLatestEntry(entries, 'native-stream-finish');
   const latestFetchFinish = findLatestEntry(entries, 'fetch-stream-finish');
-  const latestFirstChunk = findLatestEntry(entries, 'fetch-stream-first-chunk') ?? findLatestEntry(entries, 'xhr-first-chunk');
-  const xhrBuffered =
-    path === 'ios-xhr-fallback'
-      && latestXhrLoad?.meta?.firstChunkSeen === false;
+  const latestFirstChunk = findLatestEntry(entries, 'fetch-stream-first-chunk') ?? findLatestEntry(entries, 'native-stream-first-chunk');
+  const nativeBuffered =
+    path === 'native-stream'
+      && latestNativeFinish?.meta?.firstChunkSeen === false;
   const fetchBuffered =
     path === 'fetch-stream'
       && latestFetchFinish?.meta?.firstChunkSeen === false;
@@ -101,12 +100,12 @@ function summarizeLatestPath(entries: StreamDebugEntry[], t: I18nTranslator['t']
     if (personaStreamingEnabled === false) return t('apiProvider.debug.noPersonaStream');
     return t('apiProvider.debug.noStream');
   }
-  if (!latestFirstChunk && (path === 'fetch-stream' || path === 'ios-xhr-fallback')) {
+  if (!latestFirstChunk && (path === 'fetch-stream' || path === 'native-stream')) {
     return t('apiProvider.debug.waitingFirstChunk');
   }
-  if (xhrBuffered) return t('apiProvider.debug.xhrBuffered');
+  if (nativeBuffered) return t('apiProvider.debug.nativeBuffered');
   if (fetchBuffered) return t('apiProvider.debug.fetchBuffered');
-  if (path === 'ios-xhr-fallback') return t('apiProvider.debug.iosXhr');
+  if (path === 'native-stream') return t('apiProvider.debug.nativeStream');
   if (path === 'fetch-stream') return t('apiProvider.debug.fetchStream');
   return t('apiProvider.debug.pathMissing');
 }
@@ -118,17 +117,17 @@ function summarizeEntryMeta(entry: StreamDebugEntry, t: I18nTranslator['t']) {
       const requestStream = entry.meta?.requestStream === true ? 'stream=true' : 'stream=false';
       return `${path} · ${requestStream}`;
     }
-    case 'xhr-headers': {
+    case 'native-stream-headers': {
       const eventStream = entry.meta?.eventStream === true ? 'event-stream' : 'non-event-stream';
       return `${eventStream}`;
     }
-    case 'xhr-first-chunk':
+    case 'native-stream-first-chunk':
     case 'fetch-stream-first-chunk': {
       const elapsedMs = typeof entry.meta?.elapsedMs === 'number' ? `${entry.meta.elapsedMs}ms` : null;
       const source = typeof entry.meta?.source === 'string' ? entry.meta.source : null;
       return [source, elapsedMs].filter(Boolean).join(' · ');
     }
-    case 'xhr-load':
+    case 'native-stream-finish':
     case 'fetch-stream-finish': {
       const firstChunkSeen = entry.meta?.firstChunkSeen === true
         ? t('apiProvider.debug.firstChunkSeen')

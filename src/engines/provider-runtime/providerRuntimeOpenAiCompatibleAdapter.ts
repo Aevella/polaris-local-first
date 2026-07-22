@@ -33,8 +33,10 @@ import {
   isMoonshotHost,
   parseProviderHost
 } from './internal/providerMatching';
+import { resolveOpenRouterSessionId } from './providerRuntimeOpenRouterSession';
 
 const OPENAI_COMPATIBLE_CHAT_ADAPTER_ID = 'openai-compatible-chat';
+type OpenAiCompatibleCacheControl = { type: 'ephemeral'; ttl?: '1h' };
 
 function protocolMatch(
   protocol: ReturnType<typeof inferProviderProtocol>
@@ -70,6 +72,85 @@ function buildOpenAiReasoningContent(
     return {};
   }
   return { reasoning_content: reasoningContent };
+}
+
+function buildOpenAiCompatibleCacheControl(ttl: '5m' | '1h' = '1h'): OpenAiCompatibleCacheControl {
+  return ttl === '1h'
+    ? { type: 'ephemeral', ttl: '1h' }
+    : { type: 'ephemeral' };
+}
+
+function resolveOpenAiCompatibleCacheControlIndexes(
+  context: ProviderRuntimeRequestInput['context'],
+  orderedMessages: OrderedContextMessage[]
+) {
+  let latestConversationIndex = -1;
+  for (let index = orderedMessages.length - 1; index >= 0; index -= 1) {
+    const message = orderedMessages[index];
+    if (
+      message?.contextSegmentKind === 'conversation'
+      && (message.role === 'user' || message.role === 'assistant')
+      && extractTextPayload(message.content).trim().length > 0
+    ) {
+      latestConversationIndex = index;
+      break;
+    }
+  }
+  if (!context.cachePlan) {
+    for (let index = orderedMessages.length - 1; index >= 0; index -= 1) {
+      const message = orderedMessages[index];
+      if (message?.role === 'system' && message.cachePrefixEligible === true) {
+        return new Map([
+          [index, buildOpenAiCompatibleCacheControl()],
+          ...(latestConversationIndex >= 0
+            ? [[latestConversationIndex, buildOpenAiCompatibleCacheControl('5m')] as const]
+            : [])
+        ]);
+      }
+    }
+    return latestConversationIndex >= 0
+      ? new Map([[latestConversationIndex, buildOpenAiCompatibleCacheControl('5m')]])
+      : new Map<number, OpenAiCompatibleCacheControl>();
+  }
+
+  const cacheIndexes = new Map<number, OpenAiCompatibleCacheControl>();
+  for (const breakpoint of context.cachePlan.breakpoints) {
+    if (!breakpoint.eligible) continue;
+    const breakpointPartNames = new Set(breakpoint.partNames);
+    for (let index = orderedMessages.length - 1; index >= 0; index -= 1) {
+      const message = orderedMessages[index];
+      if (message?.role !== 'system') continue;
+      const promptPartName = message.promptPartName;
+      if (promptPartName && breakpointPartNames.has(promptPartName)) {
+        cacheIndexes.set(index, buildOpenAiCompatibleCacheControl(breakpoint.ttl));
+        break;
+      }
+    }
+  }
+  if (latestConversationIndex >= 0) {
+    cacheIndexes.set(latestConversationIndex, buildOpenAiCompatibleCacheControl('5m'));
+  }
+  return cacheIndexes;
+}
+
+function attachCacheControlToContent(content: unknown, cacheControl: OpenAiCompatibleCacheControl) {
+  if (Array.isArray(content)) {
+    const nextContent = content.map((part) => part);
+    for (let index = nextContent.length - 1; index >= 0; index -= 1) {
+      const part = nextContent[index];
+      if (!part || typeof part !== 'object' || Array.isArray(part)) continue;
+      if ((part as { type?: unknown }).type !== 'text') continue;
+      if (typeof (part as { text?: unknown }).text !== 'string') continue;
+      nextContent[index] = { ...part, cache_control: cacheControl };
+      return nextContent;
+    }
+    return content;
+  }
+
+  const text = typeof content === 'string' ? content : extractTextPayload(content);
+  return text.trim()
+    ? [{ type: 'text' as const, text, cache_control: cacheControl }]
+    : content;
 }
 
 function contextHasToolHistory(context: ProviderRuntimeRequestInput['context']) {
@@ -179,8 +260,14 @@ function buildOpenAiCompatibleMessages(
   const orderedMessages = buildOrderedMessages(context, capability.context);
   const normalizedToolNames = buildHistoricalToolCallNameMap(orderedMessages);
   const completeNativeToolHistory = collectCompleteNativeToolHistoryIndexes(orderedMessages);
+  const cacheControlIndexes = capability.cache.openAiCompatibleCacheControl
+    ? resolveOpenAiCompatibleCacheControlIndexes(context, orderedMessages)
+    : new Map<number, OpenAiCompatibleCacheControl>();
 
   return orderedMessages.map((message, index) => {
+    const messageContent = cacheControlIndexes.has(index)
+      ? attachCacheControlToContent(message.content, cacheControlIndexes.get(index)!)
+      : message.content;
     if (message.role === 'assistant') {
       const hasCompleteNativeToolHistory = completeNativeToolHistory.assistantIndexes.has(index);
       const toolCalls = hasCompleteNativeToolHistory
@@ -209,7 +296,7 @@ function buildOpenAiCompatibleMessages(
         : undefined;
       const content = message.toolCalls?.length && !hasCompleteNativeToolHistory
         ? buildAssistantToolCallTranscript(message, normalizedToolNames)
-        : message.content;
+        : messageContent;
       return {
         role: 'assistant' as const,
         content,
@@ -239,7 +326,7 @@ function buildOpenAiCompatibleMessages(
 
     return {
       role: message.role,
-      content: message.content
+      content: messageContent
     };
   });
 }
@@ -302,6 +389,30 @@ function stringifyTranscriptContent(content: unknown) {
   return content === undefined || content === null ? '' : JSON.stringify(content);
 }
 
+function normalizeTranscriptUserContent(content: unknown) {
+  return Array.isArray(content) ? content : stringifyTranscriptContent(content);
+}
+
+function transcriptContentToParts(content: unknown) {
+  if (Array.isArray(content)) return content;
+  const text = stringifyTranscriptContent(content);
+  return text ? [{ type: 'text' as const, text }] : [];
+}
+
+function mergeTranscriptContent(previous: unknown, next: unknown) {
+  if (Array.isArray(previous) || Array.isArray(next)) {
+    return [
+      ...transcriptContentToParts(previous),
+      ...transcriptContentToParts(next)
+    ];
+  }
+
+  return [
+    stringifyTranscriptContent(previous),
+    stringifyTranscriptContent(next)
+  ].filter(Boolean).join('\n\n');
+}
+
 function normalizeTranscriptRole(message: OpenAiCompatibleTranscriptMessage): OpenAiCompatibleTranscriptMessage {
   if (message.role === 'assistant') {
     return {
@@ -310,7 +421,9 @@ function normalizeTranscriptRole(message: OpenAiCompatibleTranscriptMessage): Op
     };
   }
 
-  const content = stringifyTranscriptContent(message.content);
+  const content = message.role === 'user'
+    ? normalizeTranscriptUserContent(message.content)
+    : stringifyTranscriptContent(message.content);
   return {
     role: 'user',
     content: message.role === 'system'
@@ -326,10 +439,7 @@ function coerceTranscriptMessagesToAlternatingRoles(messages: OpenAiCompatibleTr
 
     const previous = result[result.length - 1];
     if (previous?.role === normalized.role) {
-      previous.content = [
-        stringifyTranscriptContent(previous.content),
-        stringifyTranscriptContent(normalized.content)
-      ].filter(Boolean).join('\n\n');
+      previous.content = mergeTranscriptContent(previous.content, normalized.content);
       return result;
     }
 
@@ -339,7 +449,7 @@ function coerceTranscriptMessagesToAlternatingRoles(messages: OpenAiCompatibleTr
 }
 
 export function buildOpenAiCompatibleRequest(input: ProviderRuntimeRequestInput) {
-  const { api, context, advanced, bodyOverrides, openAiToolHistoryMode = 'native' } = input;
+  const { api, context, sessionId, advanced, bodyOverrides, openAiToolHistoryMode = 'native' } = input;
   const endpoint = buildApiEndpoint(api.baseUrl, api.path);
   const {
     apiKey,
@@ -368,6 +478,13 @@ export function buildOpenAiCompatibleRequest(input: ProviderRuntimeRequestInput)
     model,
     messages: orderedMessages
   };
+  const openRouterSessionId = resolveOpenRouterSessionId(api.baseUrl, sessionId);
+  if (openRouterSessionId) {
+    body.session_id = openRouterSessionId;
+  }
+  if (providerCapability.cache.sendsTopLevelCacheControl) {
+    body.cache_control = { type: 'ephemeral' };
+  }
   if (shouldSendTemperature(providerCapability, topP, temperature)) {
     body.temperature = temperature;
   }

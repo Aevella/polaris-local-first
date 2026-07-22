@@ -23,13 +23,13 @@ describe('canFallbackThroughProviderRelay', () => {
     });
   });
 
-  it('allows native requests to use the configured relay only as a fallback', () => {
+  it('keeps native requests on the native provider transport', () => {
     nativePlatform.value = true;
     vi.stubGlobal('window', {
       location: { origin: 'capacitor://localhost' }
     });
 
-    expect(canFallbackThroughProviderRelay('https://relay.example.com/v1/chat/completions')).toBe(true);
+    expect(canFallbackThroughProviderRelay('https://relay.example.com/v1/chat/completions')).toBe(false);
   });
 
   it('allows public cross-origin endpoints without classifying domain suffixes', () => {

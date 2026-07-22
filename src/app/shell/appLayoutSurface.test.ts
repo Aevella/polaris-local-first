@@ -40,6 +40,24 @@ describe('resolveAppLayoutSurfaceFromMatches', () => {
   it('falls back to phone for narrow viewports', () => {
     expect(resolveAppLayoutSurfaceFromMatches({ desktop: false, tablet: false })).toBe('phone');
   });
+
+  it('keeps native ios portrait and compact windows on the phone shell', () => {
+    expect(resolveAppLayoutSurfaceFromMatches({
+      desktop: false,
+      nativeIos: true,
+      nativeIosTablet: false,
+      tablet: true
+    })).toBe('phone');
+  });
+
+  it('uses the tablet shell for a wide native ios landscape window', () => {
+    expect(resolveAppLayoutSurfaceFromMatches({
+      desktop: false,
+      nativeIos: true,
+      nativeIosTablet: true,
+      tablet: true
+    })).toBe('tablet');
+  });
 });
 
 describe('layout surface helpers', () => {

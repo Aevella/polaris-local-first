@@ -13,6 +13,7 @@ and ordinary saves use the current LocalData model.
 - Structured export import.
 - Migration staging and validation.
 - Package export from current LocalData facts.
+- Complete-backup hydration of referenced document bodies before the snapshot is serialized.
 - Census, health, and dry-run reporting for importability.
 - Rollback and failed-import safety.
 
@@ -49,6 +50,7 @@ and ordinary saves use the current LocalData model.
 ## Important Failure States
 
 - Imported body, binary, or owner data is missing.
+- A complete backup cannot load a referenced document body; export stops instead of emitting a partial archive.
 - Package evidence is unreadable or malformed.
 - Import refuses to promote a domain that cannot become coherent current rows.
 - Import rollback must restore the previous visible state.

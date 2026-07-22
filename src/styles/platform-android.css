@@ -24,3 +24,29 @@ html[data-polaris-platform='android'] .api-provider-sheet .api-provider-test-but
   color: #ffffff;
   box-shadow: none;
 }
+
+/*
+ * Android WebView can incorrectly reuse the offscreen texture produced by a
+ * nearly full-height transformed sheet with nested backdrop filters. The
+ * result is a pair of opaque white compositor tiles covering the real form.
+ * Keep the gradients and shadows, but make this one native surface paint in a
+ * single layer instead of stacking blurred textures.
+ */
+html[data-polaris-platform='android'] .api-provider-overlay {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-polaris-platform='android'] .api-provider-sheet {
+  animation: fadeIn 180ms ease both;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  backface-visibility: visible;
+  transform: none;
+  will-change: opacity;
+}
+
+html[data-polaris-platform='android'] .api-provider-sheet * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}

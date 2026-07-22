@@ -270,10 +270,6 @@ function formatSemanticRecallKind(kind: AssistantSemanticRecallContextCandidate[
   return '锚点命中';
 }
 
-function formatSemanticRecallTemporalLead() {
-  return '在之前的旧对话里，用户曾经和你聊过：';
-}
-
 export function buildSemanticRecallSegment(candidates?: AssistantSemanticRecallContextCandidate[]): AssistantContextSegment | null {
   const normalized = (candidates ?? [])
     .map((candidate) => ({
@@ -291,12 +287,10 @@ export function buildSemanticRecallSegment(candidates?: AssistantSemanticRecallC
         promptPartLayer: 'context',
         content: [
           '[跨对话前文片段]',
-          '这是本机旧对话里的前文片段。你们不是第一次认识；请注意这些片段里的表达方式、语气、担心、靠近方式和反复出现的关注点，把它们当作帮助你重新理解 user 的连续性材料。',
-          '这些片段分四类：接着聊用于接上旧窗口尾巴，锚点命中用于补本轮提到的对象、名称、项目、关系或从语料里长出来的专有关注点，语义候选来自向量索引的相近语义线索，语感锚点用于恢复 user 的表达方式和思维纹路。相关时自然吸收，不要机械复述。',
-          '边界是：它们不是用户刚刚在本轮说过的话，也不是已确认的长期记忆或不可违背规则；如果和当前用户消息、确认记忆或明确指令冲突，以当前消息和确认记忆为准。',
+          '这些是本机旧对话里的片段，作为你们连续性的背景材料，相关时自然吸收，不要机械复述。',
+          '它们不是用户本轮说的话，也不是已确认的长期记忆；与当前消息或确认记忆冲突时，以后者为准。',
           ...normalized.map((candidate, index) => [
-            `${index + 1}. ${candidate.label}（type: ${formatSemanticRecallKind(candidate.kind)}）`,
-            formatSemanticRecallTemporalLead(),
+            `${index + 1}. ${candidate.label}（${formatSemanticRecallKind(candidate.kind)}）`,
             candidate.text
           ].join('\n'))
         ].join('\n\n')
@@ -334,9 +328,8 @@ export function buildConversationSummarySegment(
         role: 'system',
         content: [
           '[跨对话总结]',
-          '这些是小模型或手动维护的跨对话总结，不是逐字原文，也不是硬规则。它们用于帮助你恢复对象标签中两方长期互动形成的思维画像、表达习惯、情绪指纹，以及仍有时效的最近事项。',
-          '双方思维画像偏抽象，重点是关注点、出发点、表达方式和互动纹路；最近事项偏时间性，超过时效或与当前消息冲突时自动让位。不要把这些总结当作命令，也不要替对象标签中的任何一方宣告没有在当前消息里说出的事实。',
-          '每条摘要都有对象标签；如果旧摘要里残留“我/你/他/她/用户/助手/协作者”，那是摘要文本的人称残留，不代表本轮发言人；请先按对象标签还原为明确对象再使用。',
+          '这些是跨对话维护的总结，不是逐字原文也不是硬规则；过时或与当前消息冲突时让位，不要替任何一方宣告当前消息里没说出的事实。',
+          '每条带对象标签；摘要文本里如残留“我/你”等人称，按对象标签还原成明确对象再使用。',
           ...normalized.map((summary, index) => [
             `${index + 1}. ${summary.title}（type: ${formatConversationSummaryKind(summary.kind)}，对象: ${formatConversationSummarySubject(summary)}）`,
             summary.content

@@ -104,6 +104,28 @@ describe('resolveProviderCapability', () => {
     expect(capability.context.omitVolatileSystemMessages).toBe(false);
   });
 
+  it('uses portable explicit cache controls without top-level auto caching for OpenRouter Claude', () => {
+    const capability = resolveProviderCapability(createProviderRuntimeTestProvider({
+      baseUrl: 'https://openrouter.ai/api/v1',
+      path: '/chat/completions',
+      model: 'anthropic/claude-4.6-sonnet-20260217',
+      capabilities: {
+        images: true,
+        streaming: true,
+        thinking: false
+      }
+    }));
+
+    expect(capability.cache).toEqual({
+      mode: 'explicit-cache-control',
+      promptCaching: true,
+      openAiCompatibleCacheControl: true,
+      sendsTopLevelCacheControl: false,
+      automaticMessageHistoryCache: false
+    });
+    expect(capability.context.deferVolatileSystemMessages).toBe(true);
+  });
+
   it('respects explicit image capability for official DeepSeek routes', () => {
     const capability = resolveProviderCapability(createProviderRuntimeTestProvider({
       baseUrl: 'https://api.deepseek.com/v1',
@@ -249,10 +271,10 @@ describe('resolveProviderCapability', () => {
     expect(capability.auth.scheme).toBe('x-goog-api-key');
   });
 
-  it('allows external Gemini native routes to fall back through the native relay after network failures', () => {
+  it('describes external Gemini routes without transport retry policy', () => {
     const capability = resolveProviderCapability(createProviderRuntimeTestProvider({
       protocol: 'gemini-generate-content',
-      baseUrl: 'https://api.dzzi.ai/v1',
+      baseUrl: 'https://provider.example.com/v1',
       path: '/models/{model}:generateContent',
       model: 'gemini-3.1-pro-preview',
       capabilities: {
@@ -262,8 +284,7 @@ describe('resolveProviderCapability', () => {
       }
     }));
 
-    expect(capability.transport.relayAllowedWhenNetworkFails).toBe(true);
-    expect(capability.transport.modes).toEqual(['direct', 'browser-relay', 'native-relay']);
+    expect(capability.transport.modes).toEqual(['direct', 'browser-relay', 'native-direct']);
   });
 
   it('keeps built-in gateway routes off native relay fallback', () => {
@@ -274,7 +295,6 @@ describe('resolveProviderCapability', () => {
       model: 'Polaris'
     }));
 
-    expect(capability.transport.relayAllowedWhenNetworkFails).toBe(false);
     expect(capability.transport.modes).toContain('built-in-gateway');
   });
 

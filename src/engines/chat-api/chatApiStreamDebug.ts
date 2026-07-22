@@ -6,12 +6,11 @@ type StreamDebugPhase =
   | 'fetch-stream-start'
   | 'fetch-stream-first-chunk'
   | 'fetch-stream-finish'
-  | 'xhr-stream-start'
-  | 'xhr-headers'
-  | 'xhr-first-chunk'
-  | 'xhr-load'
-  | 'xhr-error'
-  | 'xhr-abort';
+  | 'native-stream-start'
+  | 'native-stream-headers'
+  | 'native-stream-first-chunk'
+  | 'native-stream-finish'
+  | 'native-stream-error';
 
 export type StreamDebugEntry = {
   at: number;

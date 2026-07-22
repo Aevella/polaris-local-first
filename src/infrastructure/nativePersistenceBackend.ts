@@ -3,7 +3,15 @@ import { base64ToBytes, bytesToBase64 } from '../native/nativeBase64';
 import type { PersistedDbEntry, PersistedKvMutation, PersistenceBackend } from './persistence';
 
 type NativePersistenceEntry =
-  | { key: string; kind: 'json'; value?: unknown; jsonText?: string }
+  | {
+      key: string;
+      kind: 'json';
+      value?: unknown;
+      jsonText?: string;
+      readMode?: 'chunked';
+      byteLength?: number;
+      checksum?: string;
+    }
   | { key: string; kind: 'binary'; dataBase64: string; mimeType?: string };
 
 type NativePersistenceGetResult =
@@ -12,6 +20,12 @@ type NativePersistenceGetResult =
 
 type NativePersistencePlugin = {
   get(options: { storeName: string; key: string }): Promise<NativePersistenceGetResult>;
+  readJsonChunk?(options: {
+    storeName: string;
+    key: string;
+    offset: number;
+    length: number;
+  }): Promise<{ chunkBase64: string; byteLength: number }>;
   set(options: {
     storeName: string;
     key: string;
@@ -49,6 +63,7 @@ type NativePersistencePlugin = {
 const NativePersistence = registerPlugin<NativePersistencePlugin>('NativePersistence');
 const NATIVE_JSON_CHUNK_THRESHOLD = 256 * 1024;
 const NATIVE_JSON_CHUNK_BYTES = 48 * 1024;
+const NATIVE_JSON_READ_CHUNK_BYTES = 48 * 1024;
 const NATIVE_KV_MUTATION_BATCH_MAX_BYTES = 192 * 1024;
 
 export type NativePersistencePlatform = 'ios' | 'android';
@@ -110,6 +125,43 @@ function createWriteId() {
   return `json-${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`;
 }
 
+async function readNativeEntryValue<T>(storeName: string, key: string): Promise<T | null> {
+  const result = await NativePersistence.get({ storeName, key });
+  if (!result.exists) return null;
+  if (result.kind === 'json' && result.readMode === 'chunked') {
+    if (
+      !NativePersistence.readJsonChunk
+      || typeof result.byteLength !== 'number'
+      || result.byteLength < 0
+      || typeof result.checksum !== 'string'
+    ) {
+      throw new Error('原生存储 JSON 分片读取信息不完整。');
+    }
+    const bytes = new Uint8Array(result.byteLength);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const expectedLength = Math.min(NATIVE_JSON_READ_CHUNK_BYTES, bytes.length - offset);
+      const chunkResult = await NativePersistence.readJsonChunk({
+        storeName,
+        key,
+        offset,
+        length: expectedLength
+      });
+      const chunk = base64ToBytes(chunkResult.chunkBase64);
+      if (chunkResult.byteLength !== chunk.length || chunk.length !== expectedLength) {
+        throw new Error('原生存储 JSON 分片读取长度不一致。');
+      }
+      bytes.set(chunk, offset);
+      offset += chunk.length;
+    }
+    if (fnv1a32Hex(bytes) !== result.checksum) {
+      throw new Error('原生存储 JSON 分片读取校验失败。');
+    }
+    return JSON.parse(new TextDecoder().decode(bytes)) as T;
+  }
+  return entryValue<T>(result);
+}
+
 async function writeNativeJsonText(storeName: string, key: string, jsonText: string) {
   const bytes = jsonTextToBytes(jsonText);
   if (bytes.length <= NATIVE_JSON_CHUNK_THRESHOLD) {
@@ -150,8 +202,7 @@ export function createNativePersistenceBackend(kvStore: string): PersistenceBack
     localDataCommitMode: 'staged',
 
     async dbStoreGet<T>(storeName: string, key: string): Promise<T | null> {
-      const result = await NativePersistence.get({ storeName, key });
-      return result.exists ? entryValue<T>(result) : null;
+      return await readNativeEntryValue<T>(storeName, key);
     },
 
     async dbStoreSet<T>(storeName: string, key: string, value: T): Promise<void> {

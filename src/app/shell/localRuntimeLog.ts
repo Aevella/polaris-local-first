@@ -81,18 +81,16 @@ function streamTitle(phase: ReturnType<typeof readStreamDebugEntries>[number]['p
       return 'fetch 首块';
     case 'fetch-stream-finish':
       return 'fetch 结束';
-    case 'xhr-stream-start':
-      return 'XHR 开始';
-    case 'xhr-headers':
-      return 'XHR 响应头';
-    case 'xhr-first-chunk':
-      return 'XHR 首块';
-    case 'xhr-load':
-      return 'XHR 结束';
-    case 'xhr-error':
-      return 'XHR 错误';
-    case 'xhr-abort':
-      return 'XHR 中止';
+    case 'native-stream-start':
+      return '原生请求开始';
+    case 'native-stream-headers':
+      return '原生响应头';
+    case 'native-stream-first-chunk':
+      return '原生首块';
+    case 'native-stream-finish':
+      return '原生请求结束';
+    case 'native-stream-error':
+      return '原生请求错误';
   }
 }
 
@@ -126,37 +124,36 @@ function streamDetail(entry: ReturnType<typeof readStreamDebugEntries>[number]) 
         safeString(meta.reason) ? `reason ${shortText(safeString(meta.reason) ?? '')}` : null
       ]);
     case 'fetch-stream-start':
-    case 'xhr-headers':
+    case 'native-stream-headers':
       return compactParts([
         safeString(meta.contentType) ?? 'unknown content-type',
         safeBoolean(meta.eventStream) === true ? 'event-stream' : 'non-event-stream'
       ]);
     case 'fetch-stream-first-chunk':
-    case 'xhr-first-chunk':
+    case 'native-stream-first-chunk':
       return compactParts([
         safeString(meta.source),
         safeNumber(meta.elapsedMs) !== null ? `${safeNumber(meta.elapsedMs)} ms` : null,
         safeNumber(meta.chunkLength) !== null ? `${safeNumber(meta.chunkLength)} chars` : null
       ]);
     case 'fetch-stream-finish':
-    case 'xhr-load':
+    case 'native-stream-finish':
       return compactParts([
         safeNumber(meta.status) !== null ? `status ${safeNumber(meta.status)}` : null,
         safeBoolean(meta.firstChunkSeen) === true ? '首块已见' : '首块未见',
         safeNumber(meta.elapsedMs) !== null ? `${safeNumber(meta.elapsedMs)} ms` : null,
         safeNumber(meta.totalLength) !== null ? `${safeNumber(meta.totalLength)} chars` : null
       ]);
-    case 'xhr-error':
-    case 'xhr-abort':
+    case 'native-stream-error':
       return compactParts([
         safeNumber(meta.status) !== null ? `status ${safeNumber(meta.status)}` : null,
         safeNumber(meta.elapsedMs) !== null ? `${safeNumber(meta.elapsedMs)} ms` : null
       ]);
-    case 'xhr-stream-start':
+    case 'native-stream-start':
       return compactParts([
         safeBoolean(meta.eventStream) === true ? 'event-stream' : null,
         summarizeEndpoint(meta.endpoint) ? `to ${summarizeEndpoint(meta.endpoint)}` : null
-      ]) || 'XHR streaming started';
+      ]) || 'native provider request started';
   }
 }
 

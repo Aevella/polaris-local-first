@@ -207,4 +207,19 @@ describe('openAiResponsesAdapter', () => {
       ).toEqual(testCase.verifyCapabilities);
     }
   });
+
+  it('sends the real conversation id as OpenRouter sticky routing metadata', () => {
+    const request = buildResponsesRequest({
+      api: createProviderRuntimeTestProvider({
+        protocol: 'openai-responses',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        path: '/responses',
+        model: 'anthropic/claude-opus-4.7'
+      }),
+      context: createProviderRuntimeTestContext({ withTools: false }),
+      sessionId: 'conversation-responses-1'
+    });
+
+    expect(request.body.session_id).toBe('conversation-responses-1');
+  });
 });

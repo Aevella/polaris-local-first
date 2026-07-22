@@ -62,14 +62,15 @@ describe('applyNativeShellBootstrap', () => {
     expect(root.style.getPropertyValue('--app-height')).toBe('812px');
   });
 
-  it('keeps ios shell height from collapsing when startup innerHeight is transiently short', () => {
+  it('uses the current ios window height when the device screen is larger', () => {
     capacitorState.nativePlatform = true;
     capacitorState.platform = 'ios';
     const root = createRoot();
+    const splitViewWindow = { innerHeight: 520, screen: { height: 852 } };
 
-    applyNativeShellBootstrap(root, { innerHeight: 520, screen: { height: 852 } });
+    applyNativeShellBootstrap(root, splitViewWindow);
 
-    expect(root.style.getPropertyValue('--app-height')).toBe('852px');
+    expect(root.style.getPropertyValue('--app-height')).toBe('520px');
   });
 
   it('does not mark native keyboard overlay outside ios', () => {

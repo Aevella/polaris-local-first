@@ -36,6 +36,8 @@ Layout surfaces decide how the shared Polaris runtime is arranged on screen. The
 
 An iPad build is iOS native bridge plus `tablet` layout surface. A Mac host build is desktop host capability plus whatever layout surface the shell selects. These are separate axes.
 
+Native iOS keeps compact widths on the phone surface. Tablet layout is selected only for a wide landscape viewport, and viewport variables use the measured window rather than a historical screen-height floor.
+
 ## Important Failure States
 
 - Treating `iPad` as a second product instead of `iOS capability + tablet layout`.

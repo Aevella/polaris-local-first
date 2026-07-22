@@ -44,6 +44,32 @@ function assignIfPresent(target: Record<string, unknown>, key: string, value: un
   target[key] = value;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function slimProjectFileReadsForRequest(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+  const slimmed = value
+    .map((entry) => {
+      const record = asRecord(entry);
+      if (!record) return undefined;
+      if (record.kind === 'search') {
+        const { matches: _matches, ...rest } = record;
+        return rest;
+      }
+      if (record.kind === 'directory') {
+        const { files: _files, ...rest } = record;
+        return rest;
+      }
+      return record;
+    })
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry));
+  return slimmed.length ? slimmed : undefined;
+}
+
 function projectDetailFields(args: {
   target: Record<string, unknown>;
   kind: ToolInvocationKind | undefined;
@@ -104,7 +130,7 @@ export function projectToolResultPayloadForRequest(
   assignIfPresent(projected, 'projectFileIds', payload.projectFileIds);
   assignIfPresent(projected, 'projectFilePaths', payload.projectFilePaths);
   assignIfPresent(projected, 'projectFiles', payload.projectFiles);
-  assignIfPresent(projected, 'projectFileReads', payload.projectFileReads);
+  assignIfPresent(projected, 'projectFileReads', slimProjectFileReadsForRequest(payload.projectFileReads));
   assignIfPresent(projected, 'projectFileEffects', payload.projectFileEffects);
   assignIfPresent(projected, 'workspaceReferenceDocId', payload.workspaceReferenceDocId);
   assignIfPresent(projected, 'workspaceReferenceDocTitle', payload.workspaceReferenceDocTitle);

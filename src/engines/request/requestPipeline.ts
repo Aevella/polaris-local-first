@@ -6,6 +6,7 @@ import { recordRequestDebug } from './requestDebugRecorder';
 import {
   prepareCollaboratorReplyRequest,
   messageContainsUnreadableImage,
+  resolveRequestImageHydrationMessageIds,
   type RequestImageUnderstandingResult
 } from './requestPreparation';
 import type { RequestMessage } from './requestMessage';
@@ -121,11 +122,12 @@ export async function requestCollaboratorReply(params: {
   }
   const supportsImageInput = providerRuntimeSupportsImageInput(api, persona?.advanced);
   const conversation = prepared.conversation;
-  const latestMessage = conversation[conversation.length - 1];
-  if (latestMessage?.role === 'user' && supportsImageInput && messageContainsImageMissingModelPayload(latestMessage)) {
+  const requestImageMessageIds = resolveRequestImageHydrationMessageIds(conversation);
+  const requestImageMessages = conversation.filter((message) => requestImageMessageIds.has(message.id));
+  if (supportsImageInput && requestImageMessages.some(messageContainsImageMissingModelPayload)) {
     throw new Error('图片附件没有成功进入模型请求；这轮不会只把文件名发给模型硬猜。请重试发送图片，或检查本地附件存储。');
   }
-  if (latestMessage?.role === 'user' && messageContainsUnreadableImage(latestMessage) && !supportsImageInput) {
+  if (!supportsImageInput && requestImageMessages.some(messageContainsUnreadableImage)) {
     throw new Error('当前模型没有直接图片能力，也没有可用的看图/OCR 模型；请切换支持图片的聊天模型，或在设置里配置看图/OCR 路线后再发送。');
   }
 
@@ -137,6 +139,7 @@ export async function requestCollaboratorReply(params: {
     reply = await requestAssistantReply({
       api,
       context: prepared.context,
+      sessionId: activeConversationId ?? undefined,
       advanced: prepared.advanced,
       preferredOpenAiToolHistoryMode,
       onBuiltRequest: (request) => {

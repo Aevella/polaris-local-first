@@ -10,7 +10,8 @@ This module is about native capability. Tablet adaptation is documented separate
 
 - Native SQLite plugin registration and execution.
 - File picker, photo, backup, and rollback file capabilities.
-- Native HTTP and WebView shell integration.
+- Native provider HTTP streaming and WebView shell integration.
+- Chunked reads for large native JSON values that cannot safely cross the bridge in one payload.
 - Local notifications and platform-specific capability availability.
 - Authorized system-calendar discovery and event mutations through stable calendar identifiers.
 
@@ -48,6 +49,8 @@ This module is about native capability. Tablet adaptation is documented separate
 ## Important Failure States
 
 - Native plugin is unavailable, so the startup host must keep the web/KV default.
+- A native provider build is missing the provider HTTP plugin; provider calls fail explicitly instead of silently changing transport.
+- A chunked JSON read reports a different length or checksum from the stored value.
 - Native SQLite rejects a statement because the allowlist drifted.
 - File import or rollback file handling fails.
 - A platform check is mistaken for a release-channel claim.
@@ -57,6 +60,8 @@ This module is about native capability. Tablet adaptation is documented separate
 
 - `src/native/localDataSqlite.test.ts`
 - `src/native/localDataSqliteNativeParity.test.ts`
+- `src/native/providerHttp.test.ts`
+- `src/infrastructure/nativePersistenceBackend.test.ts`
 - `src/app/bootstrap/storeLocalDataBackendBootstrap.test.ts`
 - Native runtime proof documented in `docs/open-source/native-sqlite-runtime-proof.md`.
 
