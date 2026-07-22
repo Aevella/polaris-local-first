@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { buildConversationCardSummary } from '../../../app/collection/conversationCardSummary';
+import type { ConversationMessageSearchIndex } from '../../../app/collection/conversationMessageSearch';
 import { useI18n } from '../../../i18n';
 import type { Conversation, Persona } from '../../../types/domain';
 import { ConversationCardProvider } from './ConversationCardContext';
@@ -9,6 +10,7 @@ import { useVirtualCardWindow } from './useVirtualCardWindow';
 type ConversationCardGridProps = {
   cardsExpanded: boolean;
   conversations: Conversation[];
+  conversationMessageSearchIndex?: ConversationMessageSearchIndex;
   personas: Persona[];
   projectTitleById: Record<string, string>;
   activeConversationId: string | null;
@@ -21,11 +23,13 @@ type ConversationCardGridProps = {
   onConversationPinToggle: (conversationId: string) => void;
   onConversationDelete: (conversationId: string, title: string) => void;
   onOpenConversation: (conversationId: string) => void;
+  onOpenConversationMessage?: (conversationId: string, messageId: string) => void;
 };
 
 export function ConversationCardGrid({
   cardsExpanded,
   conversations,
+  conversationMessageSearchIndex,
   personas,
   projectTitleById,
   activeConversationId,
@@ -37,13 +41,15 @@ export function ConversationCardGrid({
   onCancelConversationRename,
   onConversationPinToggle,
   onConversationDelete,
-  onOpenConversation
+  onOpenConversation,
+  onOpenConversationMessage
 }: ConversationCardGridProps) {
   const { t, language } = useI18n();
   const listDensity = conversations.length > 8 ? 'cards-heavy' : 'cards-normal';
+  const hasMessageSearchMatches = Object.keys(conversationMessageSearchIndex ?? {}).length > 0;
   const virtualWindow = useVirtualCardWindow({
     itemCount: conversations.length,
-    estimateRowHeight: cardsExpanded ? 154 : 54,
+    estimateRowHeight: cardsExpanded ? (hasMessageSearchMatches ? 226 : 154) : 54,
     overscanRows: cardsExpanded ? 5 : 10
   });
   const visibleConversations = useMemo(
@@ -52,10 +58,12 @@ export function ConversationCardGrid({
   );
   const visibleConversationSummaries = useMemo(
     () =>
-      visibleConversations.map((conversation) => buildConversationCardSummary(conversation, {
-        language
+      visibleConversations.map((conversation) => ({
+        ...buildConversationCardSummary(conversation, { language }),
+        searchMatches: conversationMessageSearchIndex?.[conversation.id] ?? null
       })),
     [
+      conversationMessageSearchIndex,
       language,
       visibleConversations
     ]
@@ -77,7 +85,8 @@ export function ConversationCardGrid({
       onCancelConversationRename,
       onConversationPinToggle,
       onConversationDelete,
-      onOpenConversation
+      onOpenConversation,
+      onOpenConversationMessage
     }),
     [
       activeConversationId,
@@ -89,6 +98,7 @@ export function ConversationCardGrid({
       onConversationDelete,
       onConversationPinToggle,
       onConversationTitleDraftChange,
+      onOpenConversationMessage,
       onOpenConversation,
       onStartConversationRename,
       projectTitleById

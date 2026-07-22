@@ -56,12 +56,12 @@ The `api/` directory contains Vercel-style handlers. These are the closest match
 | `/api/provider-models` | Provider model-list relay | Referenced by the frontend, but this repository does not currently include a matching `api/provider-models.ts` handler. Add one before relying on model discovery through relay. |
 | `/api/provider-embeddings` | Embedding relay | Used by cross-chat vector search when browser direct calls need relay. |
 | `/api/provider-images` | Image generation relay | Used by configured image generation providers when relay is needed. |
-| `/api/provider-audio` | Voice/audio relay | Referenced by voice clients, but this repository does not currently include a matching `api/provider-audio.ts` handler. Add one before relying on voice relay. |
+| `/api/provider-audio` | Voice/audio relay | Streams configured speech-provider responses after validating public HTTPS targets and request authentication. |
 | `/api/search` | Web search and webpage read helper | Uses Brave when configured, otherwise can degrade through Bing HTML behavior. |
 | `/api/client-diagnostics` | Privacy-safe client diagnostics receiver | Logs normalized diagnostics, not raw chat content. |
 | `/api/material-shares` and `/shared-materials/...` | Shared image/material upload and readback | Referenced by collection image sharing/import; this repository does not currently include the server handlers. Add them before enabling public material sharing. |
 
-The missing handler rows mark routes that need implementation before use.
+The remaining missing handler rows mark routes that need implementation before use.
 
 ### Node Selfhost Status
 

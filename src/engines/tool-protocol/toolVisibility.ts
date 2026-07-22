@@ -163,6 +163,10 @@ function resolveContentToolScene(state: ToolVisibilityState) {
   return state.userContext === 'in-workspace' ? 'workspace' : 'room';
 }
 
+function isRoomContentTool(tool: PolarisToolDefinition) {
+  return tool.group === 'card' && tool.name !== 'runCode';
+}
+
 export function isPolarisNativeToolVisible(
   tool: PolarisToolDefinition,
   context?: PolarisToolVisibilityContext
@@ -177,7 +181,7 @@ export function isPolarisNativeToolVisible(
 
   const contentToolScene = resolveContentToolScene(visibilityState);
   const sceneMatches =
-    tool.group === 'card'
+    isRoomContentTool(tool)
       ? contentToolScene === 'room'
       : tool.group === 'project'
         ? contentToolScene === 'workspace'

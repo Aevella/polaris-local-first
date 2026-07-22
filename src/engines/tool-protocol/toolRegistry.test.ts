@@ -22,7 +22,7 @@ describe('toolRegistry', () => {
     expect(findPolarisToolManifestEntry('runCode')).toMatchObject({
       name: 'runCode',
       label: '执行代码',
-      group: 'generation',
+      group: 'card',
       executorPlugin: 'utility',
       resultReplayMode: 'detail-excerpt',
       definition: POLARIS_TOOL_REGISTRY_BY_NAME.runCode

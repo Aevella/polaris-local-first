@@ -245,6 +245,7 @@ export type ChatReplyStoreBindings = {
     ensureConversationMessagesLoaded?: (conversationId: string) => Promise<Conversation | null>;
     replaceConversationMessages: (target: WritableConversationBody, messages: ChatMessage[]) => void;
     updateMessage: (target: WritableConversationBody, messageId: string, patch: Partial<ChatMessage>) => void;
+    persistToDb?: () => Promise<void>;
     appendRuntimeFeedbackEvent: (conversationId: string, event: RuntimeFeedbackEvent) => void;
     getRuntimeFeedbackEvents: (conversationId: string) => RuntimeFeedbackEvent[];
     getConversationTask: (conversationId: string) => ConversationTaskState | null;
@@ -422,6 +423,16 @@ export type ChatToolStoreBindings = {
     search: WebSearchConfig;
     mcpServers: McpServerConfig[];
     mcpToolTimeoutSeconds: number;
+    readLatestState?: () => {
+      api: ProviderProfile;
+      providers: ProviderProfile[];
+      imageGeneration: ImageGenerationSettings;
+      imageUnderstanding: ImageUnderstandingSettings;
+      search: WebSearchConfig;
+      mcpServers: McpServerConfig[];
+      mcpToolTimeoutSeconds: number;
+      triggerRules: PolarisTriggerRule[];
+    };
     getTriggerRules: () => PolarisTriggerRule[];
     setTaskModeEnabled: (enabled: boolean) => void;
     createTriggerRule: (seed: {

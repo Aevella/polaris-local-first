@@ -710,10 +710,10 @@ describe('assistantToolProtocolPrompt', () => {
       themePreviewActive: false,
       runCodeSandboxProfile: 'experimental',
       enabledToolGroups: {
-        room: false,
+        room: true,
         theme: false,
         attachment: false,
-        generation: true,
+        generation: false,
         archive: false,
         web: false,
         memory: false

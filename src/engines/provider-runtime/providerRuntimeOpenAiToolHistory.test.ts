@@ -22,6 +22,107 @@ function createRequest(messages: unknown[]): ProviderHttpRequest {
 }
 
 describe('shouldRetryWithTranscriptToolHistory', () => {
+  it('does not preflight valid native tool-call pairs into transcript mode', () => {
+    const request = createRequest([
+      {
+        role: 'assistant',
+        content: '我先试试看。',
+        tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'patchRawCss', arguments: '{}' } }]
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call-1',
+        name: 'patchRawCss',
+        content: '{"status":"applied"}'
+      },
+      {
+        role: 'user',
+        content: '继续'
+      }
+    ]);
+
+    expect(shouldUseTranscriptToolHistoryForRequest(request, 'native')).toBe(false);
+  });
+
+  it('preflights orphaned tool results into transcript mode before sending', () => {
+    const request = createRequest([
+      {
+        role: 'tool',
+        tool_call_id: 'call-1',
+        name: 'patchRawCss',
+        content: '{"status":"applied"}'
+      },
+      {
+        role: 'user',
+        content: '继续'
+      }
+    ]);
+
+    expect(shouldUseTranscriptToolHistoryForRequest(request, 'native')).toBe(true);
+  });
+
+  it('preflights assistant tool calls that are not immediately followed by tool results', () => {
+    const request = createRequest([
+      {
+        role: 'assistant',
+        content: '我先试试看。',
+        tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'patchRawCss', arguments: '{}' } }]
+      },
+      {
+        role: 'user',
+        content: '继续'
+      }
+    ]);
+
+    expect(shouldUseTranscriptToolHistoryForRequest(request, 'native')).toBe(true);
+  });
+
+  it('preflights assistant tool calls when any requested tool result is missing', () => {
+    const request = createRequest([
+      {
+        role: 'assistant',
+        content: '我先试试看。',
+        tool_calls: [
+          { id: 'call-1', type: 'function', function: { name: 'patchRawCss', arguments: '{}' } },
+          { id: 'call-2', type: 'function', function: { name: 'readProjectFile', arguments: '{"target":"active"}' } }
+        ]
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call-1',
+        name: 'patchRawCss',
+        content: '{"status":"applied"}'
+      },
+      {
+        role: 'user',
+        content: '继续'
+      }
+    ]);
+
+    expect(shouldUseTranscriptToolHistoryForRequest(request, 'native')).toBe(true);
+  });
+
+  it('preflights duplicate assistant tool call ids into transcript mode', () => {
+    const request = createRequest([
+      {
+        role: 'assistant',
+        content: '我先试试看。',
+        tool_calls: [
+          { id: 'call-1', type: 'function', function: { name: 'patchRawCss', arguments: '{}' } },
+          { id: 'call-1', type: 'function', function: { name: 'readProjectFile', arguments: '{"target":"active"}' } }
+        ]
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call-1',
+        name: 'patchRawCss',
+        content: '{"status":"applied"}'
+      }
+    ]);
+
+    expect(shouldUseTranscriptToolHistoryForRequest(request, 'native')).toBe(true);
+  });
+
   it('matches the known tool-role sequencing error for native OpenAI-compatible tool history', () => {
     const request = createRequest([
       {
@@ -41,6 +142,29 @@ describe('shouldRetryWithTranscriptToolHistory', () => {
       shouldRetryWithTranscriptToolHistory(
         request,
         new Error(`API 400: {"message":"Messages with role 'tool' must be a response to a preceding message with 'tool_calls'","type":"invalid_request_error"}`),
+        false,
+        'native'
+      )
+    ).toBe(true);
+  });
+
+  it('matches assistant-toolcalls sequencing errors from strict OpenAI-compatible providers', () => {
+    const request = createRequest([
+      {
+        role: 'assistant',
+        content: '我先试试看。',
+        tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'patchRawCss', arguments: '{}' } }]
+      },
+      {
+        role: 'user',
+        content: '继续'
+      }
+    ]);
+
+    expect(
+      shouldRetryWithTranscriptToolHistory(
+        request,
+        new Error(`API 400: {"error":{"message":"An assistant message with 'toolcalls' must be followed by tool messages responding to each 'toolcallid'. (insufficient tool messages following toolcalls)"}}`),
         false,
         'native'
       )

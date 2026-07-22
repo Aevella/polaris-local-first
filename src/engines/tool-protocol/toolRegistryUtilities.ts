@@ -132,7 +132,7 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   webSearch: {
     name: 'webSearch',
     group: 'web',
-    followupDomain: 'tool-result',
+    followupDomain: 'web',
     resultReplayMode: 'full-detail',
     brief: '联网搜索',
     schema: {
@@ -156,7 +156,7 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   readWebPage: {
     name: 'readWebPage',
     group: 'web',
-    followupDomain: 'tool-result',
+    followupDomain: 'web',
     resultReplayMode: 'full-detail',
     brief: '读取网页正文',
     schema: {
@@ -298,7 +298,7 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   },
   runCode: {
     name: 'runCode',
-    group: 'generation',
+    group: 'card',
     followupDomain: 'tool-result',
     resultReplayMode: 'detail-excerpt',
     brief: '在沙箱里执行 JavaScript',

@@ -130,7 +130,8 @@ export async function runWebSearch(
             item.publishedAt ? `时间：${item.publishedAt}` : '',
             item.snippet
           ].filter(Boolean).join('\n')
-      )
+      ),
+      '下一步：如果用户要事实、时效信息、产品/地点/新闻/规则判断，请继续用 readWebPage 读取已返回的相关结果页；只有用户只要链接时，才直接根据搜索结果回答。不要对同一个查询再次调用 webSearch 来等待更好的结果；如果候选来源不足或不可读，直接说明限制。'
     ].filter(Boolean);
 
     return {

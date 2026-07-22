@@ -84,7 +84,7 @@
 .conversation-card-list.search-open .conversation-card .card-meta-row { padding-right: 96px; }
 .conversation-card-list.search-open .conversation-card h3 { margin-bottom: 6px; font-size: 15px; }
 .conversation-card-list.search-open .conversation-card-actions { opacity: 0.9; transform: translateY(0); }
-.conversation-card-list.search-open .conversation-card-detail.expanded { max-height: 150px; }
+.conversation-card-list.search-open .conversation-card-detail.expanded { max-height: 244px; }
 .conversation-card-list.search-open .conversation-excerpt { -webkit-line-clamp: 3; font-size: 11.5px; line-height: 1.56; }
 .conversation-card-list.search-open .conversation-card-footer { margin-top: 9px; }
 .conversation-card-list.search-open .conversation-stats { font-size: 10px; }

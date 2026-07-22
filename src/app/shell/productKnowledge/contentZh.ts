@@ -69,7 +69,7 @@ export const PRODUCT_DOCS: ProductDoc[] = [
         body: [
           'Polaris 不把某一家模型当成唯一核心。你可以配置 OpenAI、Anthropic、Gemini 或 OpenAI 兼容接口，也可以走自建中转。网页端和原生端都会先请求你填写的真实入口；只有直连没有拿到任何响应时，才会尝试当前部署提供的 relay。',
           'API Key 和模型供应商配置由你自己填写和管理。调用外部模型时，请求内容会发送给你选择的供应商或中转入口；不同供应商的保存、审核和日志策略由它们自己的服务条款决定。',
-          '聊天模型、跨对话总结模型、向量检索模型、生图模型和语音朗读模型可以分开设置。生图在设置的生图页里选择供应商、模型和尺寸，适合接 OpenAI 兼容的图片生成接口；语音朗读在单独的语音页里直接填写 Base URL、API Key、接口路径、模型、音色和格式，不从语言模型供应商列表拉取，当前支持 OpenAI 兼容 audio/speech、MiniMax T2A 与 ElevenLabs TTS。'
+          '聊天模型、跨对话总结模型、向量检索模型、生图模型和语音朗读模型可以分开设置。生图在单独的生图页配置，支持 OpenAI 兼容图片接口、MiniMax 生图和阶跃星辰图像生成；语音朗读在单独的语音页里填写 Base URL、API Key、接口路径、模型、音色和格式，不从语言模型供应商列表拉取，当前支持 OpenAI 兼容 audio/speech、MiniMax T2A、ElevenLabs TTS 与 FishAudio。'
         ]
       },
       {
@@ -230,7 +230,7 @@ export const PRODUCT_DOCS: ProductDoc[] = [
           'attachment 工具只有当前对话存在可用附件时出现；archive 工具还要求有 zip 类附件。',
           'memory 读取和 memoryWrite 写入是两类开关；能读长期资料不代表能写长期记忆。',
           'proactive 主动消息工具只在用户打开主动消息工具组后可见；它只管理当前协作者的规则，不跨协作者替别人查看、修改或取消。',
-          'web、generation、MCP 都是用户显式允许后才给模型看的能力。generation 暴露二维码和生图工具；生图的 provider/model/size 属于设置里的生图页，语音朗读的 apiType/baseUrl/apiKey/path/model/voice/format 属于设置里的语音页，二者都不属于工具可见性本身。',
+          'web、generation、MCP 都是用户显式允许后才给模型看的能力。generation 暴露二维码和生图工具；runCode 归在卡片工具组，因为它是处理计算、文本和卡片产物的 JS 沙箱。生图的 provider/model/size 属于设置里的生图页，语音朗读的 apiType/baseUrl/apiKey/path/model/voice/format 属于设置里的语音页，二者都不属于工具可见性本身。',
           'knowledge 工具读取 Polaris 内置产品知识文档，适合在回答 Polaris 自身怎么用、对象边界、工具箱、工作区、供应商、备份和隐私问题前先确认事实。'
         ]
       },

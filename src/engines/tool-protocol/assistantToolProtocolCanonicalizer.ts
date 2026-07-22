@@ -292,6 +292,16 @@ function canonicalizeKind(kind: string) {
   return ACTION_KIND_ALIASES[normalized] ?? kind.trim();
 }
 
+function findMcpDiscriminator(object: Record<string, unknown>) {
+  for (const key of ['kind', 'type', 'name'] as const) {
+    const value = object[key];
+    if (typeof value === 'string' && value.trim().startsWith('mcp__')) {
+      return { key, schemaName: value.trim() };
+    }
+  }
+  return null;
+}
+
 export function canonicalizeAssistantToolValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(canonicalizeAssistantToolValue);
@@ -300,6 +310,17 @@ export function canonicalizeAssistantToolValue(value: unknown): unknown {
   const object = asObject(value);
   if (!object) {
     return value;
+  }
+
+  const mcpDiscriminator = findMcpDiscriminator(object);
+  if (mcpDiscriminator) {
+    const argumentsEntries = Object.entries(object)
+      .filter(([key]) => key !== mcpDiscriminator.key)
+      .map(([key, entryValue]) => [key.trim(), entryValue] as const);
+    return {
+      ...Object.fromEntries(argumentsEntries),
+      kind: mcpDiscriminator.schemaName
+    };
   }
 
   const hasExplicitKind = typeof object.kind === 'string' || typeof object.type === 'string';
@@ -324,6 +345,10 @@ export function extractCanonicalAssistantToolItems(value: unknown): unknown[] {
   const root = asObject(canonicalValue);
   if (!root) {
     return [canonicalValue];
+  }
+
+  if (typeof root.kind === 'string') {
+    return [root];
   }
 
   const candidates = [root.actions, root.action, root.toolActions, root.toolAction, root.items];

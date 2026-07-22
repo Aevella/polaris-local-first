@@ -218,6 +218,7 @@ export function normalizePersona(persona: Partial<Persona> & Pick<Persona, 'id' 
     builderManaged: persona.builderManaged,
     generatedPromptMode: normalizeGeneratedPromptMode(persona.generatedPromptMode),
     messageTemplate: persona.messageTemplate,
+    systemTimeContextEnabled: persona.systemTimeContextEnabled ?? false,
     baseId: persona.baseId,
     relationship: persona.relationship,
     expression: persona.expression,
@@ -319,6 +320,7 @@ export const usePersonaStore = create<PersonaState>((set, get) => ({
           ...patch,
           compiledPrompt: undefined,
           messageTemplate: undefined,
+          systemTimeContextEnabled: undefined,
           generatedPromptMode: undefined
         }
       : patch;

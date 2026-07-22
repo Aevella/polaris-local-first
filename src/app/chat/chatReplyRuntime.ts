@@ -67,6 +67,10 @@ import {
   finishChatSendPerformanceTrace,
   recordChatSendPerformanceMark
 } from './chatSendPerformanceTrace';
+import {
+  ChatReplyPersistenceError,
+  persistChatReplyBoundary
+} from './chatReplyPersistence';
 
 type RequestReplyArgs = {
   ui: Pick<
@@ -88,6 +92,7 @@ type RequestReplyArgs = {
     | 'replaceConversationMessages'
     | 'setConversationTask'
     | 'updateMessage'
+    | 'persistToDb'
   >;
   executeToolActions: (
     conversationId: string,
@@ -257,6 +262,8 @@ export async function requestReply({
   toolPreparationRetryDepth = 0,
   taskActivationEnforcement = null
 }: RequestReplyArgs): Promise<ChatReplyRunResult> {
+  await persistChatReplyBoundary(chat.persistToDb, 'before-request');
+  recordChatSendPerformanceMark(conversationId, '聊天发送 · 用户消息已安全落盘');
   const activeRequestSnapshot = refreshRequestSnapshot?.() ?? requestSnapshot;
   const {
     collaboratorForReply,
@@ -531,7 +538,7 @@ export async function requestReply({
         });
         throwIfAborted(streaming.controller.signal);
         const latestMessages = chat.getConversationMessages(conversationId);
-        return requestReply({
+        return await requestReply({
           ui,
           chat,
           executeToolActions,
@@ -555,7 +562,7 @@ export async function requestReply({
       if (toolPreparationRetryDepth < 1) {
         throwIfAborted(streaming.controller.signal);
         const latestMessages = chat.getConversationMessages(conversationId);
-        return requestReply({
+        return await requestReply({
           ui,
           chat,
           executeToolActions,
@@ -685,7 +692,7 @@ export async function requestReply({
       if (activatedTaskThisTurn && taskAfterToolSettlement && !isConversationTaskTerminal(taskAfterToolSettlement.status)) {
         throwIfAborted(streaming.controller.signal);
         const latestMessages = chat.getConversationMessages(conversationId);
-        return requestReply({
+        return await requestReply({
           ui,
           chat,
           executeToolActions,
@@ -713,7 +720,7 @@ export async function requestReply({
       if (followupPlan) {
         throwIfAborted(streaming.controller.signal);
         const latestMessages = chat.getConversationMessages(conversationId);
-        return requestReply({
+        return await requestReply({
           ui,
           chat,
           executeToolActions,
@@ -763,7 +770,7 @@ export async function requestReply({
       if (activatedTaskThisTurn && latestTaskState && !isConversationTaskTerminal(latestTaskState.status)) {
         throwIfAborted(streaming.controller.signal);
         const latestMessages = chat.getConversationMessages(conversationId);
-        return requestReply({
+        return await requestReply({
           ui,
           chat,
           executeToolActions,
@@ -793,7 +800,7 @@ export async function requestReply({
     })) {
       throwIfAborted(streaming.controller.signal);
       const latestMessages = chat.getConversationMessages(conversationId);
-      return requestReply({
+      return await requestReply({
         ui,
         chat,
         executeToolActions,
@@ -828,6 +835,9 @@ export async function requestReply({
     return { status: 'completed' };
   } catch (error) {
     streaming.commitQueuedProgress();
+    if (error instanceof ChatReplyPersistenceError) {
+      throw error;
+    }
     console.error('[requestReply] catch block hit', {
       error,
       errorMessage: error instanceof Error ? error.message : String(error),
@@ -953,7 +963,7 @@ export async function requestReply({
       if (recoveryFollowupPlan) {
         throwIfAborted(streaming.controller.signal);
         const latestMessages = chat.getConversationMessages(conversationId);
-        return requestReply({
+        return await requestReply({
           ui,
           chat,
           executeToolActions,
@@ -1014,6 +1024,11 @@ export async function requestReply({
     });
     return { status: 'failed' };
   } finally {
-    streaming.finish(preserveStreamingLifecycle);
+    try {
+      await persistChatReplyBoundary(chat.persistToDb, 'after-reply');
+      recordChatSendPerformanceMark(conversationId, '聊天发送 · 回复结果已安全落盘');
+    } finally {
+      streaming.finish(preserveStreamingLifecycle);
+    }
   }
 }

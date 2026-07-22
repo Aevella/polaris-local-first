@@ -640,6 +640,7 @@ export async function prepareCollaboratorReplyRequest(params: {
     personaPromptSource: personaPrompt.source,
     templateContext,
     regexTriggers: preparedAdvanced?.regexTriggers,
+    includeRuntimeClockContext: persona?.systemTimeContextEnabled === true,
     promptInjections: providerCapability.promptInjections,
     toolContext,
     currentTask,

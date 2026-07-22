@@ -14,6 +14,20 @@
   white-space: nowrap;
 }
 
+.voice-preset-row select,
+.toolbox-inline-config .settings-form > select {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 44px;
+  padding: 0 40px 0 12px;
+  border-radius: 15px;
+  background:
+    linear-gradient(45deg, transparent 50%, currentColor 50%) right 18px center / 6px 6px no-repeat,
+    linear-gradient(135deg, currentColor 50%, transparent 50%) right 13px center / 6px 6px no-repeat,
+    var(--control-surface);
+  color: var(--control-text);
+}
+
 .voice-designer-dialog {
   position: fixed;
   inset: 0;
@@ -81,6 +95,8 @@
 
 .voice-designer-close,
 .voice-library-icon-button {
+  -webkit-appearance: none;
+  appearance: none;
   width: 32px;
   height: 32px;
   border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
@@ -90,6 +106,16 @@
   display: inline-grid;
   place-items: center;
   cursor: pointer;
+}
+
+.voice-designer-close:hover,
+.voice-designer-close:focus-visible,
+.voice-library-icon-button:hover,
+.voice-library-icon-button:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  background: color-mix(in srgb, var(--surface-solid) 96%, var(--accent-soft) 18%);
+  color: var(--sheet-readable-text);
+  outline: none;
 }
 
 .voice-designer-tabs {
@@ -103,6 +129,8 @@
 }
 
 .voice-designer-tabs button {
+  -webkit-appearance: none;
+  appearance: none;
   min-width: 0;
   min-height: 38px;
   border: 0;
@@ -114,6 +142,12 @@
   color: var(--sheet-readable-muted);
   background: transparent;
   cursor: pointer;
+}
+
+.voice-designer-tabs button:hover,
+.voice-designer-tabs button:focus-visible {
+  color: var(--sheet-readable-text);
+  outline: none;
 }
 
 .voice-designer-tabs button.active {
@@ -136,6 +170,9 @@
 
 .voice-design-panel input,
 .voice-design-panel textarea {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
   width: 100%;
   border: 1px solid var(--control-border);
   border-radius: 12px;
@@ -162,6 +199,55 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.voice-designer-panel .btn-secondary {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  min-width: 0;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, rgba(255,255,255,0.22));
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-solid) 94%, rgba(255,255,255,0.34)),
+      color-mix(in srgb, var(--surface) 86%, rgba(255,255,255,0.12))
+    );
+  color: var(--sheet-readable-soft);
+  font: inherit;
+  font-size: var(--type-caption);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.46),
+    0 10px 22px rgba(23, 28, 42, 0.08);
+}
+
+.voice-designer-panel .btn-secondary:hover,
+.voice-designer-panel .btn-secondary:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-solid) 98%, rgba(255,255,255,0.38)),
+      color-mix(in srgb, var(--accent-soft) 20%, var(--surface) 80%)
+    );
+  color: var(--sheet-readable-text);
+  outline: none;
+}
+
+.voice-designer-panel .btn-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.28);
 }
 
 .voice-designer-actions--split {
@@ -192,6 +278,8 @@
 }
 
 .voice-library-main {
+  -webkit-appearance: none;
+  appearance: none;
   min-width: 0;
   border: 0;
   background: transparent;

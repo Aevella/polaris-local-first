@@ -1,5 +1,6 @@
 import { createMessage } from '../../engines/chatMessageFactory';
 import { sendCompanionClientCommand } from '../../engines/companionApi';
+import { reportPersistenceError } from '../../infrastructure/persistenceDiagnostics';
 import type { ChatAttachment, ChatCardReference, ChatMessage, PolarisCompanionConnection } from '../../types/domain';
 import type { WritableConversationBody } from '../../stores/chatStore';
 
@@ -21,6 +22,7 @@ type SubmitCompanionMessageHandlers = {
   clearPendingAttachments: () => void;
   clearPendingCardReference: () => void;
   setCommandStatus: (value: string, isError?: boolean) => void;
+  persistToDb?: () => Promise<void>;
   onUserMessageSubmitted?: (params: {
     conversationId: string;
     message: ChatMessage;
@@ -63,6 +65,18 @@ export async function submitCompanionMessage(
     conversationId: writableSession.conversationId,
     message: optimisticMessage
   });
+
+  try {
+    await handlers.persistToDb?.();
+  } catch (error) {
+    reportPersistenceError({
+      label: '[store:persist]',
+      store: 'chat',
+      operation: 'before-companion-send'
+    }, error);
+    handlers.setCommandStatus('本机保存还没有完成，这次没有发送到电脑端。消息仍留在当前界面，请先不要关闭 Polaris。', true);
+    return;
+  }
 
   await sendCompanionClientCommand({
     relayUrl: connection.relayUrl,

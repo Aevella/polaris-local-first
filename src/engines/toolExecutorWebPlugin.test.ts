@@ -88,6 +88,33 @@ describe('webToolExecutorPlugin', () => {
     expect(ctx.readWebPage).toHaveBeenCalledWith('https://example.com', 1200);
   });
 
+  it('keeps the first degraded-search warning clause in the summary', async () => {
+    const ctx = createContext({
+      webSearch: vi.fn(async () => ({
+        ok: true as const,
+        query: 'polaris',
+        results: [{ title: 'Polaris', url: 'https://example.com', snippet: 'Demo' }],
+        provider: 'Bing',
+        degraded: true,
+        warning: 'Primary provider unavailable；using fallback',
+        webSearch: {
+          query: 'polaris',
+          provider: 'Bing',
+          degraded: true,
+          results: [{ title: 'Polaris', url: 'https://example.com', snippet: 'Demo' }]
+        },
+        detailText: 'result detail'
+      }))
+    });
+
+    const result = await webToolExecutorPlugin.execute({ kind: 'webSearch', query: 'polaris' }, ctx);
+
+    expect(result).toMatchObject({
+      ok: true,
+      summary: '已降级到 Bing 搜索 · 1 条 · Primary provider unavailable'
+    });
+  });
+
   it('passes through web helper failures', async () => {
     const ctx = createContext({
       webSearch: vi.fn(async () => ({ ok: false as const, error: '搜索失败' }))

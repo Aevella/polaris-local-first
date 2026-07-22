@@ -13,6 +13,7 @@ type ConversationCardContextValue = {
   onConversationPinToggle: (conversationId: string) => void;
   onConversationDelete: (conversationId: string, title: string) => void;
   onOpenConversation: (conversationId: string) => void;
+  onOpenConversationMessage?: (conversationId: string, messageId: string) => void;
 };
 
 const ConversationCardContext = createContext<ConversationCardContextValue | null>(null);

@@ -68,7 +68,7 @@ describe('providerAudioRelayShared', () => {
     expect(isProviderAudioSpeechRequestBody({
       prompt: '温柔清亮的陪伴女声',
       preview_text: '你好呀。',
-      voice_id: 'custom_voice'
+      voice_id: 'aa_custom_voice'
     })).toBe(true);
     expect(isProviderAudioSpeechRequestBody({
       prompt: '温柔清亮的陪伴女声',

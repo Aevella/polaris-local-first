@@ -41,6 +41,36 @@ describe('buildAssistantPromptParts', () => {
     expect(parts.map((part) => part.content).join('\n')).not.toContain('当前时区');
   });
 
+  it('adds current local time as dynamic request context when enabled', () => {
+    const parts = buildAssistantPromptParts({
+      personaPrompt: '你是一个温柔的协作者。',
+      personaPromptSource: 'custom',
+      includeRuntimeClockContext: true,
+      templateContext: {
+        cur_date: '2026-07-22',
+        cur_time: '21:15',
+        cur_datetime: '2026-07-22 21:15:30',
+        timezone: 'Asia/Shanghai',
+        model_id: 'test-model',
+        model_name: 'test-model',
+        locale: 'zh-CN',
+        system_version: 'test',
+        device_info: 'test',
+        battery_level: '100%',
+        nickname: '用户',
+        user_name: '用户',
+        assistant_name: 'Pharos'
+      },
+      messages: []
+    });
+
+    const runtimeClock = parts.find((part) => part.name === 'runtime_clock_context');
+    expect(runtimeClock?.enabled).toBe(true);
+    expect(runtimeClock?.layer).toBe('context');
+    expect(runtimeClock?.content).toContain('2026-07-22 21:15:30');
+    expect(runtimeClock?.content).toContain('Asia/Shanghai');
+  });
+
   it('includes the current task runtime contract before tool capabilities', () => {
     const parts = buildAssistantPromptParts({
       personaPrompt: '你是一个温柔的协作者。',

@@ -127,6 +127,22 @@ function createRunner(options?: {
       },
       mcpServers: [],
       mcpToolTimeoutSeconds: 30,
+      readLatestState: () => ({
+        api: {} as never,
+        providers: [] as never[],
+        imageGeneration: { enabled: false },
+        imageUnderstanding: { enabled: false },
+        search: {
+          ...DEFAULT_WEB_SEARCH_CONFIG,
+          provider: 'bingLocal',
+          apiKey: '',
+          bochaSummary: true,
+          bochaFreshness: 'noLimit'
+        },
+        mcpServers: [],
+        mcpToolTimeoutSeconds: 30,
+        triggerRules: []
+      }),
       setTaskModeEnabled: vi.fn(),
       getTriggerRules: vi.fn(() => []),
       createTriggerRule: vi.fn(() => 'trigger-1'),

@@ -8,6 +8,21 @@ export function isWebToolAction(action: ToolAction): action is WebToolAction {
   return isToolActionKindHandledByPlugin(action.kind, 'web');
 }
 
+function firstSearchWarningClause(warning?: string) {
+  return warning?.split('；')[0]?.trim() || '';
+}
+
+function formatWebSearchSummary(result: Awaited<ReturnType<ToolContext['webSearch']>> & { ok: true }) {
+  if (!result.degraded) {
+    return `已找到 ${result.results.length} 条网页结果 · ${result.provider}`;
+  }
+
+  const reason = firstSearchWarningClause(result.warning);
+  return reason
+    ? `已降级到 Bing 搜索 · ${result.results.length} 条 · ${reason}`
+    : `已找到 ${result.results.length} 条降级网页结果 · ${result.provider}`;
+}
+
 async function executeWebToolAction(action: WebToolAction, ctx: ToolContext): Promise<ToolExecutionResult> {
   switch (action.kind) {
     case 'webSearch': {
@@ -15,9 +30,7 @@ async function executeWebToolAction(action: WebToolAction, ctx: ToolContext): Pr
       if (!result.ok) return result;
       return {
         ok: true,
-        summary: result.degraded
-          ? `已找到 ${result.results.length} 条降级网页结果 · ${result.provider}`
-          : `已找到 ${result.results.length} 条网页结果 · ${result.provider}`,
+        summary: formatWebSearchSummary(result),
         detailText: result.detailText,
         ...(result.webSearch ? { webSearch: result.webSearch } : {})
       };

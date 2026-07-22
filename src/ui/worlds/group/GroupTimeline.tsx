@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../../i18n';
 import { Icon } from '../../Icon';
 import { useAssetObjectUrl } from '../../useAssetObjectUrl';
@@ -12,6 +12,8 @@ import type { GroupController } from './groupController';
 type GroupTimelineProps = {
   controller: GroupController;
 };
+
+const GROUP_TIMELINE_BOTTOM_THRESHOLD = 160;
 
 function AttachmentImage({ attachment }: { attachment: ChatAttachment }) {
   const url = useAssetObjectUrl(attachment.assetId, true);
@@ -217,7 +219,23 @@ function UserMessage({ message }: { message: ChatMessage }) {
 export function GroupTimeline({ controller }: GroupTimelineProps) {
   const { t } = useI18n();
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const flowRef = useRef<HTMLDivElement | null>(null);
+  const followBottomRef = useRef(true);
+  const previousGroupIdRef = useRef<string | null>(null);
   const group = controller.activeGroup;
+  const groupId = group?.id ?? null;
+
+  const scrollToBottom = useCallback(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, []);
+
+  const handleTimelineScroll = useCallback(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    followBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < GROUP_TIMELINE_BOTTOM_THRESHOLD;
+  }, []);
 
   const memberById = useMemo(
     () => new Map(controller.memberPersonas.map((member) => [member.id, member])),
@@ -300,29 +318,39 @@ export function GroupTimeline({ controller }: GroupTimelineProps) {
     [timelineItems]
   );
 
-  useEffect(() => {
-    const node = scrollRef.current;
-    if (!node) return;
-    const nearBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 160;
-    if (nearBottom) node.scrollTop = node.scrollHeight;
-  }, [timelineItems.length, typingStates.length, streamTick]);
+  useLayoutEffect(() => {
+    if (previousGroupIdRef.current === groupId) return;
+    previousGroupIdRef.current = groupId;
+    followBottomRef.current = true;
+    scrollToBottom();
+  }, [groupId, scrollToBottom]);
+
+  useLayoutEffect(() => {
+    if (!followBottomRef.current) return;
+    scrollToBottom();
+  }, [groupId, timelineItems.length, typingStates.length, failedStates.length, streamTick, scrollToBottom]);
 
   useEffect(() => {
-    const node = scrollRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [controller.activeGroup?.id]);
+    const flow = flowRef.current;
+    if (!flow || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (followBottomRef.current) scrollToBottom();
+    });
+    observer.observe(flow);
+    return () => observer.disconnect();
+  }, [groupId, scrollToBottom]);
 
   if (!group) return null;
 
   return (
-    <div className="group-timeline" ref={scrollRef}>
+    <div className="group-timeline" ref={scrollRef} onScroll={handleTimelineScroll}>
       {timelineItems.length === 0 && typingStates.length === 0 ? (
         <div className="group-timeline-empty">
           <Icon name="navGroup" size={22} />
           <p>{t('group.timeline.empty')}</p>
         </div>
       ) : null}
-      <div className="group-timeline-flow">
+      <div className="group-timeline-flow" ref={flowRef}>
         {timelineItems.map(({ kind, message, streaming }) => {
           if (kind === 'user') {
             return <UserMessage key={message.id} message={message} />;

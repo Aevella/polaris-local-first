@@ -87,7 +87,7 @@ export const POLARIS_TOOL_PROMPT_GROUP_LABELS: Record<PolarisToolPromptGroup, st
 export const POLARIS_TOOL_PROMPT_GROUP_DESCRIPTIONS: Record<PolarisToolPromptGroup, string> = {
   environment: '让协作者按需查看当前环境目录、设置入口、工作区、房间卡、附件、本机、MCP 和记忆的可用取景，不直接替代真实工具。',
   task: '让协作者把连续工作纳入任务账本，保留目标、进度、工具结果和下一步。',
-  room: '让协作者能新建或修改房间卡 / 代码卡，把结果直接落进卡片架。',
+  room: '让协作者能新建或修改房间卡 / 代码卡，也能用 JS 沙箱处理计算、文本和卡片产物。',
   project: '内部场景开关：进入工作区后自动使用文件工具，不作为普通对话里的常驻工具展示。',
   desktop: '让官网 Mac 桌面版协作者使用你授权的本机文件夹和需要逐次确认的命令行。',
   theme: '让协作者能试穿、精修和回滚界面换肤。',

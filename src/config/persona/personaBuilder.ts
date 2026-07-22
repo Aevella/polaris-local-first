@@ -158,6 +158,7 @@ export function createPersonaTemplate(
     builderManaged: overrides.builderManaged ?? false,
     generatedPromptMode: overrides.generatedPromptMode ?? 'vnext',
     messageTemplate: overrides.messageTemplate ?? '{{ message }}',
+    systemTimeContextEnabled: overrides.systemTimeContextEnabled ?? false,
     baseId: overrides.baseId ?? 'subject',
     relationship: overrides.relationship ?? 'partner',
     expression: overrides.expression ?? 'natural',

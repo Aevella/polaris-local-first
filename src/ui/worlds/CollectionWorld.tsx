@@ -43,7 +43,15 @@ export function CollectionWorld({
   const { t } = useI18n();
   const controller = useCollectionWorldController({
     confirm: (message) => window.confirm(message),
-    alert: (message) => window.alert(message)
+    alert: (message) => window.alert(message),
+    downloadFile: (blob, fileName) => {
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+    }
   });
   const collaboratorInfoShelfLabel = controller.currentCollaborator?.name.trim() || t('common.collaborator');
   const visibleShelfItems = useMemo(
@@ -200,11 +208,13 @@ export function CollectionWorld({
                 <DialogueCollectionShelf
                   cardsExpanded={searchOpen}
                   conversations={controller.filteredConversations}
+                  conversationMessageSearchIndex={controller.conversationMessageSearchIndex}
                   personas={controller.personas}
                   roomProjects={controller.roomProjects}
                   activeConversationId={controller.activeConversationId}
                   editingConversationId={controller.editingConversationId}
                   conversationTitleDraft={controller.conversationTitleDraft}
+                  exportingConversationArchive={controller.exportingConversationArchive}
                   onConversationTitleDraftChange={controller.onConversationTitleDraftChange}
                   onStartConversationRename={controller.onStartConversationRename}
                   onCommitConversationRename={controller.onCommitConversationRename}
@@ -212,6 +222,8 @@ export function CollectionWorld({
                   onConversationPinToggle={controller.onConversationPinToggle}
                   onConversationDelete={controller.onConversationDelete}
                   onOpenConversation={controller.onOpenConversation}
+                  onOpenConversationMessage={controller.onOpenConversationMessage}
+                  onExportConversationArchive={controller.onExportConversationArchive}
                 />
               </div>
             </div>

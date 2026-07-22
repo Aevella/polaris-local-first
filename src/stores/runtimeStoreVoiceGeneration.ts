@@ -19,7 +19,8 @@ const VOICE_GENERATION_FORMATS = new Set<VoiceGenerationFormat>([
 const VOICE_GENERATION_PROVIDER_TYPES = new Set<VoiceGenerationProviderType>([
   'openai-compatible',
   'minimax',
-  'elevenlabs'
+  'elevenlabs',
+  'fishaudio'
 ]);
 
 const VOICE_GENERATION_CUSTOM_VOICE_SOURCES = new Set<VoiceGenerationCustomVoiceSource>([
@@ -68,6 +69,7 @@ function normalizeVoiceGenerationProviderType(value: unknown): VoiceGenerationPr
 function defaultVoiceGenerationPath(providerType: VoiceGenerationProviderType) {
   if (providerType === 'minimax') return '/t2a_v2';
   if (providerType === 'elevenlabs') return '/text-to-speech';
+  if (providerType === 'fishaudio') return '/tts';
   return '/audio/speech';
 }
 

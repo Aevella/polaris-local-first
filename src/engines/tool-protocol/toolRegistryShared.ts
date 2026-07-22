@@ -32,6 +32,7 @@ export type PolarisToolFollowupDomain =
   | 'room-card'
   | 'reference-doc'
   | 'mcp'
+  | 'web'
   | 'tool-result';
 
 export type PolarisToolResultReplayMode =

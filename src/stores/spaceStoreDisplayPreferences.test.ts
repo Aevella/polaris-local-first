@@ -18,7 +18,7 @@ describe('normalizeDisplayPreferences', () => {
     })).toEqual({
       appearance: 'dark',
       hapticsEnabled: false,
-      fontScale: 1.18
+      fontScale: 1.5
     });
   });
 

@@ -1,10 +1,29 @@
 import type { AssistantPromptPart } from './requestAudit';
+import type { TemplateContext } from '../templateEngine';
 import type { ChatMessage, ConversationTaskState } from '../../types/domain';
 import { buildConversationTaskModelSnapshot, resolveConversationTaskMode } from '../conversationTask';
 import type { AssistantToolContext } from '../assistantToolProtocol';
 import type { ProviderCapabilityPromptInjection } from '../provider-runtime';
 import { buildBulletPromptLines } from '../promptFormatting';
 import { buildWorkContext, type WorkContextProjection } from '../workContext';
+
+export function buildRuntimeClockEntry(
+  templateContext: TemplateContext
+): Omit<AssistantPromptPart, 'enabled' | 'charCount'> {
+  return {
+    name: 'runtime_clock_context',
+    label: '时间上下文',
+    role: 'system',
+    layer: 'context',
+    truncationPriority: 0,
+    content: [
+      '下面是这轮对话的当前本地时间上下文。',
+      '凡是“现在 / 今天 / 今晚 / 明天 / 昨天 / 稍后 / 刚刚”这类相对时间，都默认按这里理解，除非用户明确指定了别的时区或日期。',
+      `当前本地完整时间：${templateContext.cur_datetime}`,
+      `当前时区：${templateContext.timezone}`
+    ].join('\n')
+  };
+}
 
 export function buildModelRuntimeEntry(args: {
   promptInjections?: ProviderCapabilityPromptInjection[];

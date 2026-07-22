@@ -16,6 +16,7 @@ type SaveMessageSpeechCacheArgs = {
 function resolveProviderType(settings: VoiceGenerationSettings): VoiceGenerationProviderType {
   if (settings.providerType === 'minimax') return 'minimax';
   if (settings.providerType === 'elevenlabs') return 'elevenlabs';
+  if (settings.providerType === 'fishaudio') return 'fishaudio';
   return 'openai-compatible';
 }
 

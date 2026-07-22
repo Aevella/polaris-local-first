@@ -184,7 +184,7 @@ export function SnippetsSettingsTab({
   onUpdatePersona,
   visibleSections = 'all'
 }: PersonaTabProps & {
-  visibleSections?: 'all' | 'tone' | 'rules';
+  visibleSections?: 'all' | 'tone' | 'textRules' | 'worldBook';
 }) {
   const snippets = activePersona?.advanced.snippets ?? [];
   const [draft, setDraft] = useState('');
@@ -274,7 +274,8 @@ export function SnippetsSettingsTab({
   };
 
   const showTone = visibleSections === 'all' || visibleSections === 'tone';
-  const showRules = visibleSections === 'all' || visibleSections === 'rules';
+  const showTextRules = visibleSections === 'all' || visibleSections === 'textRules';
+  const showWorldBook = visibleSections === 'all' || visibleSections === 'worldBook';
 
   return (
     <>
@@ -324,7 +325,7 @@ export function SnippetsSettingsTab({
       </div>
       ) : null}
 
-      {showRules ? (
+      {showTextRules ? (
       <div className="ps-field prompt-settings-field">
         <div className="ps-field-head">
           <span className="ps-field-label">文本替换规则</span>
@@ -358,7 +359,7 @@ export function SnippetsSettingsTab({
       </div>
       ) : null}
 
-      {showRules ? (
+      {showWorldBook ? (
         <RegexTriggerRulesField
           activeCollaboratorId={activeCollaboratorId}
           activePersona={activePersona}

@@ -442,6 +442,12 @@
 .ps-rx-select:focus { border: var(--control-border-focus); box-shadow: var(--control-focus-shadow); background: var(--control-surface-focus); }
 .ps-rx-input::placeholder { color: var(--control-placeholder); }
 .ps-rx-input--mono { font-family: 'SF Mono', 'Fira Code', monospace; letter-spacing: -0.02em; }
+.ps-rx-field--toggle { justify-content: flex-end; }
+.ps-rx-toggle { width: 34px; height: 20px; margin: 4px 0 5px 2px; appearance: none; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-deep); cursor: pointer; position: relative; transition: border-color 0.18s ease, background 0.18s ease; }
+.ps-rx-toggle::after { content: ''; position: absolute; width: 14px; height: 14px; left: 2px; top: 2px; border-radius: 50%; background: var(--text-muted); transition: transform 0.18s ease, background 0.18s ease; }
+.ps-rx-toggle:checked { border-color: var(--accent); background: var(--accent-soft); }
+.ps-rx-toggle:checked::after { transform: translateX(14px); background: var(--accent); }
+.ps-rx-toggle:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
 .ps-rx-add { align-self: flex-start; padding: 8px 14px; border-radius: 12px; border: 1px dashed var(--border); background: transparent; color: var(--text-muted); font-family: inherit; font-size: var(--type-small); cursor: pointer; transition: all 0.18s ease; }
 .ps-rx-add:hover { border-style: solid; border-color: color-mix(in srgb, var(--border-hover) 88%, transparent); background: color-mix(in srgb, var(--surface-deep) 74%, transparent); color: var(--text-soft); }
 

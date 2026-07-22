@@ -66,7 +66,7 @@ export const EN_PRODUCT_DOC_TRANSLATIONS: Partial<Record<ProductDocId, ProductDo
         body: [
           'Polaris does not make any single model provider the core of the app. You can configure OpenAI, Anthropic, Gemini, OpenAI-compatible APIs, or your own relay. Web and native clients first request the endpoint you configured; the current deployment relay is considered only when direct transport receives no response.',
           'API keys and model provider settings are filled in and managed by you. When an external model is called, request content is sent to the provider or relay you selected. Each provider\'s own terms decide its retention, review, and logging behavior.',
-          'The chat model, cross-chat summary model, vector retrieval model, image generation model, and speech model can be configured separately. Image generation is configured in the image generation settings page, with provider, model, and size, and is suitable for OpenAI-compatible image generation endpoints. Speech is configured in the separate voice page with Base URL, API key, path, model, voice, and format; it is not pulled from the language model provider list. Current speech support covers OpenAI-compatible audio/speech, MiniMax T2A, and ElevenLabs TTS.'
+          'The chat model, cross-chat summary model, vector retrieval model, image generation model, and speech model can be configured separately. Image generation is configured in its own settings page and supports OpenAI-compatible image endpoints, MiniMax image generation, and StepFun image creation. Speech is configured in the separate voice page with Base URL, API key, path, model, voice, and format; it is not pulled from the language model provider list. Current speech support covers OpenAI-compatible audio/speech, MiniMax T2A, ElevenLabs TTS, and FishAudio.'
         ]
       },
       {
@@ -225,7 +225,7 @@ export const EN_PRODUCT_DOC_TRANSLATIONS: Partial<Record<ProductDocId, ProductDo
           'Attachment tools appear only when the current chat has usable attachments. Archive tools also require a zip-like attachment.',
           'Memory read and memory write are separate switches. Being able to read long-term docs does not mean the model can write long-term memory.',
           'Proactive message tools appear only after the user enables the proactive tool group. They manage rules for the current collaborator, not other collaborators.',
-          'Web, generation, and MCP are shown to the model only after the user explicitly allows them. Generation exposes QR code and image generation tools; image provider, model, and size live in image settings. Voice reading apiType, baseUrl, apiKey, path, model, voice, and format live in voice settings. Neither belongs to tool visibility itself.',
+          'Web, generation, and MCP are shown to the model only after the user explicitly allows them. Generation exposes QR code and image generation tools; runCode belongs to the card toolbox group because it is the JS sandbox used for calculations, text transforms, and card-adjacent outputs. Image provider, model, and size live in image settings. Voice reading apiType, baseUrl, apiKey, path, model, voice, and format live in voice settings. Neither belongs to tool visibility itself.',
           'The knowledge tool reads built-in Polaris product docs. It is useful before answering questions about Polaris usage, object boundaries, toolbox behavior, workspaces, providers, backups, and privacy.'
         ]
       },

@@ -134,7 +134,8 @@ export type VoiceGenerationFormat =
 export type VoiceGenerationProviderType =
   | 'openai-compatible'
   | 'minimax'
-  | 'elevenlabs';
+  | 'elevenlabs'
+  | 'fishaudio';
 
 export type VoiceGenerationCustomVoiceSource =
   | 'manual'
@@ -230,6 +231,7 @@ export interface Persona {
   builderManaged: boolean;
   generatedPromptMode: PersonaGeneratedPromptMode;
   messageTemplate: string;
+  systemTimeContextEnabled: boolean;
   baseId: PersonaBaseId;
   relationship: PersonaRelationshipId;
   expression: PersonaExpressionId;
@@ -249,4 +251,3 @@ export interface Persona {
   pinnedAt?: number | null;
   version: number;
 }
-

@@ -157,6 +157,16 @@ function createExecutorHarness() {
       search: { ...DEFAULT_WEB_SEARCH_CONFIG, provider: 'bingLocal', apiKey: '', bochaSummary: false, bochaFreshness: '' },
       mcpServers: [],
       mcpToolTimeoutSeconds: 30,
+      readLatestState: () => ({
+        api: {} as never,
+        providers: [] as never[],
+        imageGeneration: { enabled: false },
+        imageUnderstanding: { enabled: false },
+        search: { ...DEFAULT_WEB_SEARCH_CONFIG, provider: 'bingLocal', apiKey: '', bochaSummary: false, bochaFreshness: '' },
+        mcpServers: [],
+        mcpToolTimeoutSeconds: 30,
+        triggerRules: []
+      }),
       setTaskModeEnabled: vi.fn(),
       getTriggerRules: vi.fn(() => []),
       createTriggerRule: vi.fn(() => 'trigger-1'),

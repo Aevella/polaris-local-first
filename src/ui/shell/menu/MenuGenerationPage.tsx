@@ -6,6 +6,7 @@ import type {
 import { useI18n } from '../../../i18n';
 import { HelpHint } from '../../HelpHint';
 import { Icon } from '../../Icon';
+import { useImageGenerationConnectionChecks } from './useImageGenerationConnectionChecks';
 
 type MenuGenerationPageProps = {
   imageGeneration: ImageGenerationSettings;
@@ -21,6 +22,7 @@ export function MenuGenerationPage({
   onSetImageGeneration
 }: MenuGenerationPageProps) {
   const { t } = useI18n();
+  const connectionCheck = useImageGenerationConnectionChecks({ imageGeneration, providers, t });
   const imageSizeOptions: Array<{ value: ImageGenerationSize; label: string }> = [
     { value: '1024x1024', label: t('settings.generation.sizeSquare') },
     { value: '1024x1536', label: t('settings.generation.sizePortrait') },
@@ -81,7 +83,10 @@ export function MenuGenerationPage({
                   <label>{t('settings.generation.providerLabel')}</label>
                   <select
                     value={imageGeneration.providerId ?? ''}
-                    onChange={(event) => onSetImageGeneration({ providerId: event.target.value })}
+                    onChange={(event) => {
+                      connectionCheck.clearStatus();
+                      onSetImageGeneration({ providerId: event.target.value });
+                    }}
                   >
                     <option value="" disabled>{t('settings.generation.providerPlaceholder')}</option>
                     {providers.map((provider) => (
@@ -94,19 +99,54 @@ export function MenuGenerationPage({
                   <label>{t('settings.generation.modelLabel')}</label>
                   <input
                     value={imageGeneration.modelOverride ?? ''}
-                    onChange={(event) => onSetImageGeneration({ modelOverride: event.target.value })}
+                    onChange={(event) => {
+                      connectionCheck.clearStatus();
+                      onSetImageGeneration({ modelOverride: event.target.value });
+                    }}
                     placeholder={t('settings.generation.modelPlaceholder')}
                   />
 
                   <label>{t('settings.generation.sizeLabel')}</label>
                   <select
                     value={imageGeneration.size ?? '1024x1024'}
-                    onChange={(event) => onSetImageGeneration({ size: event.target.value as ImageGenerationSize })}
+                    onChange={(event) => {
+                      connectionCheck.clearStatus();
+                      onSetImageGeneration({ size: event.target.value as ImageGenerationSize });
+                    }}
                   >
                     {imageSizeOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
+
+                  <div className="voice-setting-row">
+                    <button
+                      type="button"
+                      className="btn-secondary compact voice-preview-button"
+                      onClick={connectionCheck.checkConfig}
+                      disabled={connectionCheck.state === 'loading'}
+                      aria-label={connectionCheck.checkButtonLabel}
+                      title={connectionCheck.checkButtonLabel}
+                    >
+                      <Icon name="check" size={14} />
+                      <span>{connectionCheck.checkButtonLabel}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary compact voice-preview-button"
+                      onClick={connectionCheck.generateTestImage}
+                      disabled={connectionCheck.state === 'loading'}
+                      aria-label={connectionCheck.testButtonLabel}
+                      title={connectionCheck.testButtonLabel}
+                    >
+                      <Icon name={connectionCheck.state === 'loading' ? 'refresh' : 'play'} size={14} />
+                      <span>{connectionCheck.testButtonLabel}</span>
+                    </button>
+                  </div>
+                  <p className="voice-preview-status" data-state="idle">{t('settings.generation.testCostNote')}</p>
+                  {connectionCheck.status ? (
+                    <p className="voice-preview-status" data-state={connectionCheck.state}>{connectionCheck.status}</p>
+                  ) : null}
                 </div>
               </div>
             ) : null}

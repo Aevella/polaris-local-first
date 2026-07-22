@@ -60,6 +60,29 @@ async function createKelivoBackupBlob(options: {
       assistantId: 'assistant-1',
       content: 'likes Polaris'
     }]),
+    world_books_v1: JSON.stringify([{
+      id: 'book-1',
+      name: '白树世界',
+      enabled: true,
+      entries: [{
+        id: 'entry-1',
+        enabled: true,
+        keywords: ['白树'],
+        content: '带入白树世界设定。',
+        scanDepth: 4,
+        priority: 9,
+        useRegex: false,
+        caseSensitive: false
+      }, {
+        id: 'entry-2',
+        enabled: true,
+        content: '常驻世界规则。',
+        constantActive: true
+      }]
+    }]),
+    world_books_active_ids_by_assistant_v1: JSON.stringify({
+      'assistant-1': ['book-1']
+    }),
     mcp_servers_v1: JSON.stringify([{
       id: 'mcp-http',
       name: 'HTTP MCP',
@@ -160,7 +183,7 @@ describe('convertKelivoBackupZip', () => {
     });
 
     const personaState = converted.kvEntries.find((entry) => entry.key === 'persona-state-v2')?.value as {
-      personas: Array<{ name: string; userName: string; compiledPrompt: string; memory: { personalMemories: string[] } }>;
+      personas: Array<{ name: string; userName: string; compiledPrompt: string; memory: { personalMemories: string[] }; advanced: { regexTriggers?: string } }>;
       activeCollaboratorId: string | null;
     };
     expect(personaState.activeCollaboratorId).toBe('assistant-1');
@@ -170,6 +193,21 @@ describe('convertKelivoBackupZip', () => {
       compiledPrompt: 'Stay close.'
     });
     expect(personaState.personas[0].memory.personalMemories).toEqual(['likes Polaris']);
+    expect(JSON.parse(personaState.personas[0].advanced.regexTriggers ?? '[]')).toEqual([
+      {
+        pattern: '白树',
+        prompt: '带入白树世界设定。',
+        flags: 'i',
+        scanDepth: 4,
+        priority: 9
+      },
+      {
+        pattern: '',
+        prompt: '常驻世界规则。',
+        flags: 'i',
+        alwaysOn: true
+      }
+    ]);
 
     const messageEntry = converted.kvEntries.find((entry) => entry.key.startsWith('chat-conversation-record-v1:'));
     const messages = (messageEntry?.value as { messages?: ChatMessage[] } | undefined)?.messages ?? [];

@@ -7,6 +7,7 @@ import {
 } from '../../../../engines/personaBuiltin';
 import { buildTemplateContext, resolveSystemPromptVars } from '../../../../engines/templateEngine';
 import { loadPharosPersonaPrompt } from '../../../../config/prompts/pharosPromptLoader';
+import { PersonaToggle } from '../PersonaToggle';
 import { type PersonaTabProps } from '../personaUiShared';
 
 type PromptCoreSettingsPageProps = PersonaTabProps & {
@@ -73,21 +74,33 @@ export function PromptCoreSettingsPage({
 
   if (page === 'message') {
     return (
-      <div className="ps-field prompt-settings-field">
-        <div className="ps-field-head">
-          <span className="ps-field-label">消息模板</span>
-          <span className="ps-field-hint">发送给模型前包装历史消息</span>
+      <>
+        <div className="prompt-settings-field">
+          <PersonaToggle
+            label="系统时间"
+            description="开启后，每次请求会在最新消息前补充当前本地完整时间和时区。"
+            checked={activePersona?.systemTimeContextEnabled === true}
+            onToggle={() => onUpdatePersona({
+              systemTimeContextEnabled: activePersona?.systemTimeContextEnabled !== true
+            })}
+          />
         </div>
-        <input
-          className="ps-input ps-input--mono"
-          value={activePersona?.messageTemplate || ''}
-          onChange={(e) => onUpdatePersona({ messageTemplate: e.target.value })}
-          placeholder="{{ message }}"
-        />
-        <p className="ps-footnote">
-          默认 {'{{ message }}'} 表示原样发送，一般不用改。可用变量：{'{{role}}'} {'{{message}}'} {'{{date}}'} {'{{time}}'}。
-        </p>
-      </div>
+        <div className="ps-field prompt-settings-field">
+          <div className="ps-field-head">
+            <span className="ps-field-label">消息模板</span>
+            <span className="ps-field-hint">发送给模型前包装历史消息</span>
+          </div>
+          <input
+            className="ps-input ps-input--mono"
+            value={activePersona?.messageTemplate || ''}
+            onChange={(e) => onUpdatePersona({ messageTemplate: e.target.value })}
+            placeholder="{{ message }}"
+          />
+          <p className="ps-footnote">
+            默认 {'{{ message }}'} 表示原样发送，一般不用改。可用变量：{'{{role}}'} {'{{message}}'} {'{{date}}'} {'{{time}}'}。
+          </p>
+        </div>
+      </>
     );
   }
 

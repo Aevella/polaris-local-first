@@ -153,6 +153,116 @@
   -webkit-box-orient: vertical;
 }
 
+.conversation-message-search-matches {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.conversation-message-search-meta,
+.conversation-message-search-more {
+  color: color-mix(in srgb, var(--muted) 82%, var(--text) 18%);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.conversation-message-search-match {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent-soft) 18%, transparent);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  cursor: pointer;
+  transition: border-color 0.14s ease, background 0.14s ease, transform 0.14s var(--ease-out);
+}
+
+.conversation-message-search-match:hover,
+.conversation-message-search-match:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  background: color-mix(in srgb, var(--accent-soft) 28%, transparent);
+  outline: none;
+}
+
+.conversation-message-search-match:active {
+  transform: translateY(1px);
+}
+
+.conversation-message-search-role {
+  max-width: 7em;
+  color: color-mix(in srgb, var(--text) 64%, var(--accent) 36%);
+  font-size: 10px;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-message-search-excerpt {
+  min-width: 0;
+  color: var(--collection-dialogue-card-excerpt-color);
+  font-size: 11px;
+  line-height: 1.48;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.dialogue-export-action {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 6px 11px;
+  border: 1px solid var(--collection-dialogue-card-micro-border);
+  border-radius: 999px;
+  background: var(--collection-dialogue-card-micro-fill);
+  color: var(--collection-dialogue-card-micro-color);
+  box-shadow: var(--collection-dialogue-card-micro-shadow);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-family: inherit;
+  font-size: var(--type-caption);
+  font-weight: 620;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease, color var(--duration-fast) ease, transform var(--duration-fast) ease;
+}
+
+.dialogue-export-action:hover,
+.dialogue-export-action:focus-visible {
+  border-color: var(--collection-dialogue-card-micro-hover-border);
+  background: var(--collection-dialogue-card-micro-hover-fill);
+  color: var(--collection-dialogue-card-micro-hover-color);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.dialogue-export-action:active {
+  border-color: var(--collection-dialogue-card-micro-active-border);
+  background: var(--collection-dialogue-card-micro-active-fill);
+  color: var(--collection-dialogue-card-micro-active-color);
+  transform: translateY(0);
+}
+
+.dialogue-export-action:disabled {
+  cursor: default;
+  opacity: 0.58;
+  transform: none;
+}
+
 .conversation-card-footer {
   display: flex;
   align-items: center;

@@ -15,20 +15,23 @@ const WORLD_BOOK_IMPORT_ACCEPT = '.json,.txt,.md,application/json,text/plain,tex
 
 function serializeRegexTriggers(rules: RegexTriggerDraft[]): string {
   const normalized = rules
-    .map(({ pattern, prompt, flags }) => ({
+    .map(({ pattern, prompt, flags, scanDepth, alwaysOn, priority }) => ({
       pattern: pattern.trim(),
       prompt: prompt.trim(),
-      flags: flags?.trim() ?? ''
+      flags: flags?.trim() ?? '',
+      scanDepth: Number(scanDepth),
+      alwaysOn: Boolean(alwaysOn),
+      priority: Number(priority)
     }))
-    .filter((rule) => rule.pattern.length > 0 && rule.prompt.length > 0)
-    .map((rule) => (
-      rule.flags
-        ? rule
-        : {
-            pattern: rule.pattern,
-            prompt: rule.prompt
-          }
-    ));
+    .filter((rule) => (rule.pattern.length > 0 || rule.alwaysOn) && rule.prompt.length > 0)
+    .map((rule) => ({
+      pattern: rule.pattern,
+      prompt: rule.prompt,
+      ...(rule.flags ? { flags: rule.flags } : {}),
+      ...(Number.isFinite(rule.scanDepth) && rule.scanDepth > 0 ? { scanDepth: Math.floor(rule.scanDepth) } : {}),
+      ...(rule.alwaysOn ? { alwaysOn: true } : {}),
+      ...(Number.isFinite(rule.priority) && rule.priority !== 0 ? { priority: Math.trunc(rule.priority) } : {})
+    }));
 
   if (!normalized.length) return '';
   return JSON.stringify(normalized, null, 2);
@@ -58,11 +61,12 @@ function CompactRegexTrigger({
         }
       }}
     >
-      <span className="ps-rx-scope">触发</span>
+      <span className="ps-rx-scope">{rule.alwaysOn ? '常驻' : '触发'}</span>
       <span className="ps-rx-arrow">→</span>
-      <code className="ps-rx-pat">/{rule.pattern}/{rule.flags || ''}</code>
+      <code className="ps-rx-pat">{rule.alwaysOn ? 'always' : `/${rule.pattern}/${rule.flags || ''}`}</code>
       <span className="ps-rx-arrow">→</span>
       <span className="ps-rx-rep">{rule.prompt}</span>
+      <span className="ps-rx-scope">深度 {rule.scanDepth ?? 4}</span>
       <span className="ps-rx-row-spacer" />
       <button
         type="button"
@@ -90,14 +94,14 @@ function RegexTriggerEditor({
   onConfirm: () => void;
   onRemove?: () => void;
 }) {
-  const canConfirm = rule.pattern.trim().length > 0 && rule.prompt.trim().length > 0;
+  const canConfirm = (rule.pattern.trim().length > 0 || Boolean(rule.alwaysOn)) && rule.prompt.trim().length > 0;
 
   return (
     <div className="ps-rx-card ps-rx-card--active">
       <div className="ps-rx-card-head">
         <div className="ps-rx-card-preview">
-          <span className="ps-rx-scope">触发</span>
-          <code className="ps-rx-pat">/{rule.pattern || 'pattern'}/{rule.flags || ''}</code>
+          <span className="ps-rx-scope">{rule.alwaysOn ? '常驻' : '触发'}</span>
+          <code className="ps-rx-pat">{rule.alwaysOn ? 'always' : `/${rule.pattern || 'pattern'}/${rule.flags || ''}`}</code>
           <span className="ps-rx-arrow">→</span>
           <span className="ps-rx-rep">{rule.prompt || '补充给模型的上下文'}</span>
         </div>
@@ -131,6 +135,7 @@ function RegexTriggerEditor({
             className="ps-rx-input ps-rx-input--mono"
             value={rule.pattern}
             onChange={(event) => onChange({ pattern: event.target.value })}
+            disabled={Boolean(rule.alwaysOn)}
             placeholder="角色名|地点名|章节关键词"
           />
         </label>
@@ -151,7 +156,39 @@ function RegexTriggerEditor({
             className="ps-rx-input ps-rx-input--mono"
             value={rule.flags ?? ''}
             onChange={(event) => onChange({ flags: event.target.value })}
+            disabled={Boolean(rule.alwaysOn)}
             placeholder="i"
+          />
+        </label>
+
+        <label className="ps-rx-field">
+          <span className="ps-rx-field-label">扫描深度</span>
+          <input
+            className="ps-rx-input ps-rx-input--mono"
+            type="number"
+            min={1}
+            value={rule.scanDepth ?? 4}
+            onChange={(event) => onChange({ scanDepth: Number(event.target.value) || 1 })}
+          />
+        </label>
+
+        <label className="ps-rx-field">
+          <span className="ps-rx-field-label">优先级</span>
+          <input
+            className="ps-rx-input ps-rx-input--mono"
+            type="number"
+            value={rule.priority ?? 0}
+            onChange={(event) => onChange({ priority: Number(event.target.value) || 0 })}
+          />
+        </label>
+
+        <label className="ps-rx-field ps-rx-field--toggle">
+          <span className="ps-rx-field-label">常驻</span>
+          <input
+            className="ps-rx-toggle"
+            type="checkbox"
+            checked={Boolean(rule.alwaysOn)}
+            onChange={(event) => onChange({ alwaysOn: event.target.checked })}
           />
         </label>
       </div>
@@ -180,7 +217,10 @@ export function RegexTriggerRulesField({
       id,
       pattern: rule?.pattern ?? '',
       prompt: rule?.prompt ?? '',
-      flags: rule?.flags ?? 'i'
+      flags: rule?.flags ?? 'i',
+      scanDepth: rule?.scanDepth ?? 4,
+      alwaysOn: rule?.alwaysOn ?? false,
+      priority: rule?.priority ?? 0
     };
   };
 
@@ -211,13 +251,15 @@ export function RegexTriggerRulesField({
   };
 
   const confirmEditingTrigger = () => {
-    if (!editingTrigger || !editingTrigger.pattern.trim() || !editingTrigger.prompt.trim()) return;
+    if (!editingTrigger || (!editingTrigger.pattern.trim() && !editingTrigger.alwaysOn) || !editingTrigger.prompt.trim()) return;
     const existingIndex = regexTriggers.findIndex((rule) => rule.id === editingTrigger.id);
     const normalizedRule = {
       ...editingTrigger,
-      pattern: editingTrigger.pattern.trim(),
+      pattern: editingTrigger.alwaysOn ? '' : editingTrigger.pattern.trim(),
       prompt: editingTrigger.prompt.trim(),
-      flags: editingTrigger.flags?.trim() ?? ''
+      flags: editingTrigger.alwaysOn ? '' : editingTrigger.flags?.trim() ?? '',
+      scanDepth: Math.max(1, Math.floor(Number(editingTrigger.scanDepth) || 4)),
+      priority: Math.trunc(Number(editingTrigger.priority) || 0)
     };
 
     const nextRules =
@@ -292,7 +334,7 @@ export function RegexTriggerRulesField({
   return (
     <div className="ps-field">
       <div className="ps-field-head ps-field-head--meta-right">
-        <span className="ps-field-label">正则触发</span>
+        <span className="ps-field-label">世界书触发</span>
         <span className="ps-field-hint">{regexTriggers.length} 条 · 命中后补充本轮上下文</span>
       </div>
 
@@ -308,7 +350,7 @@ export function RegexTriggerRulesField({
           <Icon name="filePlus" size={14} />
           <span>{importingWorldBook ? '导入中…' : '导入世界书'}</span>
         </button>
-        <span className="memory-doc-import-hint">支持 JSON 或文本；关键词会变成匹配，正文会变成命中后补充。</span>
+        <span className="memory-doc-import-hint">支持 Kelivo/RikkaHub 风格 JSON 或文本；关键词会变成匹配，正文会变成命中后补充。</span>
         <input
           ref={worldBookFileInputRef}
           className="memory-doc-import-input"

@@ -37,7 +37,8 @@ const VOICE_PRESETS: Record<VoiceGenerationProviderType, VoicePreset[]> = {
   ],
   elevenlabs: [
     { value: 'JBFqnCBsd6RMkjVDRZzb', label: 'Default multilingual' }
-  ]
+  ],
+  fishaudio: []
 };
 
 export function MenuVoicePage({
@@ -72,7 +73,8 @@ export function MenuVoicePage({
   const voiceProviderTypeOptions: Array<{ value: VoiceGenerationProviderType; label: string }> = [
     { value: 'openai-compatible', label: t('settings.voice.providerTypeOpenAi') },
     { value: 'minimax', label: t('settings.voice.providerTypeMiniMax') },
-    { value: 'elevenlabs', label: t('settings.voice.providerTypeElevenLabs') }
+    { value: 'elevenlabs', label: t('settings.voice.providerTypeElevenLabs') },
+    { value: 'fishaudio', label: t('settings.voice.providerTypeFishAudio') }
   ];
   const openAiVoiceFormatOptions: Array<{ value: VoiceGenerationFormat; label: string }> = [
     { value: 'mp3', label: 'MP3' },
@@ -89,21 +91,28 @@ export function MenuVoicePage({
     || option.value === 'pcm'
     || option.value === 'wav'
   ));
+  const fishAudioVoiceFormatOptions = elevenLabsVoiceFormatOptions;
   const voiceFormatOptions = voiceProviderType === 'minimax'
     ? miniMaxVoiceFormatOptions
     : voiceProviderType === 'elevenlabs'
       ? elevenLabsVoiceFormatOptions
-      : openAiVoiceFormatOptions;
+      : voiceProviderType === 'fishaudio'
+        ? fishAudioVoiceFormatOptions
+        : openAiVoiceFormatOptions;
   const voiceModelPlaceholder = voiceProviderType === 'minimax'
     ? t('settings.voice.modelPlaceholderMiniMax')
     : voiceProviderType === 'elevenlabs'
       ? t('settings.voice.modelPlaceholderElevenLabs')
-      : t('settings.voice.modelPlaceholder');
+      : voiceProviderType === 'fishaudio'
+        ? t('settings.voice.modelPlaceholderFishAudio')
+        : t('settings.voice.modelPlaceholder');
   const voiceNamePlaceholder = voiceProviderType === 'minimax'
     ? t('settings.voice.namePlaceholderMiniMax')
     : voiceProviderType === 'elevenlabs'
       ? t('settings.voice.namePlaceholderElevenLabs')
-      : t('settings.voice.namePlaceholder');
+      : voiceProviderType === 'fishaudio'
+        ? t('settings.voice.namePlaceholderFishAudio')
+        : t('settings.voice.namePlaceholder');
 
   const stopVoicePreview = () => {
     previewAbortRef.current?.abort();
@@ -135,7 +144,9 @@ export function MenuVoicePage({
         ? '/t2a_v2'
         : providerType === 'elevenlabs'
           ? '/text-to-speech'
-          : '/audio/speech'
+          : providerType === 'fishaudio'
+            ? '/tts'
+            : '/audio/speech'
     };
     if (providerType === 'openai-compatible') {
       if (!voiceGeneration.voice?.trim()) {
@@ -161,6 +172,21 @@ export function MenuVoicePage({
         patch.voice = 'JBFqnCBsd6RMkjVDRZzb';
       }
       if (voiceGeneration.format && !elevenLabsVoiceFormatOptions.some((option) => option.value === voiceGeneration.format)) {
+        patch.format = 'mp3';
+      }
+    }
+    if (providerType === 'fishaudio') {
+      if (!voiceGeneration.model?.trim() || voiceGeneration.model === 'speech-2.8-turbo' || voiceGeneration.model === 'eleven_multilingual_v2') {
+        patch.model = 's2-pro';
+      }
+      if (
+        voiceGeneration.voice === 'alloy'
+        || voiceGeneration.voice === 'Chinese (Mandarin)_Warm_Girl'
+        || voiceGeneration.voice === 'JBFqnCBsd6RMkjVDRZzb'
+      ) {
+        patch.voice = '';
+      }
+      if (voiceGeneration.format && !fishAudioVoiceFormatOptions.some((option) => option.value === voiceGeneration.format)) {
         patch.format = 'mp3';
       }
     }

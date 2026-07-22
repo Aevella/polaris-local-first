@@ -15,7 +15,14 @@ import {
   resolveConversationCollaboratorId,
   resolveConversationCollaboratorName
 } from '../../engines/conversationOwnership';
+import {
+  buildConversationMessageSearchIndex,
+  buildConversationSearchText,
+  normalizeConversationSearchQuery
+} from './conversationMessageSearch';
+import { exportConversationArchive } from './conversationArchiveExport';
 import { createStoredAttachment } from '../../infrastructure/assetStore';
+import { readConversationMessages } from '../../stores/chat';
 import { useChatStore } from '../../stores/chatStore';
 import { useCollectionStore } from '../../stores/collectionStore';
 import { useI18n } from '../../i18n';
@@ -23,13 +30,14 @@ import { usePersonaStore } from '../../stores/personaStore';
 import { selectRuntimeApi, selectVisibleProviders, useRuntimeStore } from '../../stores/runtimeStore';
 import { useSpaceFrontstageBindings } from '../../stores/spaceStoreFrontstageBindings';
 import { useSpaceStore } from '../../stores/spaceStore';
-import type { McpServerConfig, PolarisTriggerRule, PolarisTriggerSchedule } from '../../types/domain';
+import type { ChatMessage, McpServerConfig, PolarisTriggerRule, PolarisTriggerSchedule } from '../../types/domain';
 import { hasArchivedConversationContent } from './conversationArchiveVisibility';
 import { enterCollaboratorCollectionScope } from '../shell/frontstageNavigation';
 
 type CollectionWorldUiPorts = {
   confirm: (message: string) => boolean;
   alert: (message: string) => void;
+  downloadFile: (blob: Blob, fileName: string) => void | Promise<void>;
 };
 
 export function useCollectionWorldController(ui: CollectionWorldUiPorts) {
@@ -78,6 +86,8 @@ export function useCollectionWorldController(ui: CollectionWorldUiPorts) {
   const [codeWorkshopOpen, setCodeWorkshopOpen] = useState(false);
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
   const [conversationTitleDraft, setConversationTitleDraft] = useState('');
+  const [conversationSearchMessagesById, setConversationSearchMessagesById] = useState<Record<string, ChatMessage[]>>({});
+  const [exportingConversationArchive, setExportingConversationArchive] = useState(false);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -87,7 +97,7 @@ export function useCollectionWorldController(ui: CollectionWorldUiPorts) {
     return () => window.clearTimeout(timeoutId);
   }, [searchTerm]);
 
-  const normalizedSearch = debouncedSearchTerm.trim().toLowerCase();
+  const normalizedSearch = normalizeConversationSearchQuery(debouncedSearchTerm);
   const loadedConversationIdSet = useMemo(
     () => new Set(loadedMessageConversationIds),
     [loadedMessageConversationIds]
@@ -155,26 +165,74 @@ export function useCollectionWorldController(ui: CollectionWorldUiPorts) {
     () => filterCodeCardsForCollaboratorScope(cards, conversations, collaboratorScopeId),
     [cards, collaboratorScopeId, conversations]
   );
-  const filteredConversations = useMemo(
-    () =>
-      conversations.filter((conversation) => {
-        if (!hasArchivedConversationContent(conversation, { loadedMessageConversationIds: loadedConversationIdSet })) {
-          return false;
-        }
-        if (!conversationMatchesCollaboratorScope(conversation, collaboratorScopeId, collaboratorIds)) return false;
-        if (!normalizedSearch) return true;
+  const scopedConversationCandidates = useMemo(
+    () => conversations.filter((conversation) => {
+      if (!hasArchivedConversationContent(conversation, { loadedMessageConversationIds: loadedConversationIdSet })) {
+        return false;
+      }
+      return conversationMatchesCollaboratorScope(conversation, collaboratorScopeId, collaboratorIds);
+    }),
+    [collaboratorIds, collaboratorScopeId, conversations, loadedConversationIdSet]
+  );
 
-        const collaboratorName = resolveConversationCollaboratorName(conversation, collaborators);
-        const searchBody = [
-          conversation.title,
-          collaboratorName,
-          ...conversation.messages.map((message) => message.content)
-        ]
-          .join('\n')
-          .toLowerCase();
-        return searchBody.includes(normalizedSearch);
-      }),
-    [collaboratorIds, collaboratorScopeId, collaborators, conversations, loadedConversationIdSet, normalizedSearch]
+  useEffect(() => {
+    if (!ready || collectionShelf !== 'dialogue' || !normalizedSearch) return;
+
+    const missingBodyConversations = scopedConversationCandidates.filter((conversation) => (
+      conversation.messages.length === 0
+      && !loadedConversationIdSet.has(conversation.id)
+      && !Object.prototype.hasOwnProperty.call(conversationSearchMessagesById, conversation.id)
+    ));
+    if (missingBodyConversations.length === 0) return;
+
+    let canceled = false;
+    void Promise.all(missingBodyConversations.map(async (conversation) => {
+      try {
+        const messages = await readConversationMessages(conversation.id);
+        return [conversation.id, messages] as const;
+      } catch {
+        return [conversation.id, [] as ChatMessage[]] as const;
+      }
+    })).then((entries) => {
+      if (canceled) return;
+      setConversationSearchMessagesById((previous) => ({
+        ...previous,
+        ...Object.fromEntries(entries)
+      }));
+    });
+
+    return () => {
+      canceled = true;
+    };
+  }, [
+    collectionShelf,
+    conversationSearchMessagesById,
+    loadedConversationIdSet,
+    normalizedSearch,
+    ready,
+    scopedConversationCandidates
+  ]);
+
+  const conversationSearchCorpus = useMemo(
+    () => scopedConversationCandidates.map((conversation) => {
+      if (conversation.messages.length > 0) return conversation;
+      const searchMessages = conversationSearchMessagesById[conversation.id];
+      return searchMessages ? { ...conversation, messages: searchMessages } : conversation;
+    }),
+    [conversationSearchMessagesById, scopedConversationCandidates]
+  );
+
+  const filteredConversations = useMemo(
+    () => conversationSearchCorpus.filter((conversation) => {
+      if (!normalizedSearch) return true;
+      const collaboratorName = resolveConversationCollaboratorName(conversation, collaborators);
+      return buildConversationSearchText(conversation, collaboratorName).toLowerCase().includes(normalizedSearch);
+    }),
+    [collaborators, conversationSearchCorpus, normalizedSearch]
+  );
+  const conversationMessageSearchIndex = useMemo(
+    () => buildConversationMessageSearchIndex(filteredConversations, normalizedSearch),
+    [filteredConversations, normalizedSearch]
   );
   const codeSearchTagSuggestions = useMemo(() => {
     if (frontstage.collectionShelf !== 'code') return [];
@@ -213,10 +271,12 @@ export function useCollectionWorldController(ui: CollectionWorldUiPorts) {
     activeConversationId,
     conversations,
     filteredConversations,
+    conversationMessageSearchIndex,
     roomProjects,
     codeSearchTagSuggestions,
     editingConversationId,
     conversationTitleDraft,
+    exportingConversationArchive,
     codeWorkshopOpen,
     setCodeWorkshopOpen,
     onConversationTitleDraftChange: setConversationTitleDraft,
@@ -256,6 +316,39 @@ export function useCollectionWorldController(ui: CollectionWorldUiPorts) {
       }
       setActiveConversation(conversationId);
       enterChatWorld(frontstage);
+    },
+    onOpenConversationMessage: (conversationId: string, messageId: string) => {
+      if (conversationId !== activeConversationId) {
+        frontstage.clearPendingAttachments();
+        frontstage.clearPendingCardReference();
+      }
+      setActiveConversation(conversationId);
+      enterChatWorld(frontstage);
+      frontstage.setFocusedMessageTarget({ conversationId, messageId });
+    },
+    onExportConversationArchive: async () => {
+      if (exportingConversationArchive) return;
+      setExportingConversationArchive(true);
+      try {
+        const result = await exportConversationArchive({
+          conversations,
+          collaborators,
+          collaboratorScopeId,
+          knownCollaboratorIds: collaboratorIds,
+          readMessages: readConversationMessages,
+          downloadFile: ui.downloadFile
+        });
+        ui.alert(copy.t('collection.dialogue.exportDone', {
+          conversations: copy.formatNumber(result.conversationCount),
+          messages: copy.formatNumber(result.messageCount)
+        }));
+      } catch (error) {
+        ui.alert(error instanceof Error && error.message
+          ? error.message
+          : copy.t('collection.dialogue.exportFailed'));
+      } finally {
+        setExportingConversationArchive(false);
+      }
     },
     onOpenGroupWorld: () => {
       enterGroupWorld(frontstage);

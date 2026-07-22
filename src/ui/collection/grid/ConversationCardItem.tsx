@@ -30,7 +30,8 @@ export const ConversationCardItem = memo(function ConversationCardItem({
     onCancelConversationRename,
     onConversationPinToggle,
     onConversationDelete,
-    onOpenConversation
+    onOpenConversation,
+    onOpenConversationMessage
   } = useConversationCardContext();
   const collaboratorName = conversation.collaboratorId
     ? collaboratorNameById[conversation.collaboratorId] ?? '?'
@@ -60,6 +61,29 @@ export const ConversationCardItem = memo(function ConversationCardItem({
     }
     swipeDelete.close();
     runSelectionAction(() => onOpenConversation(conversation.id), element ? { element } : undefined);
+  };
+  const handleOpenMessageMatch = (messageId: string, element?: HTMLElement | null) => {
+    if (swipeDelete.open) {
+      swipeDelete.close();
+      return;
+    }
+    swipeDelete.close();
+    runSelectionAction(() => {
+      if (onOpenConversationMessage) {
+        onOpenConversationMessage(conversation.id, messageId);
+        return;
+      }
+      onOpenConversation(conversation.id);
+    }, element ? { element } : undefined);
+  };
+
+  const searchMatches = cardsExpanded ? conversation.searchMatches : null;
+  const visibleSearchMatches = searchMatches?.matches ?? [];
+  const hiddenSearchMatchCount = Math.max(0, (searchMatches?.total ?? 0) - visibleSearchMatches.length);
+  const searchRoleLabel = (role: (typeof visibleSearchMatches)[number]['role']) => {
+    if (role === 'user') return t('collection.dialogue.searchRole.user');
+    if (role === 'assistant') return collaboratorName;
+    return t('collection.dialogue.searchRole.system');
   };
 
   const detailExpanded = isEditing || cardsExpanded;
@@ -196,6 +220,35 @@ export const ConversationCardItem = memo(function ConversationCardItem({
               </div>
               <div className={`conversation-card-detail ${detailExpanded ? 'expanded' : 'collapsed'}`}>
                 <p className="conversation-excerpt">{conversation.latestExcerpt}</p>
+                {visibleSearchMatches.length > 0 ? (
+                  <div className="conversation-message-search-matches" data-swipe-delete-ignore="true">
+                    <div className="conversation-message-search-meta">
+                      {t('collection.dialogue.searchMatchCount', {
+                        count: formatNumber(searchMatches?.total ?? visibleSearchMatches.length)
+                      })}
+                    </div>
+                    {visibleSearchMatches.map((match) => (
+                      <button
+                        key={match.messageId}
+                        type="button"
+                        className="conversation-message-search-match"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleOpenMessageMatch(match.messageId, event.currentTarget);
+                        }}
+                        aria-label={t('collection.dialogue.searchOpenMessageAria', { title: conversationTitle })}
+                      >
+                        <span className="conversation-message-search-role">{searchRoleLabel(match.role)}</span>
+                        <span className="conversation-message-search-excerpt">{match.excerpt}</span>
+                      </button>
+                    ))}
+                    {hiddenSearchMatchCount > 0 ? (
+                      <span className="conversation-message-search-more">
+                        {t('collection.dialogue.searchHiddenCount', { count: formatNumber(hiddenSearchMatchCount) })}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </div>
             <div className="conversation-stats">

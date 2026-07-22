@@ -140,6 +140,84 @@ function buildMcpToolFollowupSystemMessage(): ChatMessage {
   );
 }
 
+function collectRecentWebToolFacts(args: {
+  outcomes: ToolActionRunOutcome[];
+}) {
+  const searchQueries: string[] = [];
+  const readUrls: string[] = [];
+  let hasDegradedSearch = false;
+  let hasPageRead = false;
+
+  args.outcomes.forEach((outcome) => {
+    if (outcome.path !== 'direct' || outcome.status !== 'executed') return;
+    const invocation = outcome.toolInvocation;
+
+    if (invocation.kind === 'webSearch') {
+      const query = invocation.webSearch?.query
+        ?? (outcome.action.kind === 'webSearch' ? outcome.action.query : null);
+      if (query && !searchQueries.includes(query)) searchQueries.push(query);
+      if (
+        invocation.webSearch?.degraded
+        || invocation.summary.includes('降级')
+        || invocation.detailText?.includes('降级搜索结果')
+      ) {
+        hasDegradedSearch = true;
+      }
+      return;
+    }
+
+    if (invocation.kind === 'readWebPage') {
+      hasPageRead = true;
+      const url = invocation.webPageRead?.url
+        ?? (outcome.action.kind === 'readWebPage' ? outcome.action.url : null);
+      if (url && !readUrls.includes(url)) readUrls.push(url);
+    }
+  });
+
+  return {
+    hasDegradedSearch,
+    hasPageRead,
+    searchQueries: searchQueries.slice(-2),
+    readUrls: readUrls.slice(-2)
+  };
+}
+
+function summarizeWebFacts(label: string, values: string[]) {
+  if (values.length === 0) return null;
+  return `${label}：${values.join('、')}。`;
+}
+
+function buildWebToolFollowupSystemMessage(args: {
+  outcomes: ToolActionRunOutcome[];
+}): ChatMessage {
+  const facts = collectRecentWebToolFacts({ outcomes: args.outcomes });
+
+  if (facts.hasPageRead) {
+    return createMessage(
+      'system',
+      [
+        '上一轮网页正文已经读取完了。',
+        summarizeWebFacts('刚读过', facts.readUrls),
+        '现在基于刚读到的网页文本回答用户上一句，不要停在“已读取网页”。',
+        '只有当前网页正文确实不足、而且已有结果里还有不同的可靠 URL 时，才继续用 readWebPage 读取另一页。',
+        '不要因为正文不完美就回到同一个查询再次 webSearch；如果来源不足以支撑结论，直接说明限制。'
+      ].filter(Boolean).join(' ')
+    );
+  }
+
+  return createMessage(
+    'system',
+    [
+      '上一轮联网搜索已经执行完了。',
+      summarizeWebFacts('刚搜过', facts.searchQueries),
+      facts.hasDegradedSearch ? '刚才是降级搜索结果；降级不是重试同一搜索的信号。' : null,
+      '搜索结果只是候选列表：如果用户只要链接或候选，就直接基于候选回答；如果用户要事实、时效、产品、地点、新闻、规则或内容判断，下一步用 readWebPage 读取刚返回的相关 URL。',
+      '不要对同一个问题或同一组关键词再次 webSearch 来等待更好的结果。',
+      '如果已有候选来源不足、不可读或不可靠，直接告诉用户当前限制；只有目标明显变了，才换一个新的搜索查询。'
+    ].filter(Boolean).join(' ')
+  );
+}
+
 function buildFailedToolFollowupSystemMessage(args: {
   domain: DirectFollowupDomain | null;
   outcomes: ToolActionRunOutcome[];
@@ -388,6 +466,7 @@ function pickFollowupDomain(domains: DirectFollowupDomain[]): DirectFollowupDoma
     'room-card',
     'reference-doc',
     'mcp',
+    'web',
     'tool-result'
   ];
   return priority.find((domain) => domains.includes(domain)) ?? null;
@@ -417,6 +496,8 @@ function buildDomainFollowupSystemMessage(args: {
       return buildReferenceDocFollowupSystemMessage();
     case 'mcp':
       return buildMcpToolFollowupSystemMessage();
+    case 'web':
+      return buildWebToolFollowupSystemMessage({ outcomes: args.outcomes });
     case 'tool-result':
     case null:
       return buildToolFollowupSystemMessage();

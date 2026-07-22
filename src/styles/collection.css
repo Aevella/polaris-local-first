@@ -351,6 +351,13 @@
   color: var(--collection-section-heading-color, var(--text));
   line-height: 1.35;
 }
+.collection-shelf-lead-trailing {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .collection-shelf-lead-meta-cluster {
   flex: 0 0 auto;
   display: inline-flex;

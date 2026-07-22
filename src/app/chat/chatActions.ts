@@ -102,6 +102,7 @@ export function createChatActionHandlers({
           clearPendingAttachments: store.space.clearPendingAttachments,
           clearPendingCardReference: store.space.clearPendingCardReference,
           setCommandStatus: ui.setCommandStatus,
+          persistToDb: store.chat.persistToDb,
           onUserMessageSubmitted: ui.triggerSubmitFlight
         }, activeCompanionConnection);
         return;

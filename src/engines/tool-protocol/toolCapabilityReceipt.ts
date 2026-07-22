@@ -45,7 +45,7 @@ export const TOOL_GROUP_ORDER: PolarisRegistryToolGroup[] = [
 
 export const TOOL_GROUP_LABELS: Record<PolarisRegistryToolGroup, string> = {
   environment: '环境目录',
-  card: '房间卡',
+  card: '卡片',
   'cross-boundary': '跨界',
   project: '工作区文件',
   desktop: '本机环境',
@@ -86,10 +86,14 @@ function resolveScene(args: {
   return 'utility';
 }
 
+function isRoomContentTool(tool: PolarisToolDefinition) {
+  return tool.group === 'card' && tool.name !== 'runCode';
+}
+
 export function resolveToolCapabilityReceipt(context?: ToolResolutionSource): ToolCapabilityReceipt {
   const availableTools = resolveAvailablePolarisTools(context);
   const nativeTools = availableTools.filter(isPolarisToolExposedAsNative);
-  const hasRoomContentTools = nativeTools.some((tool) => tool.group === 'card');
+  const hasRoomContentTools = nativeTools.some(isRoomContentTool);
   const hasWorkspaceFileTools = nativeTools.some((tool) => tool.group === 'project');
   const hasCrossBoundaryTools = nativeTools.some((tool) => tool.group === 'cross-boundary');
   const hasThemeTools = nativeTools.some((tool) => tool.group === 'theme-stable' || tool.group === 'theme-creative');

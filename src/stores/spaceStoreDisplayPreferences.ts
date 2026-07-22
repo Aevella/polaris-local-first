@@ -1,7 +1,7 @@
 import type { AppAppearancePreference, AppDisplayPreferences } from '../types/domain';
 
 export const FONT_SCALE_MIN = 0.9;
-export const FONT_SCALE_MAX = 1.18;
+export const FONT_SCALE_MAX = 1.5;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));

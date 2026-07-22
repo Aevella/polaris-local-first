@@ -51,7 +51,6 @@ Do not loosen CORS to `*` on routes that forward credentials or receive diagnost
 The current repository references some backend capabilities that are not fully implemented as public handlers yet:
 
 - `/api/provider-models`
-- `/api/provider-audio`
 - `/api/material-shares`
 - `/shared-materials/...`
 

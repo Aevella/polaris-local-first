@@ -68,13 +68,21 @@ export function PromptSettingsTab({
       ) : null}
 
       {activePromptPage === 'message' ? (
-        <PromptCoreSettingsPage
-          activeCollaboratorId={activeCollaboratorId}
-          activePersona={activePersona}
-          onUpdatePersona={onUpdatePersona}
-          page="message"
-          expandedUsesPageScroll={expandedUsesPageScroll}
-        />
+        <>
+          <PromptCoreSettingsPage
+            activeCollaboratorId={activeCollaboratorId}
+            activePersona={activePersona}
+            onUpdatePersona={onUpdatePersona}
+            page="message"
+            expandedUsesPageScroll={expandedUsesPageScroll}
+          />
+          <SnippetsSettingsTab
+            activeCollaboratorId={activeCollaboratorId}
+            activePersona={activePersona}
+            onUpdatePersona={onUpdatePersona}
+            visibleSections="textRules"
+          />
+        </>
       ) : null}
 
       {activePromptPage === 'tone' ? (
@@ -91,7 +99,7 @@ export function PromptSettingsTab({
           activeCollaboratorId={activeCollaboratorId}
           activePersona={activePersona}
           onUpdatePersona={onUpdatePersona}
-          visibleSections="rules"
+          visibleSections="worldBook"
         />
       ) : null}
     </div>

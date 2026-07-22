@@ -12,6 +12,7 @@ import type {
 } from '../types/domain';
 import { normalizeRuntimePayload } from './runtimeStorePersistence';
 import { normalizeMcpServer } from './runtimeStoreMcp';
+import type { RegexTriggerRule } from '../engines/regexTriggerProcessor';
 import { serializeChatStateEntries } from './chatCurrentPersistence';
 import type { PersistedCollectionState } from './collectionStorePersistence';
 import type { PersistedSpaceState } from './spaceStorePersistence';
@@ -43,6 +44,8 @@ type KelivoConversation = Record<string, unknown>;
 type KelivoMessage = Record<string, unknown>;
 type KelivoMcpServer = Record<string, unknown>;
 type KelivoInstructionInjection = Record<string, unknown>;
+type KelivoWorldBook = Record<string, unknown>;
+type KelivoWorldBookEntry = Record<string, unknown>;
 
 export type KelivoImportConversion = {
   kvEntries: PersistedKvEntry[];
@@ -146,6 +149,18 @@ function readBoolean(value: unknown, fallback = false): boolean {
     if (normalized === 'false') return false;
   }
   return fallback;
+}
+
+function readStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => readStringList(item));
+  }
+  const text = readString(value);
+  if (!text) return [];
+  return text
+    .split(/[\n,，]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function parseTimestamp(value: unknown, fallback: number): number {
@@ -486,6 +501,73 @@ function buildPersonaSnippets(
   return snippets;
 }
 
+function escapeRegexLiteral(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function readActiveWorldBookIdsForAssistant(
+  activeWorldBookMap: unknown,
+  assistantId: string
+) {
+  if (!isRecord(activeWorldBookMap)) return [];
+  const own = Array.isArray(activeWorldBookMap[assistantId])
+    ? activeWorldBookMap[assistantId]
+    : undefined;
+  const fallback = Array.isArray(activeWorldBookMap.__global__)
+    ? activeWorldBookMap.__global__
+    : undefined;
+  return (own ?? fallback ?? [])
+    .map((entry) => readString(entry))
+    .filter(Boolean);
+}
+
+function convertKelivoWorldBookEntryToTrigger(entry: KelivoWorldBookEntry): RegexTriggerRule | null {
+  if (!readBoolean(entry.enabled, true)) return null;
+  const prompt = readString(entry.content);
+  if (!prompt) return null;
+
+  const keywords = Array.from(new Set(readStringList(entry.keywords)));
+  const alwaysOn = readBoolean(entry.constantActive);
+  if (!keywords.length && !alwaysOn) return null;
+
+  const useRegex = readBoolean(entry.useRegex);
+  const caseSensitive = readBoolean(entry.caseSensitive);
+  const scanDepth = readNumber(entry.scanDepth);
+  const priority = readNumber(entry.priority);
+
+  return {
+    pattern: useRegex ? keywords.join('|') : keywords.map(escapeRegexLiteral).join('|'),
+    prompt,
+    flags: caseSensitive ? '' : 'i',
+    ...(scanDepth !== null && scanDepth > 0 ? { scanDepth: Math.floor(scanDepth) } : {}),
+    ...(alwaysOn ? { alwaysOn: true } : {}),
+    ...(priority !== null ? { priority: Math.trunc(priority) } : {})
+  };
+}
+
+function buildPersonaWorldBookTriggers(
+  assistantId: string,
+  worldBooks: KelivoWorldBook[],
+  activeWorldBookMap: unknown
+) {
+  const activeIds = readActiveWorldBookIdsForAssistant(activeWorldBookMap, assistantId);
+  if (!activeIds.length) return '';
+
+  const activeIdSet = new Set(activeIds);
+  const triggers: RegexTriggerRule[] = [];
+  for (const book of worldBooks) {
+    const bookId = readString(book.id);
+    if (!bookId || !activeIdSet.has(bookId) || !readBoolean(book.enabled, true)) continue;
+    const rawEntries = Array.isArray(book.entries) ? book.entries.filter(isRecord) as KelivoWorldBookEntry[] : [];
+    for (const entry of rawEntries) {
+      const trigger = convertKelivoWorldBookEntryToTrigger(entry);
+      if (trigger) triggers.push(trigger);
+    }
+  }
+
+  return triggers.length ? JSON.stringify(triggers, null, 2) : '';
+}
+
 function buildPersonas(
   settings: KelivoSettings,
   registry: AssetRegistry,
@@ -507,6 +589,9 @@ function buildPersonas(
   const injections = Array.isArray(rawInjections) ? rawInjections.filter(isRecord) as KelivoInstructionInjection[] : [];
   const injectionsById = new Map(injections.map((injection) => [readString(injection.id), injection]).filter((entry): entry is [string, KelivoInstructionInjection] => Boolean(entry[0])));
   const activeInjectionMap = readSetting(settings, 'instruction_injections_active_ids_by_assistant_v1');
+  const rawWorldBooks = readSetting(settings, 'world_books_v1');
+  const worldBooks = Array.isArray(rawWorldBooks) ? rawWorldBooks.filter(isRecord) as KelivoWorldBook[] : [];
+  const activeWorldBookMap = readSetting(settings, 'world_books_active_ids_by_assistant_v1');
   const userName = readString(readSetting(settings, 'user_name'));
   const userAvatarPath = resolveZipAssetPath(registry, readSetting(settings, 'avatar_value'));
   const userAvatarAssetId = userAvatarPath ? registry.byPath.get(userAvatarPath)?.id ?? null : null;
@@ -562,6 +647,7 @@ function buildPersonas(
         customHeaders: safeJson(assistant.customHeaders),
         customBody: safeJson(assistant.customBody),
         regexRules: safeJson(assistant.regexRules),
+        regexTriggers: buildPersonaWorldBookTriggers(id, worldBooks, activeWorldBookMap),
         snippets: buildPersonaSnippets(assistant, activeInjections, injectionsById)
       },
       version: 1

@@ -309,6 +309,7 @@ export function buildDirectToolExecutionContext({
   activeProjectId
 }: DirectToolExecutionContextArgs): ToolContext {
   const getLatestCollectionState = () => collection.readLatestState();
+  const getLatestRuntimeSearchConfig = () => runtime.readLatestState?.().search ?? runtime.search;
   const getConversationMessages = () => chat.getConversationMessages(conversationId);
   const writeOwnerCollaboratorId = ownerCollaboratorId ?? undefined;
   const listOwnerTriggerRules = () => {
@@ -600,7 +601,7 @@ export function buildDirectToolExecutionContext({
       };
     },
     inspectAttachments: (scope, query) => inspectConversationAttachments(getConversationMessages(), scope, query),
-    webSearch: (query, maxResults) => runWebSearch(query, maxResults, runtime.search),
+    webSearch: (query, maxResults) => runWebSearch(query, maxResults, getLatestRuntimeSearchConfig()),
     readWebPage: (url, maxChars) => readWebPageContent(url, maxChars),
     listCalendars: () => listNativeCalendars(),
     readCalendarEvents: (query) => readNativeCalendarEvents(query),

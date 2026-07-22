@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { HelpHint } from '../../HelpHint';
 import { useI18n } from '../../../i18n';
 
@@ -6,13 +7,15 @@ type CollectionShelfLeadProps = {
   meta?: string;
   className?: string;
   helpText?: string;
+  action?: ReactNode;
 };
 
 export function CollectionShelfLead({
   title,
   meta,
   className,
-  helpText
+  helpText,
+  action
 }: CollectionShelfLeadProps) {
   const { t } = useI18n();
   const helpLabel = title ?? meta ?? t('collection.nav.info');
@@ -21,7 +24,7 @@ export function CollectionShelfLead({
     <div
       className={[
         'collection-shelf-lead',
-        'collection-shelf-lead--without-action',
+        action ? 'collection-shelf-lead--with-action' : 'collection-shelf-lead--without-action',
         className
       ].filter(Boolean).join(' ')}
     >
@@ -41,17 +44,22 @@ export function CollectionShelfLead({
           </div>
         ) : null}
       </div>
-      {meta ? (
-        <span className="collection-shelf-lead-meta-cluster">
-          <span className="collection-shelf-lead-meta">{meta}</span>
-          {!title && helpText ? (
-            <HelpHint
-              className="help-hint--shelf-meta"
-              label={helpLabel}
-              text={helpText}
-            />
+      {meta || action ? (
+        <div className="collection-shelf-lead-trailing">
+          {meta ? (
+            <span className="collection-shelf-lead-meta-cluster">
+              <span className="collection-shelf-lead-meta">{meta}</span>
+              {!title && helpText ? (
+                <HelpHint
+                  className="help-hint--shelf-meta"
+                  label={helpLabel}
+                  text={helpText}
+                />
+              ) : null}
+            </span>
           ) : null}
-        </span>
+          {action}
+        </div>
       ) : null}
     </div>
   );

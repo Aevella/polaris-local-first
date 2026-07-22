@@ -127,6 +127,18 @@ function buildPromptPartSystemSegment(part: Pick<AssistantPromptPart, 'name' | '
   };
 }
 
+function buildLatestUserContextMessage(part: Pick<AssistantPromptPart, 'name' | 'layer' | 'content'>): AssistantContextMessage {
+  return {
+    role: 'user',
+    content: [
+      '[本轮请求上下文，不是用户原话]',
+      part.content
+    ].join('\n'),
+    promptPartName: part.name,
+    promptPartLayer: part.layer
+  };
+}
+
 function buildToolLedgerLookups(
   toolLedger: ToolLedgerEntry[] | undefined,
   availableMessageIds?: ReadonlySet<string>
@@ -282,7 +294,13 @@ export function assembleAssistantContext(params: AssembleAssistantContextParams)
         };
       });
   const dynamicPromptParts = systemPromptParts?.filter((part) => part.layer === 'context') ?? [];
-  const dynamicSystemSegments = dynamicPromptParts.map(buildPromptPartSystemSegment);
+  const latestUserContextParts = latestUserMessageId
+    ? dynamicPromptParts.filter((part) => part.name === 'runtime_clock_context')
+    : [];
+  const latestUserContextMessages = latestUserContextParts.map(buildLatestUserContextMessage);
+  const dynamicSystemSegments = dynamicPromptParts
+    .filter((part) => part.name !== 'runtime_clock_context' || !latestUserMessageId)
+    .map(buildPromptPartSystemSegment);
 
   return {
     memorySlots: {
@@ -346,7 +364,9 @@ export function assembleAssistantContext(params: AssembleAssistantContextParams)
               : undefined,
             toolCalls: message.role === 'assistant' ? resolvedToolCalls : undefined
           };
-          return [contextMessage];
+          return message.id === latestUserMessageId && latestUserContextMessages.length
+            ? [...latestUserContextMessages, contextMessage]
+            : [contextMessage];
         })
       }
     ],

@@ -55,4 +55,4 @@ Server and selfhost code provide optional deployer-owned API and relay capabilit
 
 ## Known Cleanup Still Owed
 
-- `/api/provider-models`, `/api/provider-audio`, `/api/material-shares`, and `/shared-materials/...` still need public handler completion before those surfaces are advertised as ready.
+- `/api/provider-models`, `/api/material-shares`, and `/shared-materials/...` still need public handler completion before those surfaces are advertised as ready.

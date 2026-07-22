@@ -27,7 +27,20 @@ describe('extractAssistantNativeToolActions', () => {
   it('resolves native MCP schema names through the current MCP catalog', () => {
     const result = extractAssistantNativeToolActions([{
       name: 'mcp__github__github_read_file',
-      argumentsText: '{"owner":"octocat","repo":"Hello-World","path":"README"}'
+      argumentsText: JSON.stringify({
+        owner: 'octocat',
+        repo: 'Hello-World',
+        path: 'README',
+        type: 'root-type',
+        name: 'root-name',
+        kind: 'root-kind',
+        targetLabel: 'schema-owned-target-label',
+        action: {
+          type: 'describe',
+          name: 'round-action',
+          payload: { type: 'nested-type' }
+        }
+      })
     }], '', 'stable', [], {
       mcpTools: [{
         serverId: 'server-github',
@@ -52,7 +65,16 @@ describe('extractAssistantNativeToolActions', () => {
       argumentsObject: {
         owner: 'octocat',
         repo: 'Hello-World',
-        path: 'README'
+        path: 'README',
+        type: 'root-type',
+        name: 'root-name',
+        kind: 'root-kind',
+        targetLabel: 'schema-owned-target-label',
+        action: {
+          type: 'describe',
+          name: 'round-action',
+          payload: { type: 'nested-type' }
+        }
       },
       targetLabel: 'GitHub / github_read_file'
     }]);

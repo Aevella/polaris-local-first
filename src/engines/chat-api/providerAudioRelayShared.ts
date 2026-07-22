@@ -15,6 +15,10 @@ function isMiniMaxVoiceManagementPath(pathname: string) {
     || normalizedPath.endsWith('/voice_design');
 }
 
+function isFishAudioTextToSpeechPath(pathname: string) {
+  return normalizeAudioPath(pathname).endsWith('/tts');
+}
+
 export function isProviderAudioRelayTarget(endpoint: string) {
   let parsed: URL;
   try {
@@ -29,7 +33,8 @@ export function isProviderAudioRelayTarget(endpoint: string) {
   return normalizedPath.endsWith('/audio/speech')
     || normalizedPath.endsWith('/t2a_v2')
     || isMiniMaxVoiceManagementPath(parsed.pathname)
-    || isElevenLabsTextToSpeechPath(parsed.pathname);
+    || isElevenLabsTextToSpeechPath(parsed.pathname)
+    || isFishAudioTextToSpeechPath(parsed.pathname);
 }
 
 export const isProviderAudioSpeechRelayTarget = isProviderAudioRelayTarget;
@@ -101,12 +106,25 @@ export function isElevenLabsAudioRequestBody(value: unknown): value is Record<st
   return true;
 }
 
+export function isFishAudioRequestBody(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const allowedKeys = new Set(['text', 'reference_id', 'format', 'normalize']);
+  if (Object.keys(record).some((key) => !allowedKeys.has(key))) return false;
+  if (typeof record.text !== 'string' || !record.text.trim()) return false;
+  if (record.reference_id !== undefined && (typeof record.reference_id !== 'string' || !record.reference_id.trim())) return false;
+  if (record.format !== undefined && !['mp3', 'opus', 'wav', 'pcm'].includes(String(record.format))) return false;
+  if (record.normalize !== undefined && typeof record.normalize !== 'boolean') return false;
+  return true;
+}
+
 export function isProviderAudioRelayRequestBody(value: unknown): value is Record<string, unknown> {
   return isOpenAiAudioSpeechRequestBody(value)
     || isMiniMaxAudioRequestBody(value)
     || isMiniMaxVoiceListRequestBody(value)
     || isMiniMaxVoiceDesignRequestBody(value)
-    || isElevenLabsAudioRequestBody(value);
+    || isElevenLabsAudioRequestBody(value)
+    || isFishAudioRequestBody(value);
 }
 
 export const isProviderAudioSpeechRequestBody = isProviderAudioRelayRequestBody;

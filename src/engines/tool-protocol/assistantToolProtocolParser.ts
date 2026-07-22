@@ -2,6 +2,7 @@ import type { AssistantToolAction } from './assistantToolProtocolTypes';
 import type { AssistantNativeToolCall } from '../chat-api/chatApiTypes';
 import type { ModelTier, ThemeToolMode } from '../../types/domain';
 import { parseAssistantToolAction } from './assistantToolProtocolActionParser';
+import { parseNativeMcpToolAction } from './assistantToolProtocolActionMcp';
 import { extractCanonicalAssistantToolItems } from './assistantToolProtocolCanonicalizer';
 import { extractAssistantToolFenceBlocks } from './assistantToolProtocolFence';
 import { parseToolPayload } from './assistantToolProtocolPayload';
@@ -237,12 +238,13 @@ export function extractAssistantNativeToolActions(
 
     try {
       const parsedPayload = parseNativeToolPayload(normalizedName, toolCall.argumentsText);
-      const result = parseAssistantToolAction(
-        mergeNativeToolPayload(normalizedName, parsedPayload),
-        contentHint,
-        themeToolMode,
-        parseContext
-      );
+      const result = parseNativeMcpToolAction(normalizedName, parsedPayload, parseContext)
+        ?? parseAssistantToolAction(
+          mergeNativeToolPayload(normalizedName, parsedPayload),
+          contentHint,
+          themeToolMode,
+          parseContext
+        );
       if (result.action) {
         actions.push(result.action);
       } else if (

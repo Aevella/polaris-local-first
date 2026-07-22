@@ -3,7 +3,7 @@ import type { ProviderHttpRequest } from './providerRuntimeTypes';
 export type OpenAiToolHistoryMode = 'native' | 'transcript';
 
 const OPENAI_TOOL_HISTORY_SEQUENCE_ERROR_PATTERN =
-  /Messages with role ['"]tool['"] must be a response to a preceding message with ['"]tool_calls['"]/i;
+  /Messages with role ['"]tool['"] must be a response to a preceding message with ['"]tool_calls['"]|assistant message with ['"]?tool_?calls['"]? must be followed by tool messages responding to each ['"]?tool_?call_?id['"]?/i;
 const OPENAI_TOOL_HISTORY_ARGUMENTS_ERROR_PATTERN =
   /unexpected end of data|unexpected end of json input|unterminated string/i;
 const OPENAI_TOOL_HISTORY_GENERIC_FORMAT_ERROR_PATTERN =
@@ -53,6 +53,80 @@ function requestContainsMalformedNativeToolArguments(request: ProviderHttpReques
   });
 }
 
+function readMessageRole(message: unknown) {
+  return message && typeof message === 'object'
+    ? (message as { role?: unknown }).role
+    : undefined;
+}
+
+function readToolCalls(message: unknown) {
+  if (!message || typeof message !== 'object') return [];
+  const toolCalls = (message as { tool_calls?: unknown }).tool_calls;
+  return Array.isArray(toolCalls) ? toolCalls : [];
+}
+
+function readToolCallId(toolCall: unknown) {
+  return toolCall && typeof toolCall === 'object'
+    ? (toolCall as { id?: unknown }).id
+    : undefined;
+}
+
+function readToolResultCallId(message: unknown) {
+  return message && typeof message === 'object'
+    ? (message as { tool_call_id?: unknown }).tool_call_id
+    : undefined;
+}
+
+function requestContainsInvalidNativeToolSequence(request: ProviderHttpRequest) {
+  const messages = getRequestMessages(request);
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    const role = readMessageRole(message);
+
+    if (role === 'tool') {
+      return true;
+    }
+
+    const toolCalls = readToolCalls(message);
+    if (toolCalls.length === 0) {
+      continue;
+    }
+
+    const requiredToolCallIds = new Set<string>();
+    for (const toolCall of toolCalls) {
+      const toolCallId = readToolCallId(toolCall);
+      if (typeof toolCallId !== 'string' || !toolCallId.trim()) {
+        return true;
+      }
+      if (requiredToolCallIds.has(toolCallId)) {
+        return true;
+      }
+      requiredToolCallIds.add(toolCallId);
+    }
+
+    let nextIndex = index + 1;
+    while (requiredToolCallIds.size > 0) {
+      const nextMessage = messages[nextIndex];
+      if (readMessageRole(nextMessage) !== 'tool') {
+        return true;
+      }
+
+      const toolCallId = readToolResultCallId(nextMessage);
+      if (typeof toolCallId !== 'string' || !requiredToolCallIds.has(toolCallId)) {
+        return true;
+      }
+
+      requiredToolCallIds.delete(toolCallId);
+      nextIndex += 1;
+    }
+
+    index = nextIndex - 1;
+  }
+
+  return false;
+}
+
 export function shouldUseTranscriptToolHistoryForRequest(
   request: ProviderHttpRequest,
   currentMode: OpenAiToolHistoryMode
@@ -60,7 +134,7 @@ export function shouldUseTranscriptToolHistoryForRequest(
   if (currentMode !== 'native') return false;
   if (request.provider !== 'openai-completions') return false;
   if (!requestContainsNativeToolHistory(request)) return false;
-  return requestContainsMalformedNativeToolArguments(request);
+  return requestContainsMalformedNativeToolArguments(request) || requestContainsInvalidNativeToolSequence(request);
 }
 
 export function shouldRetryWithTranscriptToolHistory(

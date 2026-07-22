@@ -3,6 +3,7 @@ import type { AppLanguage } from '../../i18n';
 import { createTranslator } from '../../i18n';
 import { displayConversationTitle } from '../../stores/chatStoreTitles';
 import type { Conversation } from '../../types/domain';
+import type { ConversationMessageSearchResult } from './conversationMessageSearch';
 
 export type ConversationCardSummary = {
   id: string;
@@ -15,6 +16,7 @@ export type ConversationCardSummary = {
   updatedAt: number;
   pinnedAt: number | null;
   latestExcerpt: string;
+  searchMatches: ConversationMessageSearchResult | null;
 };
 
 function resolveLatestConversationExcerpt(conversation: Conversation, language: AppLanguage) {
@@ -43,6 +45,7 @@ export function buildConversationCardSummary(
     messageCount: conversation.messages.length,
     updatedAt: conversation.updatedAt,
     pinnedAt: conversation.pinnedAt ?? null,
-    latestExcerpt: resolveLatestConversationExcerpt(conversation, options.language ?? 'zh-CN')
+    latestExcerpt: resolveLatestConversationExcerpt(conversation, options.language ?? 'zh-CN'),
+    searchMatches: null
   };
 }

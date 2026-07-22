@@ -4,6 +4,9 @@ export interface RegexTriggerRule {
   pattern: string;
   prompt: string;
   flags?: string;
+  scanDepth?: number;
+  alwaysOn?: boolean;
+  priority?: number;
 }
 
 export interface RegexTriggerWorldBookImportResult {
@@ -15,18 +18,25 @@ function normalizeTriggerRule(raw: unknown): RegexTriggerRule | null {
   if (!raw || typeof raw !== 'object') return null;
 
   const candidate = raw as Partial<RegexTriggerRule>;
-  if (typeof candidate.pattern !== 'string' || typeof candidate.prompt !== 'string') {
+  if (typeof candidate.prompt !== 'string') {
     return null;
   }
 
-  const pattern = candidate.pattern.trim();
+  const pattern = typeof candidate.pattern === 'string' ? candidate.pattern.trim() : '';
   const prompt = candidate.prompt.trim();
-  if (!pattern || !prompt) return null;
+  const alwaysOn = candidate.alwaysOn === true;
+  if ((!pattern && !alwaysOn) || !prompt) return null;
+
+  const scanDepth = Number(candidate.scanDepth);
+  const priority = Number(candidate.priority);
 
   return {
     pattern,
     prompt,
-    flags: typeof candidate.flags === 'string' ? candidate.flags.trim() : ''
+    flags: typeof candidate.flags === 'string' ? candidate.flags.trim() : '',
+    ...(Number.isFinite(scanDepth) && scanDepth > 0 ? { scanDepth: Math.floor(scanDepth) } : {}),
+    ...(alwaysOn ? { alwaysOn: true } : {}),
+    ...(Number.isFinite(priority) ? { priority: Math.trunc(priority) } : {})
   };
 }
 
@@ -104,6 +114,24 @@ function readWorldBookPrompt(entry: Record<string, unknown>) {
   return text?.trim() ?? '';
 }
 
+function readWorldBookBoolean(value: unknown, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  return fallback;
+}
+
+function readWorldBookNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
 function normalizeWorldBookEntry(raw: unknown): RegexTriggerRule | null {
   if (!raw || typeof raw !== 'object') return null;
   const entry = raw as Record<string, unknown>;
@@ -114,12 +142,23 @@ function normalizeWorldBookEntry(raw: unknown): RegexTriggerRule | null {
 
   const keys = Array.from(new Set(readWorldBookKeys(entry)));
   const prompt = readWorldBookPrompt(entry);
-  if (!keys.length || !prompt) return null;
+  const alwaysOn = readWorldBookBoolean(entry.constantActive) || readWorldBookBoolean(entry.alwaysOn);
+  if ((!keys.length && !alwaysOn) || !prompt) return null;
+
+  const useRegex = readWorldBookBoolean(entry.useRegex);
+  const caseSensitive = readWorldBookBoolean(entry.caseSensitive);
+  const scanDepth = readWorldBookNumber(entry.scanDepth);
+  const priority = readWorldBookNumber(entry.priority);
+  const normalizedScanDepth = scanDepth !== null && scanDepth > 0 ? Math.floor(scanDepth) : null;
+  const normalizedPriority = priority !== null ? Math.trunc(priority) : null;
 
   return {
-    pattern: keys.map(escapeRegexLiteral).join('|'),
+    pattern: useRegex ? keys.join('|') : keys.map(escapeRegexLiteral).join('|'),
     prompt,
-    flags: 'i'
+    flags: caseSensitive ? '' : 'i',
+    ...(normalizedScanDepth !== null ? { scanDepth: normalizedScanDepth } : {}),
+    ...(alwaysOn ? { alwaysOn: true } : {}),
+    ...(normalizedPriority !== null ? { priority: normalizedPriority } : {})
   };
 }
 
@@ -214,18 +253,52 @@ function getLatestUserContent(messages: ChatMessage[]) {
   return '';
 }
 
-export function resolveRegexTriggerMatches(messages: ChatMessage[], rulesInput: string | RegexTriggerRule[] | undefined): RegexTriggerRule[] {
-  const latestUserContent = getLatestUserContent(messages);
-  if (!latestUserContent.trim()) return [];
+function extractRecentConversationContent(messages: ChatMessage[], depth: number) {
+  const limit = Math.max(1, Math.floor(depth));
+  const parts: string[] = [];
+  for (let index = messages.length - 1; index >= 0 && parts.length < limit; index -= 1) {
+    const message = messages[index];
+    if (message.role !== 'user' && message.role !== 'assistant') continue;
+    const content = message.content.trim();
+    if (!content) continue;
+    parts.push(content);
+  }
+  return parts.reverse().join('\n');
+}
 
+export function resolveRegexTriggerMatches(messages: ChatMessage[], rulesInput: string | RegexTriggerRule[] | undefined): RegexTriggerRule[] {
   const rules = Array.isArray(rulesInput) ? rulesInput : parseRegexTriggers(rulesInput);
-  return rules.filter((rule) => {
-    try {
-      return new RegExp(rule.pattern, rule.flags).test(latestUserContent);
-    } catch {
-      return false;
-    }
-  });
+  if (!rules.length) return [];
+
+  const latestUserContent = getLatestUserContent(messages);
+  const contextByDepth = new Map<number, string>();
+
+  return rules
+    .map((rule, index) => ({ rule, index }))
+    .filter(({ rule }) => {
+      if (rule.alwaysOn) return true;
+      if (!rule.pattern.trim()) return false;
+
+      const depth = Math.max(1, Math.floor(rule.scanDepth ?? 1));
+      const context = depth <= 1
+        ? latestUserContent
+        : contextByDepth.get(depth) ?? extractRecentConversationContent(messages, depth);
+      if (depth > 1 && !contextByDepth.has(depth)) {
+        contextByDepth.set(depth, context);
+      }
+      if (!context.trim()) return false;
+
+      try {
+        return new RegExp(rule.pattern, rule.flags).test(context);
+      } catch {
+        return false;
+      }
+    })
+    .sort((left, right) => {
+      const priorityDelta = (right.rule.priority ?? 0) - (left.rule.priority ?? 0);
+      return priorityDelta || left.index - right.index;
+    })
+    .map(({ rule }) => rule);
 }
 
 export function buildRegexTriggerContext(messages: ChatMessage[], rulesInput: string | RegexTriggerRule[] | undefined) {
@@ -234,7 +307,10 @@ export function buildRegexTriggerContext(messages: ChatMessage[], rulesInput: st
 
   return [
     '[正则触发]',
-    '当前用户输入命中了以下协作者表达触发规则。把这些内容作为本轮额外上下文参考；不要改写用户原文，也不要把触发规则当作工具开关。',
-    ...matches.map((rule) => `- /${rule.pattern}/${rule.flags ?? ''}：${rule.prompt}`)
+    '当前对话上下文命中了以下协作者世界书触发规则。把这些内容作为本轮额外上下文参考；不要改写用户原文，也不要把触发规则当作工具开关。',
+    ...matches.map((rule) => {
+      const source = rule.alwaysOn ? '常驻' : `/${rule.pattern}/${rule.flags ?? ''}`;
+      return `- ${source}：${rule.prompt}`;
+    })
   ].join('\n');
 }

@@ -46,6 +46,7 @@ function createPersona(advanced: Partial<Persona['advanced']>): Persona {
     builderManaged: false,
     generatedPromptMode: 'vnext',
     messageTemplate: '{{ message }}',
+    systemTimeContextEnabled: false,
     baseId: 'subject',
     relationship: 'partner',
     expression: 'natural',

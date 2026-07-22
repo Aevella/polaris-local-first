@@ -194,6 +194,19 @@ function createCompanionToolActionStore() {
       search: runtimeState.search,
       mcpServers: runtimeState.mcpServers,
       mcpToolTimeoutSeconds: runtimeState.mcpToolTimeoutSeconds,
+      readLatestState: () => {
+        const state = useRuntimeStore.getState();
+        return {
+          api: selectRuntimeApi(state),
+          providers: selectVisibleProviders(state),
+          imageGeneration: state.imageGeneration,
+          imageUnderstanding: state.imageUnderstanding,
+          search: state.search,
+          mcpServers: state.mcpServers,
+          mcpToolTimeoutSeconds: state.mcpToolTimeoutSeconds,
+          triggerRules: state.triggerRules
+        };
+      },
       setTaskModeEnabled: runtimeState.setTaskModeEnabled,
       getTriggerRules: () => useRuntimeStore.getState().triggerRules,
       createTriggerRule: runtimeState.createTriggerRule,

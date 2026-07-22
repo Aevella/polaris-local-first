@@ -50,6 +50,20 @@ describe('buildVoiceGenerationEndpoint', () => {
       voice: 'new voice/id'
     })).toBe('https://api.elevenlabs.io/v1/text-to-speech/new%20voiceid');
   });
+
+  it('routes FishAudio voice settings to tts endpoints', () => {
+    expect(buildVoiceGenerationEndpoint({
+      ...voiceSettings,
+      providerType: 'fishaudio',
+      baseUrl: 'https://api.fish.audio/v1'
+    })).toBe('https://api.fish.audio/v1/tts');
+    expect(buildVoiceGenerationEndpoint({
+      ...voiceSettings,
+      providerType: 'fishaudio',
+      baseUrl: 'https://api.fish.audio',
+      path: '/v1/tts'
+    })).toBe('https://api.fish.audio/v1/tts');
+  });
 });
 
 describe('requestGeneratedSpeech', () => {
@@ -278,5 +292,77 @@ describe('requestGeneratedSpeech', () => {
     const requestBody = JSON.parse(String(requestInit?.body));
     expect(requestUrl).toBe('https://api.elevenlabs.io/v1/text-to-speech/JBFqnCBsd6RMkjVDRZzb?output_format=mp3_44100_128');
     expect(requestBody.model_id).toBe('eleven_multilingual_v2');
+  });
+
+  it('requests FishAudio speech with reference_id and model header', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response('mp3-bytes', {
+      status: 200,
+      headers: { 'content-type': 'audio/mpeg' }
+    }));
+
+    const result = await requestGeneratedSpeech({
+      settings: {
+        ...voiceSettings,
+        providerType: 'fishaudio',
+        baseUrl: 'https://api.fish.audio/v1',
+        path: '/tts',
+        model: 's2-pro',
+        voice: 'ca3007f96ae7499ab87d27ea3599956a',
+        format: 'mp3'
+      },
+      text: '晚安。',
+      fetchImpl: fetchMock as typeof fetch
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.fish.audio/v1/tts', expect.objectContaining({
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer sk-test',
+        model: 's2-pro'
+      }
+    }));
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const requestBody = JSON.parse(String(requestInit?.body));
+    expect(requestBody).toEqual({
+      text: '晚安。',
+      reference_id: 'ca3007f96ae7499ab87d27ea3599956a',
+      format: 'mp3',
+      normalize: true
+    });
+    expect(result.model).toBe('s2-pro');
+    expect(result.voice).toBe('ca3007f96ae7499ab87d27ea3599956a');
+    expect(result.mimeType).toBe('audio/mpeg');
+    expect(await result.blob.text()).toBe('mp3-bytes');
+  });
+
+  it('uses FishAudio defaults and omits reference_id when no voice is selected', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response('wav-bytes', { status: 200 }));
+
+    await requestGeneratedSpeech({
+      settings: {
+        ...voiceSettings,
+        providerType: 'fishaudio',
+        baseUrl: 'https://api.fish.audio/v1',
+        model: '',
+        voice: '',
+        format: 'wav'
+      },
+      text: '晚安。',
+      fetchImpl: fetchMock as typeof fetch
+    });
+
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const requestBody = JSON.parse(String(requestInit?.body));
+    expect(requestInit?.headers).toEqual({
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer sk-test',
+      model: 's2-pro'
+    });
+    expect(requestBody).toEqual({
+      text: '晚安。',
+      format: 'wav',
+      normalize: true
+    });
   });
 });

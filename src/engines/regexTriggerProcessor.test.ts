@@ -63,6 +63,36 @@ describe('parseWorldBookRegexTriggers', () => {
     });
   });
 
+  it('imports world book scan depth, priority, and always-on settings', () => {
+    expect(parseWorldBookRegexTriggers(JSON.stringify({
+      entries: [{
+        keywords: ['白树'],
+        content: '带入白树设定。',
+        scanDepth: 4,
+        priority: 7,
+        useRegex: false,
+        caseSensitive: false
+      }, {
+        content: '常驻世界规则。',
+        constantActive: true
+      }]
+    })).rules).toEqual([
+      {
+        pattern: '白树',
+        prompt: '带入白树设定。',
+        flags: 'i',
+        scanDepth: 4,
+        priority: 7
+      },
+      {
+        pattern: '',
+        prompt: '常驻世界规则。',
+        flags: 'i',
+        alwaysOn: true
+      }
+    ]);
+  });
+
   it('imports text world book lines with arrow separators', () => {
     expect(parseWorldBookRegexTriggers('白树, 拉梅兰 => 命中后带入这段设定。').rules).toEqual([
       {
@@ -96,6 +126,28 @@ describe('resolveRegexTriggerMatches', () => {
 
     expect(matches.map((match) => match.prompt)).toEqual(['好规则']);
   });
+
+  it('can scan recent user and assistant context', () => {
+    const matches = resolveRegexTriggerMatches([
+      userMessage('上一轮说白树'),
+      { id: 'assistant-1', role: 'assistant', content: '我记得白树。', timestamp: 2 },
+      userMessage('这一轮只说继续')
+    ], [
+      { pattern: '白树', prompt: '最新用户消息不会命中' },
+      { pattern: '白树', prompt: '最近上下文命中', scanDepth: 3 }
+    ]);
+
+    expect(matches.map((match) => match.prompt)).toEqual(['最近上下文命中']);
+  });
+
+  it('keeps always-on triggers and sorts by priority', () => {
+    const matches = resolveRegexTriggerMatches([userMessage('白树')], [
+      { pattern: '白树', prompt: '低优先级', priority: 1 },
+      { pattern: '', prompt: '常驻高优先级', alwaysOn: true, priority: 5 }
+    ]);
+
+    expect(matches.map((match) => match.prompt)).toEqual(['常驻高优先级', '低优先级']);
+  });
 });
 
 describe('buildRegexTriggerContext', () => {
@@ -107,5 +159,13 @@ describe('buildRegexTriggerContext', () => {
     expect(context).toContain('[正则触发]');
     expect(context).toContain('不要改写用户原文');
     expect(context).toContain('/白树/：带入白树设定');
+  });
+
+  it('describes always-on world book entries without requiring a pattern', () => {
+    const context = buildRegexTriggerContext([userMessage('普通消息')], [
+      { pattern: '', prompt: '常驻世界规则', alwaysOn: true }
+    ]);
+
+    expect(context).toContain('常驻世界规则');
   });
 });

@@ -166,6 +166,52 @@ describe('assembleAssistantContext', () => {
     ]);
   });
 
+  it('places runtime clock context immediately before the latest user message', () => {
+    const context = assembleAssistantContext({
+      systemPromptParts: [{
+        name: 'runtime_clock_context',
+        layer: 'context',
+        content: '当前本地完整时间：2026-07-22 21:15:30\n当前时区：Asia/Shanghai'
+      }],
+      messages: [
+        createUserMessage({ id: 'user-old', content: '昨天那个先放着', timestamp: 1 }),
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: '好。',
+          timestamp: 2
+        },
+        createUserMessage({ id: 'user-new', content: '今晚继续吗', timestamp: 3 })
+      ]
+    });
+
+    expect(context.segments[0]?.kind).toBe('conversation');
+    expect(context.segments[0]?.messages).toEqual([
+      {
+        role: 'user',
+        content: '昨天那个先放着'
+      },
+      {
+        role: 'assistant',
+        content: '好。',
+        thinkingText: undefined,
+        toolCalls: undefined
+      },
+      {
+        role: 'user',
+        content: expect.stringContaining('[本轮请求上下文，不是用户原话]'),
+        promptPartName: 'runtime_clock_context',
+        promptPartLayer: 'context'
+      },
+      {
+        role: 'user',
+        content: '今晚继续吗'
+      }
+    ]);
+    expect(context.segments[0]?.messages[2]?.content).toContain('2026-07-22 21:15:30');
+    expect(context.segments[0]?.messages[2]?.content).toContain('Asia/Shanghai');
+  });
+
   it('builds a memory segment from normalized memory lines', () => {
     const context = assembleAssistantContext({
       messages: [createUserMessage()],

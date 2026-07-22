@@ -42,7 +42,7 @@ describe('toolFollowup', () => {
   });
 
   it('requests a followup when the assistant turn is still tool-only after a successful direct action', () => {
-    expect(resolveToolFollowupPlan({
+    const plan = resolveToolFollowupPlan({
       depth: 0,
       assistantToolOnlyTurn: true,
       outcomes: [
@@ -63,7 +63,70 @@ describe('toolFollowup', () => {
           }
         }
       ]
-    })).toMatchObject({});
+    });
+
+    expect(plan?.message.content).toContain('上一轮联网搜索已经执行完了');
+    expect(plan?.message.content).toContain('readWebPage');
+    expect(plan?.message.content).toContain('不要对同一个问题或同一组关键词再次 webSearch');
+  });
+
+  it('treats degraded search results as candidates to read, not a same-query retry signal', () => {
+    const plan = resolveToolFollowupPlan({
+      depth: 0,
+      assistantToolOnlyTurn: true,
+      outcomes: [{
+        path: 'direct',
+        status: 'executed',
+        action: { kind: 'webSearch', query: 'degraded results' },
+        toolInvocation: {
+          id: 'tool-web-degraded',
+          kind: 'webSearch',
+          status: 'executed',
+          title: '联网搜索',
+          summary: '已找到 2 条降级网页结果',
+          detailText: '状态：降级搜索结果',
+          webSearch: {
+            query: 'degraded results',
+            provider: 'example',
+            degraded: true,
+            results: [{ title: 'Example', url: 'https://example.com', snippet: 'Example snippet' }]
+          }
+        }
+      }]
+    });
+
+    expect(plan?.message.content).toContain('降级不是重试同一搜索的信号');
+    expect(plan?.message.content).toContain('用 readWebPage 读取刚返回的相关 URL');
+  });
+
+  it('answers from read web page text before searching again', () => {
+    const plan = resolveToolFollowupPlan({
+      depth: 0,
+      assistantToolOnlyTurn: true,
+      outcomes: [{
+        path: 'direct',
+        status: 'executed',
+        action: { kind: 'readWebPage', url: 'https://example.com/report' },
+        toolInvocation: {
+          id: 'tool-web-read',
+          kind: 'readWebPage',
+          status: 'executed',
+          title: '读取网页正文',
+          summary: '已读取网页',
+          detailText: 'Report body',
+          webPageRead: {
+            url: 'https://example.com/report',
+            title: 'Example Report',
+            provider: 'reader',
+            excerpt: 'Report body'
+          }
+        }
+      }]
+    });
+
+    expect(plan?.message.content).toContain('上一轮网页正文已经读取完了');
+    expect(plan?.message.content).toContain('基于刚读到的网页文本回答用户上一句');
+    expect(plan?.message.content).toContain('不要因为正文不完美就回到同一个查询再次 webSearch');
   });
 
   it('continues after narrated one-shot tools so the model can close from the real result', () => {

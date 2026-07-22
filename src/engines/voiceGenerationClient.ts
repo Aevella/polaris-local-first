@@ -33,10 +33,12 @@ const MIME_TYPE_BY_FORMAT: Record<VoiceGenerationFormat, string> = {
 };
 
 const MINIMAX_VOICE_FORMATS = new Set<VoiceGenerationFormat>(['mp3', 'flac', 'wav']);
+const FISHAUDIO_VOICE_FORMATS = new Set<VoiceGenerationFormat>(['mp3', 'opus', 'wav', 'pcm']);
 const DEFAULT_MINIMAX_MODEL = 'speech-2.8-turbo';
 const DEFAULT_MINIMAX_VOICE = 'Chinese (Mandarin)_Warm_Girl';
 const DEFAULT_ELEVENLABS_MODEL = 'eleven_multilingual_v2';
 const DEFAULT_ELEVENLABS_VOICE = 'JBFqnCBsd6RMkjVDRZzb';
+const DEFAULT_FISHAUDIO_MODEL = 's2-pro';
 const ELEVENLABS_OUTPUT_FORMAT_BY_FORMAT: Partial<Record<VoiceGenerationFormat, string>> = {
   mp3: 'mp3_44100_128',
   opus: 'opus_48000_128',
@@ -92,6 +94,18 @@ function normalizeElevenLabsBasePath(path: string) {
   return '/text-to-speech';
 }
 
+function normalizeFishAudioVoicePath(path: string) {
+  const trimmed = path.trim();
+  const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  const normalized = withLeadingSlash.replace(/\/+$/, '');
+  const lower = normalized.toLowerCase();
+
+  if (lower.endsWith('/tts')) {
+    return normalized;
+  }
+  return '/tts';
+}
+
 function encodePathSegment(value: string) {
   return encodeURIComponent(value).replace(/%2F/gi, '');
 }
@@ -106,6 +120,7 @@ function resolveElevenLabsVoiceName(configuredVoice?: string) {
 function resolveVoiceProviderType(settings?: Pick<VoiceGenerationSettings, 'providerType'>): VoiceGenerationProviderType {
   if (settings?.providerType === 'minimax') return 'minimax';
   if (settings?.providerType === 'elevenlabs') return 'elevenlabs';
+  if (settings?.providerType === 'fishaudio') return 'fishaudio';
   return 'openai-compatible';
 }
 
@@ -125,6 +140,9 @@ export function buildVoiceGenerationEndpoint(
     const voice = resolveElevenLabsVoiceName(settings?.voice);
     return buildApiEndpoint(baseUrl, `${normalizeElevenLabsBasePath(settings.path ?? '')}/${encodePathSegment(voice)}`);
   }
+  if (providerType === 'fishaudio') {
+    return buildApiEndpoint(baseUrl, normalizeFishAudioVoicePath(settings.path ?? ''));
+  }
 
   return buildApiEndpoint(baseUrl, normalizeVoiceGenerationPath(settings.path ?? ''));
 }
@@ -143,7 +161,11 @@ function shouldUseAudioRelay(endpoint: string) {
   }
 }
 
-function buildAudioHeaders(settings: Pick<VoiceGenerationSettings, 'apiKey'>, providerType: VoiceGenerationProviderType) {
+function buildAudioHeaders(
+  settings: Pick<VoiceGenerationSettings, 'apiKey'>,
+  providerType: VoiceGenerationProviderType,
+  model?: string
+) {
   const apiKey = settings.apiKey?.trim() ?? '';
   if (!apiKey) {
     throw new Error('请先填写语音模型的 API Key。');
@@ -159,6 +181,15 @@ function buildAudioHeaders(settings: Pick<VoiceGenerationSettings, 'apiKey'>, pr
       'xi-api-key': apiKey
     };
   }
+  if (providerType === 'fishaudio') {
+    const fishAudioModel = model?.trim() || DEFAULT_FISHAUDIO_MODEL;
+    assertHttpHeaderValue(fishAudioModel, 'FishAudio 模型');
+    return {
+      ...baseHeaders,
+      Authorization: `Bearer ${apiKey}`,
+      model: fishAudioModel
+    };
+  }
   return {
     ...baseHeaders,
     Authorization: `Bearer ${apiKey}`
@@ -170,6 +201,7 @@ function resolveVoiceModel(settings: VoiceGenerationSettings, providerType: Voic
   if (configuredModel) return configuredModel;
   if (providerType === 'minimax') return DEFAULT_MINIMAX_MODEL;
   if (providerType === 'elevenlabs') return DEFAULT_ELEVENLABS_MODEL;
+  if (providerType === 'fishaudio') return DEFAULT_FISHAUDIO_MODEL;
   return '';
 }
 
@@ -180,6 +212,9 @@ function resolveVoiceName(settings: VoiceGenerationSettings, providerType: Voice
   }
   if (providerType === 'elevenlabs') {
     return resolveElevenLabsVoiceName(configuredVoice);
+  }
+  if (providerType === 'fishaudio') {
+    return configuredVoice || '';
   }
   return configuredVoice || 'alloy';
 }
@@ -238,6 +273,19 @@ function buildElevenLabsSpeechBody(model: string, input: string, format: VoiceGe
   };
 }
 
+function buildFishAudioSpeechBody(input: string, voice: string, format: VoiceGenerationFormat) {
+  if (!FISHAUDIO_VOICE_FORMATS.has(format)) {
+    throw new Error('FishAudio TTS 接口只支持 MP3、WAV、PCM、Opus。');
+  }
+
+  return {
+    text: input,
+    ...(voice ? { reference_id: voice } : {}),
+    format,
+    normalize: true
+  };
+}
+
 async function parseMiniMaxSpeechBlob(response: Response, mimeType: string) {
   const payload = await response.json() as {
     data?: {
@@ -280,12 +328,14 @@ export async function requestGeneratedSpeech(params: VoiceGenerationRequest): Pr
   const voice = resolveVoiceName(params.settings, providerType);
   const format = params.settings.format || 'mp3';
   const endpoint = buildVoiceGenerationEndpoint(params.settings);
-  const headers = buildAudioHeaders(params.settings, providerType);
+  const headers = buildAudioHeaders(params.settings, providerType, model);
   const body = providerType === 'minimax'
     ? buildMiniMaxSpeechBody(model, input, voice, format)
     : providerType === 'elevenlabs'
       ? buildElevenLabsSpeechBody(model, input, format)
-      : buildOpenAiSpeechBody(model, input, voice, format);
+      : providerType === 'fishaudio'
+        ? buildFishAudioSpeechBody(input, voice, format)
+        : buildOpenAiSpeechBody(model, input, voice, format);
   const requestEndpoint = providerType === 'elevenlabs'
     ? `${endpoint}?output_format=${ELEVENLABS_OUTPUT_FORMAT_BY_FORMAT[format] ?? format}`
     : endpoint;

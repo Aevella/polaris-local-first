@@ -7,6 +7,7 @@ import {
   finishChatSendPerformanceTrace,
   recordChatSendPerformanceMark
 } from './chatSendPerformanceTrace';
+import { resolveChatReplyPersistenceStatus } from './chatReplyPersistence';
 
 type SubmitMessageState = {
   inputDraft: string;
@@ -180,9 +181,18 @@ export async function submitMessage(state: SubmitMessageState, handlers: SubmitM
     hasCardReference: Boolean(userMessage.cardReference)
   });
 
-  await handlers.requestReply({
-    conversationId: writableSession.conversationId,
-    collaboratorId: conversationSession.collaboratorId,
-    messages: nextMessages
-  });
+  try {
+    await handlers.requestReply({
+      conversationId: writableSession.conversationId,
+      collaboratorId: conversationSession.collaboratorId,
+      messages: nextMessages
+    });
+  } catch (error) {
+    const persistenceStatus = resolveChatReplyPersistenceStatus(error);
+    if (!persistenceStatus) throw error;
+    handlers.setCommandStatus(persistenceStatus, true);
+    finishChatSendPerformanceTrace(writableSession.conversationId, 'failed', {
+      extra: ['persistence boundary failed']
+    });
+  }
 }
