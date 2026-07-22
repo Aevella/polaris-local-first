@@ -352,9 +352,8 @@ describe('chat workflow stability scenarios', () => {
     expect(built.body.max_output_tokens).toBeUndefined();
   });
 
-  it('keeps workspace followups alive after the generic depth cap but still stops completed tasks', () => {
+  it('continues new workspace exchanges without a depth cap but stops completed tasks', () => {
     const workspacePlan = resolveToolFollowupPlan({
-      depth: 4,
       outcomes: [
         createExecutedOutcome({
           kind: 'appendProjectFile',
@@ -366,7 +365,6 @@ describe('chat workflow stability scenarios', () => {
       ]
     });
     const completedPlan = resolveToolFollowupPlan({
-      depth: 4,
       outcomes: [
         createExecutedOutcome({
           kind: 'completeTask',
@@ -376,14 +374,13 @@ describe('chat workflow stability scenarios', () => {
       ]
     });
 
-    expect(workspacePlan?.message.content).toContain('同一个工作区');
-    expect(workspacePlan?.message.content).toContain('index.html');
+    expect(workspacePlan?.exchangeFingerprint).toContain('index.html');
+    expect(workspacePlan).not.toHaveProperty('message');
     expect(completedPlan).toBeNull();
   });
 
-  it('keeps desktop local followups alive after the generic depth cap', () => {
+  it('continues a new desktop exchange from its real result without injecting instructions', () => {
     const desktopPlan = resolveToolFollowupPlan({
-      depth: 4,
       outcomes: [
         createExecutedOutcome({
           kind: 'runDesktopCommand',
@@ -395,10 +392,8 @@ describe('chat workflow stability scenarios', () => {
       ]
     });
 
-    expect(desktopPlan?.message.content).toContain('Mac 桌面本机工作循环');
-    expect(desktopPlan?.message.content).toContain('按普通本机开发直觉继续');
-    expect(desktopPlan?.message.content).toContain('stdout / stderr');
-    expect(desktopPlan?.message.content).toContain('继续读取、修改、同步或运行验证');
+    expect(desktopPlan?.exchangeFingerprint).toContain('runDesktopCommand');
+    expect(desktopPlan).not.toHaveProperty('message');
   });
 
   it('requests continuation for length-truncated replies and truncated tool arguments before giving up', () => {

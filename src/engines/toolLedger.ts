@@ -1,41 +1,43 @@
 import { normalizeChatNativeToolCalls } from './chatMessageNormalization';
-import type { ChatMessage, ToolInvocation, ToolLedgerEntry } from '../types/domain';
+import type {
+  ChatMessage,
+  ToolInvocation,
+  ToolInvocationStatus,
+  ToolLedgerEntry
+} from '../types/domain';
+import { buildToolResultEvidence } from './toolResultEvidence';
 
 type ToolLedgerSourceMessage = Pick<ChatMessage, 'id' | 'role' | 'nativeToolCalls' | 'toolInvocation'>;
+type SettledToolLedgerEntry = ToolLedgerEntry & Required<Pick<
+  ToolLedgerEntry,
+  'resultMessageId' | 'resultStatus' | 'resultStructuredPayload'
+>>;
+
+const TERMINAL_TOOL_INVOCATION_STATUSES = new Set<ToolInvocationStatus>([
+  'preview',
+  'applied',
+  'rolled_back',
+  'superseded',
+  'executed',
+  'saved',
+  'failed'
+]);
+
+export function isTerminalToolInvocationStatus(status: ToolInvocationStatus) {
+  return TERMINAL_TOOL_INVOCATION_STATUSES.has(status);
+}
+
+export function isSettledToolLedgerEntry(entry: ToolLedgerEntry): entry is SettledToolLedgerEntry {
+  return Boolean(
+    entry.resultMessageId
+    && entry.resultStatus
+    && isTerminalToolInvocationStatus(entry.resultStatus)
+    && entry.resultStructuredPayload
+  );
+}
 
 function trimString(value: string | undefined) {
   return value?.trim() || null;
-}
-
-function buildToolResultStructuredPayload(toolInvocation: ToolInvocation) {
-  return {
-    kind: toolInvocation.kind,
-    status: toolInvocation.status,
-    title: toolInvocation.title,
-    summary: toolInvocation.summary,
-    detailText: toolInvocation.detailText,
-    scope: toolInvocation.themeScope,
-    surfaces: toolInvocation.themeSurfaceLabels,
-    intent: toolInvocation.themeIntentLabel,
-    previewId: toolInvocation.previewId,
-    presetId: toolInvocation.presetId,
-    world: toolInvocation.world,
-    cardId: toolInvocation.cardId,
-    projectFileId: toolInvocation.projectFileId,
-    projectFileIds: toolInvocation.projectFileIds,
-    projectFilePaths: toolInvocation.projectFilePaths,
-    projectFiles: toolInvocation.projectFiles,
-    projectFileReads: toolInvocation.projectFileReads,
-    projectFileEffects: toolInvocation.projectFileEffects,
-    projectDiagnostics: toolInvocation.projectDiagnostics,
-    imageCardId: toolInvocation.imageCardId,
-    memoryItems: toolInvocation.memoryItems,
-    webSearch: toolInvocation.webSearch,
-    webPageRead: toolInvocation.webPageRead,
-    mcpResult: toolInvocation.mcpResult,
-    targetLabel: toolInvocation.targetLabel,
-    error: toolInvocation.error
-  };
 }
 
 function findPendingToolLedgerEntry(args: {
@@ -121,6 +123,9 @@ export function rebuildConversationToolLedger(messages: ToolLedgerSourceMessage[
     if (!toolInvocation) {
       continue;
     }
+    if (!isTerminalToolInvocationStatus(toolInvocation.status)) {
+      continue;
+    }
 
     const explicitToolCallId = trimString(toolInvocation.toolCallId);
     const resolvedEntry =
@@ -139,7 +144,7 @@ export function rebuildConversationToolLedger(messages: ToolLedgerSourceMessage[
     resolvedEntry.resultStatus = toolInvocation.status;
     resolvedEntry.resultIsError = toolInvocation.status === 'failed';
     resolvedEntry.resultSourceMessageId = toolInvocation.originMessageId;
-    resolvedEntry.resultStructuredPayload = buildToolResultStructuredPayload(toolInvocation);
+    resolvedEntry.resultStructuredPayload = buildToolResultEvidence(toolInvocation);
     consumePendingToolLedgerEntry(pendingEntriesByAssistantMessageId, resolvedEntry);
   }
 

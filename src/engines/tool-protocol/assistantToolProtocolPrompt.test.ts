@@ -451,8 +451,8 @@ describe('assistantToolProtocolPrompt', () => {
 
     expect(prompt).toContain('当前换肤模式：稳定模式。01 到 08 是可修改区域编号；稳态工具负责施工和试穿。');
     expect(prompt).toContain('编号地图：01=背景 · 02=顶栏 · 03=右侧气泡 · 04=回复正文 · 05=发送栏 · 06=系统框 · 07=面板 · 08=卡片');
-    expect(prompt).toContain('可用 action：');
-    expect(prompt).toContain('1. applyThemeCoordinates：整体四轴换肤。');
+    expect(prompt).toContain('`targets: ["03","04"]` 这类多个编号，仍然走 `applyThemeCoordinates`');
+    expect(prompt).not.toContain('可用 action：');
   });
 
   it('does not inject theme continuation commands from recent theme focus', () => {
@@ -894,6 +894,6 @@ describe('assistantToolProtocolPrompt', () => {
     expect(prompt).not.toContain('`& .code-card-time`');
     expect(prompt).not.toContain('`& .code-card-footer`');
     expect(prompt).toContain('不要再写 `--code-card-face-*`、`--card-bg`、`.code-card-title`');
-    expect(prompt).toContain('border: 1.5px solid rgba(255, 215, 92, 0.32);');
+    expect(prompt).not.toContain('卡面示例：');
   });
 });

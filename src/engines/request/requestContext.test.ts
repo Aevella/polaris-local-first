@@ -948,6 +948,66 @@ describe('assembleAssistantContext', () => {
     ]);
   });
 
+  it('does not trust a stale running ledger result as a settled provider exchange', () => {
+    const context = assembleAssistantContext({
+      messages: [
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: '我先读一下。',
+          timestamp: 1,
+          nativeToolCalls: [{
+            id: 'call-1',
+            name: 'readProjectFile',
+            argumentsText: '{"filePath":"index.html"}'
+          }]
+        },
+        {
+          id: 'user-1',
+          role: 'user',
+          content: '继续',
+          timestamp: 2
+        }
+      ],
+      toolLedger: [{
+        id: 'assistant-1:tool-ledger:1',
+        toolCallId: 'call-1',
+        assistantMessageId: 'assistant-1',
+        order: 0,
+        toolName: 'readProjectFile',
+        argumentsText: '{"filePath":"index.html"}',
+        sourceSpan: {
+          transport: 'native',
+          index: 0
+        },
+        resultMessageId: 'tool-running',
+        resultToolName: 'readProjectFile',
+        resultStatus: 'running',
+        resultIsError: false,
+        resultSourceMessageId: 'assistant-1',
+        resultStructuredPayload: {
+          kind: 'readProjectFile',
+          status: 'running',
+          summary: '正在读取 index.html'
+        }
+      }]
+    });
+
+    const conversation = context.segments.find((segment) => segment.kind === 'conversation');
+    expect(conversation?.messages).toEqual([
+      {
+        role: 'assistant',
+        content: '我先读一下。',
+        toolCalls: undefined
+      },
+      {
+        role: 'user',
+        content: '继续',
+        toolCalls: undefined
+      }
+    ]);
+  });
+
   it('replays synthetic Polaris tool results as transcript context instead of native provider tool history', () => {
     const context = assembleAssistantContext({
       messages: [

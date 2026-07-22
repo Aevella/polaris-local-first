@@ -80,7 +80,7 @@ describe('requestToolResultProjection', () => {
     expect(projected).not.toHaveProperty('detailOmitted');
   });
 
-  it('keeps structured MCP result evidence for follow-up actions', () => {
+  it('slims MCP result evidence to identifiers so content only rides in detailText', () => {
     const projected = projectToolResultPayloadForRequest({
       toolName: 'mcp__forum__forum_read',
       kind: 'invokeMcpTool',
@@ -111,18 +111,14 @@ describe('requestToolResultProjection', () => {
       toolName: 'mcp__forum__forum_read',
       kind: 'mcp__forum__forum_read',
       mcpResult: {
-        toolName: 'forum_read',
-        argumentsObject: {
-          thread_id: 809
-        },
-        structuredContent: {
-          replies: [
-            { id: 8891, author: 'me' },
-            { id: 8892, author: 'me' }
-          ]
-        }
+        serverId: 'forum',
+        serverName: 'Forum MCP',
+        schemaName: 'mcp__forum__forum_read',
+        toolName: 'forum_read'
       }
     });
+    expect(projected.mcpResult).not.toHaveProperty('argumentsObject');
+    expect(projected.mcpResult).not.toHaveProperty('structuredContent');
   });
 
   it('projects resolved workspace file paths for write results', () => {
@@ -177,8 +173,8 @@ describe('requestToolResultProjection', () => {
     });
   });
 
-  it('projects structured web evidence alongside human-readable detail', () => {
-    expect(projectToolInvocationForRequest({
+  it('drops web evidence duplicates so results only ride in detailText', () => {
+    const projected = projectToolInvocationForRequest({
       id: 'tool-search',
       kind: 'webSearch',
       status: 'executed',
@@ -197,18 +193,12 @@ describe('requestToolResultProjection', () => {
           source: 'example.com'
         }]
       }
-    })).toMatchObject({
-      kind: 'webSearch',
-      detailText: '查询：OpenAI release notes',
-      webSearch: {
-        query: 'OpenAI release notes',
-        provider: 'Bing HTML fallback (degraded)',
-        degraded: true,
-        results: [{
-          title: 'OpenAI release notes',
-          url: 'https://example.com/release'
-        }]
-      }
     });
+    expect(projected).toMatchObject({
+      kind: 'webSearch',
+      detailText: '查询：OpenAI release notes'
+    });
+    expect(projected).not.toHaveProperty('webSearch');
+    expect(projected).not.toHaveProperty('webPageRead');
   });
 });

@@ -25,16 +25,6 @@ export type PolarisRegistryToolGroup =
   | 'memoryWrite'
   | 'proactive';
 
-export type PolarisToolFollowupDomain =
-  | 'workspace'
-  | 'desktop-agent'
-  | 'theme'
-  | 'room-card'
-  | 'reference-doc'
-  | 'mcp'
-  | 'web'
-  | 'tool-result';
-
 export type PolarisToolResultReplayMode =
   | 'full-detail'
   | 'detail-excerpt';
@@ -44,7 +34,6 @@ type ToolSchema = AssistantRequestTool['function'];
 export type PolarisToolDefinition<TName extends string = string> = {
   name: TName;
   group: PolarisRegistryToolGroup;
-  followupDomain?: PolarisToolFollowupDomain;
   resultReplayMode?: PolarisToolResultReplayMode;
   label?: string;
   brief: string;

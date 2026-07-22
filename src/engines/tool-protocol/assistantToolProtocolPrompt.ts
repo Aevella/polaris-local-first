@@ -409,7 +409,10 @@ export function buildAssistantToolPromptSections(
     {
       name: 'tool_catalog_capability',
       label: '工具目录',
-      content: receipt.nativeTools.length ? buildCatalogLines(receipt.nativeTools).join('\n') : ''
+      content:
+        protocolMode === 'hybrid' && receipt.nativeTools.length
+          ? buildCatalogLines(receipt.nativeTools).join('\n')
+          : ''
     },
     {
       name: 'tool_protocol_capability',

@@ -23,6 +23,10 @@ Tools make model-visible actions reliable across prompt visibility, parsing, exe
 
 - `src/engines/tool-protocol/`
 - `src/app/chat/chatAssistantToolRuntime.ts`
+- `src/app/chat/chatAssistantActionResolver.ts`
+- `src/app/chat/chatAssistantTargetResolution.ts`
+- `src/app/chat/chatToolActionIngress.ts`
+- `src/app/chat/chatToolExecutionContext.ts`
 - `src/app/chat/chatToolActionRunner.ts`
 - `src/app/chat/chatToolDirectActionExecutor.ts`
 - `src/app/chat/chatToolEvidenceStage.ts`
@@ -32,7 +36,7 @@ Tools make model-visible actions reliable across prompt visibility, parsing, exe
 
 - Enabled tool groups and runtime capability settings.
 - Current chat, collection, project, file, image, and desktop-local targets when the host surface provides them.
-- Previous tool result evidence when deciding next-turn context.
+- Settled tool exchanges when assembling next-turn context.
 
 ## Data It Writes
 
@@ -47,7 +51,7 @@ Tools make model-visible actions reliable across prompt visibility, parsing, exe
 - Parser cannot canonicalize a model action into a supported command.
 - Target object is missing, not writable, or outside the allowed boundary.
 - Execution succeeds visually but does not leave replayable evidence; this is a protocol failure and must be fixed at the tool result layer.
-- Request replay removes structured parameters, links, or result fields merely because a human-readable detail is also present.
+- Request replay loses the last authoritative copy of a result while deduplicating paired tool calls and human-readable detail.
 
 ## Tests And Verification
 
@@ -57,6 +61,9 @@ Tools make model-visible actions reliable across prompt visibility, parsing, exe
 - `src/app/chat/chatToolDirectActionExecutor.test.ts`
 - tool protocol parser tests under `src/engines/tool-protocol/`.
 
-## Known Cleanup Still Owed
+## Ownership Notes
 
-- `src/app/chat/chatAssistantToolRuntime.ts` should be split into target resolution, tool-group availability, direct-action conversion, desktop-local access checks, and focused test fixtures.
+- `chatAssistantToolRuntime.ts` is a compatibility-free barrel over focused ingress, target-resolution, card, workspace, and native-tool owners.
+- Desktop, MCP, and proactive execution contexts are composed by `chatToolExecutionContext.ts` instead of being implemented in its main return object.
+- Environment-directory execution is a separate context owner and preserves the same runtime, collaborator, collection, attachment, native-capability, and desktop-host facts.
+- Follow-up planning uses settled exchange fingerprints. It does not inject domain-specific system choreography, and the same exchange cannot schedule itself twice.

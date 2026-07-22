@@ -532,7 +532,6 @@ export const CARD_TOOL_DEFINITION_MAP = {
   searchReadableContext: {
     name: 'searchReadableContext',
     group: 'project',
-    followupDomain: 'tool-result',
     resultReplayMode: 'full-detail',
     brief: '跨产物文件、工作区参考和长期资料找可读取入口',
     schema: {

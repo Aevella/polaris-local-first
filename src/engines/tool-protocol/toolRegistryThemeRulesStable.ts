@@ -61,15 +61,6 @@ function buildStableThemeAxisMeaningLines() {
   ];
 }
 
-function buildStableThemeActionLines() {
-  return [
-    '可用 action：',
-    '1. applyThemeCoordinates：整体四轴换肤。字段写 `targets`、`hue`、`hueCount`、`emotion`、`meaning`；`baseColor` 和 `label` 可选。',
-    '2. applySurfaceTokens：单点精修。字段写 `targets` 和 `spell`，再补结构化 token。`targets` 在这里必须只有 1 个编号。',
-    '稳态前台只用编号说话：直接写 01 到 08，不要混用中文名、英文名、surface 名或 selector alias。'
-  ];
-}
-
 function buildStableThemeRuleLines(args: {
   toolEnforcementMode?: 'normal' | 'force';
 }) {
@@ -105,27 +96,15 @@ function buildStableThemeBundlePasteLines() {
   ];
 }
 
-function buildStableThemeExampleLines() {
-  return [
-    '最短示例：',
-    '```polaris-tools {"actions":[{"kind":"applyThemeCoordinates","targets":"all","hue":28,"hueCount":2,"emotion":3,"meaning":6,"label":"纸本暖粉"}]}```',
-    '```polaris-tools {"actions":[{"kind":"applyThemeCoordinates","targets":"all","hue":336,"hueCount":2,"emotion":2,"meaning":7,"baseColor":"#f3b7c8","label":"粉手帐纸本"}]}```',
-    '```polaris-tools {"actions":[{"kind":"applyThemeCoordinates","targets":["03","04"],"hue":330,"hueCount":5,"emotion":4,"meaning":-3,"label":"右侧气泡与回复正文偏虹"}]}```',
-    '```polaris-tools {"actions":[{"kind":"applySurfaceTokens","targets":["04"],"spell":"soft dusk","hue":266,"saturation":24,"lightness":34,"opacity":76,"radius":8,"borderW":0,"blur":8,"shadowDepth":1,"texture":"frosted-glass","gradientMode":"linear","gradientAngle":135,"accentHue":288,"label":"回复正文晚雾"}]}```'
-  ];
-}
-
 export function buildStableThemeToolRules(context?: AssistantToolContext) {
   const toolEnforcementMode = context?.toolEnforcementMode ?? 'normal';
   return [
-    '改 Polaris 界面外观的结果由可用工具承载；当前通道不支持原生 tools 时，回复末尾可以输出一个 polaris-tools 代码块。',
-    ...buildStableThemeActionLines(),
+    '稳态前台只用编号说话：直接写 01 到 08，不要混用中文名、英文名、surface 名或 selector alias。',
     ...buildStableThemeModeLines(context),
     ...buildStableThemeAxisMeaningLines(),
     ...buildStableThemeRuleLines({ toolEnforcementMode }),
     ...buildSharedThemeRuleLines(),
     ...buildStableThemeActionDecisionLines(),
-    ...buildStableThemeBundlePasteLines(),
-    ...buildStableThemeExampleLines()
+    ...buildStableThemeBundlePasteLines()
   ];
 }

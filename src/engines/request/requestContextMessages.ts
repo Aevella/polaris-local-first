@@ -2,25 +2,16 @@ import type { ToolInvocation, ToolInvocationKind } from '../../types/domain';
 import type { RequestMessage } from './requestMessage';
 import { THEME_TOOL_INVOCATION_KINDS } from '../../types/toolInvocationKinds';
 import { projectToolInvocationForRequest } from './requestToolResultProjection';
+import { isTerminalToolInvocationStatus } from '../toolLedger';
 
 const REQUEST_CONTEXT_THEME_TOOL_KINDS = new Set<ToolInvocationKind>(THEME_TOOL_INVOCATION_KINDS);
-
-const REQUEST_CONTEXT_TERMINAL_TOOL_STATUSES = new Set<ToolInvocation['status']>([
-  'preview',
-  'applied',
-  'rolled_back',
-  'superseded',
-  'executed',
-  'saved',
-  'failed'
-]);
 
 function isRequestContextTerminalToolInvocation(
   toolInvocation: ToolInvocation | null | undefined
 ): toolInvocation is ToolInvocation {
   return Boolean(
     toolInvocation
-    && REQUEST_CONTEXT_TERMINAL_TOOL_STATUSES.has(toolInvocation.status)
+    && isTerminalToolInvocationStatus(toolInvocation.status)
   );
 }
 
@@ -141,10 +132,10 @@ function formatMcpResultEvidence(value: unknown) {
     'MCP 结果证据：',
     `工具：${String(result.serverName ?? 'unknown')} / ${String(result.toolName ?? 'unknown')}`,
     result.schemaName ? `schema：${String(result.schemaName)}` : '',
-    `参数：${JSON.stringify(result.argumentsObject ?? {})}`,
+    result.argumentsObject !== undefined ? `参数：${JSON.stringify(result.argumentsObject)}` : '',
     result.isError === true ? 'isError=true' : '',
     result.structuredContent !== undefined
-      ? ['structuredContent：', JSON.stringify(result.structuredContent, null, 2)].join('\n')
+      ? ['structuredContent：', JSON.stringify(result.structuredContent)].join('\n')
       : ''
   ].filter(Boolean).join('\n');
 }

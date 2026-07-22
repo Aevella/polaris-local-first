@@ -2,12 +2,27 @@ import { describe, expect, it } from 'vitest';
 import {
   findPolarisToolManifestEntry,
   findPolarisToolDefinition,
+  POLARIS_TOOL_MANIFEST_BY_NAME,
   POLARIS_TOOL_REGISTRY_BY_NAME,
   resolveAvailablePolarisTools,
   type ToolResolutionSource
 } from './toolRegistry';
+import { TOOL_INVOCATION_KINDS } from '../../types/toolInvocationKinds';
+import { POLARIS_TOOL_EXECUTOR_BY_ACTION_KIND } from './toolManifest';
 
 describe('toolRegistry', () => {
+  it('materializes one complete manifest receipt for invocation, replay, and executor consumers', () => {
+    expect(Object.keys(POLARIS_TOOL_MANIFEST_BY_NAME)).toEqual(TOOL_INVOCATION_KINDS);
+    for (const name of TOOL_INVOCATION_KINDS) {
+      const entry = POLARIS_TOOL_MANIFEST_BY_NAME[name];
+      expect(entry.name).toBe(name);
+      expect(entry.label.trim().length).toBeGreaterThan(0);
+      if (name in POLARIS_TOOL_EXECUTOR_BY_ACTION_KIND) {
+        expect(entry.executorPlugin).toBeDefined();
+      }
+    }
+  });
+
   it('keeps canonical tool kinds addressable by registry name', () => {
     expect(findPolarisToolDefinition('runCode')).toEqual(POLARIS_TOOL_REGISTRY_BY_NAME.runCode);
     expect(POLARIS_TOOL_REGISTRY_BY_NAME.runCode.schema.name).toBe('runCode');
@@ -46,7 +61,6 @@ describe('toolRegistry', () => {
       label: '等待轮询',
       group: 'task',
       executorPlugin: 'utility',
-      followupDomain: 'tool-result',
       resultReplayMode: 'detail-excerpt',
       definition: POLARIS_TOOL_REGISTRY_BY_NAME.wait
     });

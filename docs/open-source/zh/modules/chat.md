@@ -10,6 +10,7 @@ Chat 运行和协作者、模型 provider、上下文、模型可见工具相关
 - Message timeline projection 和 body loading status。
 - Request lifecycle、streaming state、tool invocation lifecycle、task settlement。
 - 修改 messages 前的 writable conversation-body intent。
+- Tool exchange、长度恢复、参数修复和任务激活的显式 continuation state。
 
 ## Does Not Own
 
@@ -46,6 +47,7 @@ Chat 运行和协作者、模型 provider、上下文、模型可见工具相关
 - Conversation body missing、unloaded、incomplete、timed out 或 deleted。
 - Provider request 在 streaming 前或 streaming 中失败。
 - Tool execution 返回明确 error 或需要确认。
+- 已落定 tool exchange 被重复回放，或 pending invocation 被投影成 completed evidence。
 - 历史 lifecycle row 留在 live hydration 外，而不是变成空 live conversation。
 
 ## Verification
@@ -59,7 +61,7 @@ Chat 运行和协作者、模型 provider、上下文、模型可见工具相关
 ## Known Cleanup
 
 - `src/stores/chatStore.ts` 仍是大 control room，需要按 conversation directory、body loading、task state、runtime feedback、hydration/persistence adapter 拆。
-- `src/app/chat/chatReplyRuntime.ts` 应拆成 request/session orchestration、follow-up planning、tool evidence staging、task settlement、runtime audit slices。
+- `src/app/chat/chatReplyRuntime.ts` 仍负责 request/session orchestration；continuation state、follow-up planning、tool evidence staging、task settlement 和 runtime audit 已由独立 owner 承担。
 
 ## Related
 

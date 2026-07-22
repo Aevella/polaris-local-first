@@ -68,13 +68,14 @@ describe('toolRegistryThemeRules', () => {
       visibleCards: []
     });
 
-    expect(lines.some((line) => line.includes('readThemeCss：读取当前完整'))).toBe(true);
-    expect(lines.some((line) => line.includes('文件快照，不是每轮通行证'))).toBe(true);
-    expect(lines.some((line) => line.includes('appendThemeCss.css` 接收新增规则'))).toBe(true);
-    expect(lines.some((line) => line.includes('replaceThemeCss.css` 接收完整 CSS'))).toBe(true);
-    expect(lines.some((line) => line.includes('editThemeCss：替换已有片段'))).toBe(true);
-    expect(lines.some((line) => line.includes('replaceThemeCss：用户要完整换一套皮肤'))).toBe(true);
-    expect(lines.some((line) => line.includes('inspectThemeRender：试穿后读取关键区域 computed style'))).toBe(true);
+    expect(lines.some((line) => line.includes('readThemeCss 只返回当前 CSS 快照'))).toBe(true);
+    expect(lines.some((line) => line.includes('不是每轮通行证'))).toBe(true);
+    expect(lines.some((line) => line.includes('新增 selector 用 appendThemeCss'))).toBe(true);
+    expect(lines.some((line) => line.includes('appendThemeCss.css`'))).toBe(false);
+    expect(lines.some((line) => line.includes('replaceThemeCss.css`'))).toBe(false);
+    expect(lines.some((line) => line.includes('editThemeCss 替换已有片段'))).toBe(true);
+    expect(lines.some((line) => line.includes('用 replaceThemeCss 写完整 CSS'))).toBe(true);
+    expect(lines.some((line) => line.includes('inspectThemeRender 只能读取当前已经挂载的界面 DOM'))).toBe(true);
     expect(lines.some((line) => line.includes('patchRawCss 是旧入口'))).toBe(true);
     expect(lines.some((line) => line.includes('创意模式 selector：'))).toBe(true);
     expect(lines.some((line) => line.includes('alias=chat-bubble-user'))).toBe(true);
@@ -139,10 +140,10 @@ describe('toolRegistryThemeRules', () => {
       visibleCards: []
     });
 
-    expect(lines.some((line) => line.includes('readThemeCss：读取当前完整'))).toBe(true);
-    expect(lines.some((line) => line.includes('文件快照，不是每轮通行证'))).toBe(true);
-    expect(lines.some((line) => line.includes('editThemeCss：替换已有片段'))).toBe(true);
-    expect(lines.some((line) => line.includes('replaceThemeCss：用户要完整换一套皮肤'))).toBe(true);
+    expect(lines.some((line) => line.includes('readThemeCss 只返回当前 CSS 快照'))).toBe(true);
+    expect(lines.some((line) => line.includes('不是每轮通行证'))).toBe(true);
+    expect(lines.some((line) => line.includes('editThemeCss 替换已有片段'))).toBe(true);
+    expect(lines.some((line) => line.includes('用 replaceThemeCss 写完整 CSS'))).toBe(true);
     expect(lines.some((line) => line.includes('patchRawCss 是旧入口'))).toBe(true);
     expect(lines.some((line) => line.includes('创意模式 selector：'))).toBe(true);
     expect(lines.some((line) => line.includes('alias=chat-tool-receipt'))).toBe(true);

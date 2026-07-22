@@ -73,7 +73,7 @@ describe('CARD_TOOL_DEFINITION_MAP', () => {
       expect(definition.rules.length).toBeGreaterThan(0);
 
       const manifest = findPolarisToolManifestEntry(name);
-      expect(manifest, `${name} is missing from POLARIS_TOOL_MANIFEST_SEEDS`).toBeDefined();
+      expect(manifest, `${name} is missing from the composed tool manifest`).toBeDefined();
       expect(manifest?.definition).toBe(definition);
       expect(manifest?.group).toBe(definition.group);
       expect(manifest?.executorPlugin).toBe('collection');

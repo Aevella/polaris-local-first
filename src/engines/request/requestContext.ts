@@ -20,7 +20,7 @@ import type { RequestMessage } from './requestMessage';
 import type { AssistantPromptPart, AssistantPromptPartLayer, AssistantPromptPartName } from './requestAudit';
 import type { AssistantRequestCachePlan } from './requestCachePlan';
 import type { AssistantToolContext } from '../assistantToolProtocol';
-import { rebuildConversationToolLedger } from '../toolLedger';
+import { isSettledToolLedgerEntry, rebuildConversationToolLedger } from '../toolLedger';
 import { projectToolResultPayloadForRequest } from './requestToolResultProjection';
 import type { AssistantConversationSummaryDecision } from './requestConversationSummaryPlan';
 import type { AssistantSemanticRecallContextCandidate } from './requestSemanticRecallPlan';
@@ -152,7 +152,7 @@ function buildToolLedgerLookups(
   const transcriptToolResultsByMessageId = new Map<string, AssistantContextToolResult>();
 
   for (const entry of toolLedger) {
-    if (!entry.resultMessageId || !entry.resultStatus || !entry.resultStructuredPayload) {
+    if (!isSettledToolLedgerEntry(entry)) {
       continue;
     }
 

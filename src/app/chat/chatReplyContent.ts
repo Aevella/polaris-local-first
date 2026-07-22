@@ -1,7 +1,3 @@
-import {
-  extractAssistantNativeToolActions,
-  extractAssistantToolActions
-} from '../../engines/assistantToolProtocol';
 import type { AssistantNativeToolCall } from '../../engines/chatApi';
 import { stripCodeBlocksFromMessage } from '../../engines/codeCardText';
 import type { ChatMessage, ModelTier, ThemeToolMode } from '../../types/domain';
@@ -14,16 +10,9 @@ import {
   projectToolDraftBlocksAsCode,
   stripToolDraftBlocks
 } from './chatReplyContentProjection';
-import {
-  recoverCreativeCssToolAction,
-  recoverTranscriptToolCallActions,
-  recoverLooseJsonToolActions,
-  recoverTextualToolCallActions
-} from '../../engines/tool-protocol/assistantToolActionRecovery';
 import { normalizeReplySpacing } from '../../engines/replyText';
-import { extractProjectFileDraftActions } from '../../engines/tool-protocol/assistantProjectFileDrafts';
-import { parseAssistantTaskUpdate } from '../../engines/conversationTaskUpdateParser';
 import type { McpResolvedToolDefinition } from '../../engines/mcpRuntime';
+import { resolveAssistantToolIngress } from './chatToolActionIngress';
 
 type StartAssistantPlaceholderArgs = {
   writableConversation: WritableConversationBody;
@@ -71,72 +60,20 @@ export function parseAssistantReplyContent(
     mcpTools?: McpResolvedToolDefinition[];
   } = {}
 ) {
-  const taskParsed = parseAssistantTaskUpdate(content);
-  const contentWithoutTaskBlock = taskParsed.displayContent;
-  const actionParseContext = {
-    activeProjectId: options.activeProjectId ?? null,
-    mcpTools: options.mcpTools
-  };
-  const recoveredTranscriptToolCallActions = recoverTranscriptToolCallActions(
-    contentWithoutTaskBlock,
+  const {
+    parsed: effectiveParsed,
+    sources: ingressSources,
+    sanitizedContent,
+    taskUpdate
+  } = resolveAssistantToolIngress({
+    content,
+    modelTier,
     themeToolMode,
-    actionParseContext
-  );
-  const sanitizedContent = recoveredTranscriptToolCallActions?.displayContent ?? contentWithoutTaskBlock;
-  const fenceParsed = extractAssistantToolActions(sanitizedContent, modelTier, themeToolMode, actionParseContext);
-  const projectDraftParsed = extractProjectFileDraftActions(
-    fenceParsed.displayContent || sanitizedContent,
-    { preserveDraftBodyInDisplay: phase === 'streaming' }
-  );
-  const nativeParsed =
-    nativeToolCalls.length > 0
-      ? extractAssistantNativeToolActions(
-          nativeToolCalls,
-          projectDraftParsed.displayContent || fenceParsed.displayContent || sanitizedContent,
-          themeToolMode,
-          ignoredUnknownNativeToolNames,
-          actionParseContext
-        )
-      : null;
-  const parsed =
-    nativeParsed
-      ? {
-          displayContent: projectDraftParsed.displayContent,
-          actions: [...projectDraftParsed.actions, ...nativeParsed.actions],
-          issues: [...projectDraftParsed.issues, ...nativeParsed.issues]
-        }
-      : {
-          displayContent: projectDraftParsed.displayContent,
-          actions: [...fenceParsed.actions, ...projectDraftParsed.actions],
-          issues: [...fenceParsed.issues, ...projectDraftParsed.issues]
-        };
-  const recoveredTextualToolCallActions =
-    !nativeParsed && parsed.actions.length === 0 && !recoveredTranscriptToolCallActions
-      ? recoverTextualToolCallActions(parsed.displayContent, themeToolMode, actionParseContext)
-      : null;
-  const recoveredLooseJsonActions =
-    !nativeParsed && parsed.actions.length === 0 && !recoveredTranscriptToolCallActions && !recoveredTextualToolCallActions
-      ? recoverLooseJsonToolActions(parsed.displayContent, themeToolMode, actionParseContext)
-      : null;
-  const recoveredCreativeCssAction =
-    !nativeParsed
-      && parsed.actions.length === 0
-      && !recoveredTranscriptToolCallActions
-      && !recoveredTextualToolCallActions
-      && !recoveredLooseJsonActions
-      && (!options.hasWorkspaceContext || options.allowCreativeCssRecovery)
-      ? recoverCreativeCssToolAction(parsed.displayContent, themeToolMode)
-      : null;
-  const effectiveTranscriptRecovery =
-    !nativeParsed && parsed.actions.length === 0
-      ? recoveredTranscriptToolCallActions
-      : null;
-  const effectiveParsed =
-    effectiveTranscriptRecovery
-    ?? recoveredTextualToolCallActions
-    ?? recoveredLooseJsonActions
-    ?? recoveredCreativeCssAction
-    ?? parsed;
+    phase,
+    nativeToolCalls,
+    ignoredUnknownNativeToolNames,
+    ...options
+  });
   const visibleFallback =
     phase === 'streaming'
       ? projectToolDraftBlocksAsCode(sanitizedContent)
@@ -192,8 +129,9 @@ export function parseAssistantReplyContent(
 
   return {
     parsed: effectiveParsed,
+    toolIngressSources: ingressSources,
     visibleContent,
     isToolOnlyTurn,
-    taskUpdate: taskParsed.taskUpdate
+    taskUpdate
   };
 }

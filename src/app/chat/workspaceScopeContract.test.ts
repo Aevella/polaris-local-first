@@ -254,7 +254,6 @@ describe('workspace scope contract', () => {
         }]
       } satisfies ToolInvocation);
       const followupPlan = resolveToolFollowupPlan({
-        depth: 4,
         outcomes: [{
           path: 'direct',
           status: 'executed',
@@ -284,8 +283,8 @@ describe('workspace scope contract', () => {
         })
       ]);
       expect(JSON.stringify(projected)).not.toContain(shadowProjectId);
-      expect(followupPlan?.message.content).toContain('同一个工作区');
-      expect(followupPlan?.message.content).toContain('index.html');
+      expect(followupPlan?.exchangeFingerprint).toContain('index.html');
+      expect(followupPlan).not.toHaveProperty('message');
     } finally {
       vi.unstubAllGlobals();
     }

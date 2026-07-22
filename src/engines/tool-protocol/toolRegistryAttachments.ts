@@ -30,7 +30,6 @@ export const ATTACHMENT_TOOL_DEFINITION_MAP = {
   inspectAttachments: {
     name: 'inspectAttachments',
     group: 'attachment',
-    followupDomain: 'tool-result',
     resultReplayMode: 'full-detail',
     brief: '查看当前对话附件清单',
     schema: {
@@ -52,7 +51,6 @@ export const ATTACHMENT_TOOL_DEFINITION_MAP = {
   readAttachmentText: {
     name: 'readAttachmentText',
     group: 'attachment',
-    followupDomain: 'tool-result',
     resultReplayMode: 'full-detail',
     brief: '读取文本附件内容',
     schema: {
@@ -71,7 +69,6 @@ export const ATTACHMENT_TOOL_DEFINITION_MAP = {
   bundleAttachments: {
     name: 'bundleAttachments',
     group: 'attachment',
-    followupDomain: 'tool-result',
     brief: '把多个附件重打包成 zip',
     schema: {
       name: 'bundleAttachments',
@@ -89,7 +86,6 @@ export const ATTACHMENT_TOOL_DEFINITION_MAP = {
   generateImage: {
     name: 'generateImage',
     group: 'generation',
-    followupDomain: 'tool-result',
     brief: '按提示词生成图片',
     schema: {
       name: 'generateImage',
@@ -110,7 +106,6 @@ export const ATTACHMENT_TOOL_DEFINITION_MAP = {
   sendImageAttachment: {
     name: 'sendImageAttachment',
     group: 'attachment',
-    followupDomain: 'tool-result',
     brief: '把已有图片发到聊天里',
     schema: {
       name: 'sendImageAttachment',
@@ -130,7 +125,6 @@ export const ATTACHMENT_TOOL_DEFINITION_MAP = {
   inspectImageAsset: {
     name: 'inspectImageAsset',
     group: 'attachment',
-    followupDomain: 'tool-result',
     brief: '检查图片素材尺寸、透明度和颜色属性',
     schema: {
       name: 'inspectImageAsset',
@@ -148,7 +142,6 @@ export const ATTACHMENT_TOOL_DEFINITION_MAP = {
   extractImagePalette: {
     name: 'extractImagePalette',
     group: 'attachment',
-    followupDomain: 'tool-result',
     brief: '从图片提取主题配色',
     schema: {
       name: 'extractImagePalette',
@@ -165,7 +158,6 @@ export const ATTACHMENT_TOOL_DEFINITION_MAP = {
   createImageVariant: {
     name: 'createImageVariant',
     group: 'attachment',
-    followupDomain: 'tool-result',
     brief: '生成换肤用图片变体',
     schema: {
       name: 'createImageVariant',
@@ -219,7 +211,6 @@ export const ATTACHMENT_TOOL_DEFINITION_MAP = {
   saveAttachmentAsCodeCard: {
     name: 'saveAttachmentAsCodeCard',
     group: 'attachment',
-    followupDomain: 'room-card',
     brief: '把文本附件收成房间卡',
     schema: {
       name: 'saveAttachmentAsCodeCard',
@@ -241,7 +232,6 @@ export const ATTACHMENT_TOOL_DEFINITION_MAP = {
   inspectArchiveEntries: {
     name: 'inspectArchiveEntries',
     group: 'archive',
-    followupDomain: 'tool-result',
     resultReplayMode: 'full-detail',
     brief: '查看 zip 包内目录',
     schema: {
@@ -262,7 +252,6 @@ export const ATTACHMENT_TOOL_DEFINITION_MAP = {
   readArchiveEntryText: {
     name: 'readArchiveEntryText',
     group: 'archive',
-    followupDomain: 'tool-result',
     resultReplayMode: 'full-detail',
     brief: '读取 zip 包内文件文本',
     schema: {
@@ -282,7 +271,6 @@ export const ATTACHMENT_TOOL_DEFINITION_MAP = {
   bundleArchiveEntries: {
     name: 'bundleArchiveEntries',
     group: 'archive',
-    followupDomain: 'tool-result',
     brief: '重打包 zip 包内文件',
     schema: {
       name: 'bundleArchiveEntries',
@@ -304,7 +292,6 @@ export const ATTACHMENT_TOOL_DEFINITION_MAP = {
   saveArchiveEntryAsCodeCard: {
     name: 'saveArchiveEntryAsCodeCard',
     group: 'archive',
-    followupDomain: 'room-card',
     brief: '把 zip 包内文本收成房间卡',
     schema: {
       name: 'saveArchiveEntryAsCodeCard',

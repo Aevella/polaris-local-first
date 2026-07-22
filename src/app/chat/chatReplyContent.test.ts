@@ -4,7 +4,7 @@ import { parseAssistantReplyContent } from './chatReplyContent';
 describe('parseAssistantReplyContent', () => {
   it('parses dynamic MCP tool blocks with the discovered MCP catalog', () => {
     const parsed = parseAssistantReplyContent(
-      '```polaris-tools\n{"kind":"mcp__github__github_read_file","owner":"octocat","repo":"Hello-World","path":"README"}\n```',
+      '```polaris-tools\n{"kind":"mcp__github__github_read_file","owner":"octocat","repo":"Hello-World","path":"README","action":{"type":"describe","name":"round-action"}}\n```',
       'medium',
       'stable',
       'final',
@@ -28,6 +28,7 @@ describe('parseAssistantReplyContent', () => {
     );
 
     expect(parsed.parsed.issues).toEqual([]);
+    expect(parsed.toolIngressSources).toEqual(['fence']);
     expect(parsed.parsed.actions).toEqual([{
       kind: 'invokeMcpTool',
       serverId: 'server-github',
@@ -37,7 +38,11 @@ describe('parseAssistantReplyContent', () => {
       argumentsObject: {
         owner: 'octocat',
         repo: 'Hello-World',
-        path: 'README'
+        path: 'README',
+        action: {
+          type: 'describe',
+          name: 'round-action'
+        }
       },
       targetLabel: 'GitHub / github_read_file'
     }]);
@@ -73,6 +78,7 @@ describe('parseAssistantReplyContent', () => {
     );
 
     expect(parsed.parsed.issues).toEqual([]);
+    expect(parsed.toolIngressSources).toEqual(['native']);
     expect(parsed.parsed.actions).toEqual([{
       kind: 'invokeMcpTool',
       serverId: 'server-github',
@@ -290,12 +296,12 @@ describe('parseAssistantReplyContent', () => {
       [{
         id: 'call_1',
         name: 'createProjectFile',
-        argumentsText: '{"filePath":"index.html","language":"html","fileRole":"entry","code":"<main>Nova</main>"}'
+        argumentsText: '{"filePath":"index.html","language":"html","fileRole":"entry","code":"<main>Aelion</main>"}'
       }],
       [],
       {
         hasWorkspaceContext: true,
-        activeProjectId: 'workspace-nova-diary'
+        activeProjectId: 'workspace-aelion-diary'
       }
     );
 
@@ -303,11 +309,11 @@ describe('parseAssistantReplyContent', () => {
     expect(parsed.parsed.actions).toEqual([{
       kind: 'createProjectFile',
       file: {
-        projectId: 'workspace-nova-diary',
+        projectId: 'workspace-aelion-diary',
         filePath: 'index.html',
         fileRole: 'entry',
         language: 'html',
-        code: '<main>Nova</main>'
+        code: '<main>Aelion</main>'
       },
       targetLabel: undefined,
       openInCollection: false
@@ -449,53 +455,6 @@ describe('parseAssistantReplyContent', () => {
       code
     }]);
     expect(parsed.visibleContent).toBe(`\`\`\`js\n${code}\n\`\`\``);
-  });
-
-  it('recovers loose native writeDesktopFile arguments when a provider appends file content after a JSON shell', () => {
-    const content = [
-      'from http.server import BaseHTTPRequestHandler, HTTPServer',
-      '',
-      'class Handler(BaseHTTPRequestHandler):',
-      '    def do_GET(self):',
-      '        self.send_response(200)'
-    ].join('\n');
-    const parsed = parseAssistantReplyContent(
-      '',
-      'medium',
-      'stable',
-      'final',
-      [{
-        id: 'call_1',
-        name: 'writeDesktopFile',
-        argumentsText: `{"filePath":"server.py","targetLabel":"server.py"};\n\n${content}`
-      }]
-    );
-
-    expect(parsed.parsed.issues).toEqual([]);
-    expect(parsed.parsed.actions).toEqual([{
-      kind: 'writeDesktopFile',
-      rootId: undefined,
-      filePath: 'server.py',
-      content,
-      targetLabel: 'server.py'
-    }]);
-  });
-
-  it('keeps loose native writeDesktopFile failures actionable when the JSON shell lacks a path', () => {
-    const parsed = parseAssistantReplyContent(
-      '',
-      'medium',
-      'stable',
-      'final',
-      [{
-        id: 'call_1',
-        name: 'writeDesktopFile',
-        argumentsText: '{};\n\nprint("hello")'
-      }]
-    );
-
-    expect(parsed.parsed.actions).toEqual([]);
-    expect(parsed.parsed.issues).toEqual(['写入本机文件时缺少 filePath。']);
   });
 
   it('recovers assistant tool call transcripts without leaking them into visible content', () => {

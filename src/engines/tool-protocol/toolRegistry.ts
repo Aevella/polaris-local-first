@@ -3,7 +3,7 @@ import {
 } from './toolVisibility';
 import {
   POLARIS_TOOL_EXECUTOR_BY_ACTION_KIND,
-  POLARIS_TOOL_MANIFEST_SEEDS,
+  POLARIS_TOOL_FALLBACK_METADATA,
   type PolarisToolExecutorPluginId
 } from './toolManifest';
 import { ATTACHMENT_TOOL_DEFINITION_MAP } from './toolRegistryAttachments';
@@ -17,6 +17,7 @@ import { UTILITY_TOOL_DEFINITION_MAP } from './toolRegistryUtilities';
 import { resolveCardToolDefinitions } from './toolRegistryCardTools';
 import { resolveMcpToolDefinitions } from './toolRegistryMcpTools';
 import type { ToolInvocationKind } from '../../types/domain';
+import { TOOL_INVOCATION_KINDS } from '../../types/toolInvocationKinds';
 import type { AssistantToolActionKind, ToolActionKind } from '../toolActionTypes';
 import type { AssistantToolContext } from './assistantToolProtocolTypes';
 import { areAllUserFacingPolarisToolPromptGroupsDisabled } from './toolPromptPreferences';
@@ -24,7 +25,6 @@ import { areAllUserFacingPolarisToolPromptGroupsDisabled } from './toolPromptPre
 export type {
   PolarisToolDefinition,
   PolarisRegistryToolGroup,
-  PolarisToolFollowupDomain,
   PolarisToolResultReplayMode,
   ToolPromptContext
 } from './toolRegistryShared';
@@ -64,7 +64,6 @@ export type PolarisToolManifestEntry = {
   name: ToolInvocationKind;
   label: string;
   group?: PolarisToolDefinition['group'];
-  followupDomain?: PolarisToolDefinition['followupDomain'];
   resultReplayMode?: PolarisToolDefinition['resultReplayMode'];
   executorPlugin?: PolarisToolExecutorPluginId;
   definition?: PolarisToolDefinition;
@@ -75,6 +74,24 @@ export const POLARIS_TOOL_REGISTRY_ALIASES: PolarisToolDefinition[] = [
   ...CARD_TOOL_ALIAS_DEFINITIONS
 ];
 
+export const POLARIS_TOOL_MANIFEST_BY_NAME = Object.fromEntries(
+  TOOL_INVOCATION_KINDS.map((name) => {
+    const seed = POLARIS_TOOL_FALLBACK_METADATA[name];
+    const definition = findPolarisToolDefinition(name);
+    const entry: PolarisToolManifestEntry = {
+      name,
+      label: definition?.label ?? seed.label,
+      group: definition?.group ?? seed.group,
+      resultReplayMode: definition?.resultReplayMode ?? seed.resultReplayMode,
+      executorPlugin: name in POLARIS_TOOL_EXECUTOR_BY_ACTION_KIND
+        ? POLARIS_TOOL_EXECUTOR_BY_ACTION_KIND[name as ToolActionKind]
+        : undefined,
+      definition
+    };
+    return [name, entry] as const;
+  })
+) as Record<ToolInvocationKind, PolarisToolManifestEntry>;
+
 export function findPolarisToolDefinition(name: string): PolarisToolDefinition | undefined {
   if (!(name in POLARIS_TOOL_REGISTRY_BY_NAME)) {
     return undefined;
@@ -83,23 +100,10 @@ export function findPolarisToolDefinition(name: string): PolarisToolDefinition |
 }
 
 export function findPolarisToolManifestEntry(name: string): PolarisToolManifestEntry | undefined {
-  if (!(name in POLARIS_TOOL_MANIFEST_SEEDS)) {
+  if (!(name in POLARIS_TOOL_MANIFEST_BY_NAME)) {
     return undefined;
   }
-  const toolName = name as ToolInvocationKind;
-  const seed = POLARIS_TOOL_MANIFEST_SEEDS[toolName];
-  const definition = findPolarisToolDefinition(name);
-  return {
-    name: toolName,
-    label: definition?.label ?? seed.label,
-    group: definition?.group ?? seed.group,
-    followupDomain: definition?.followupDomain ?? seed.followupDomain,
-    resultReplayMode: definition?.resultReplayMode ?? seed.resultReplayMode,
-    executorPlugin: name in POLARIS_TOOL_EXECUTOR_BY_ACTION_KIND
-      ? POLARIS_TOOL_EXECUTOR_BY_ACTION_KIND[name as ToolActionKind]
-      : undefined,
-    definition
-  };
+  return POLARIS_TOOL_MANIFEST_BY_NAME[name as ToolInvocationKind];
 }
 
 export function resolveAvailablePolarisTools(context?: ToolResolutionSource) {

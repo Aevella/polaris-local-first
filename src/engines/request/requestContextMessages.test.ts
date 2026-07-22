@@ -193,9 +193,8 @@ describe('requestContextMessages', () => {
     expect(content).toContain('MCP 结果证据：');
     expect(content).toContain('工具：Forum MCP / forum_read');
     expect(content).toContain('isError=true');
-    expect(content).toContain('参数：{"thread_id":809}');
-    expect(content).toContain('"id": 8891');
-    expect(content).toContain('"id": 8892');
+    expect(content).not.toContain('参数：');
+    expect(content).not.toContain('8891');
   });
 
   it('materializes runtime diagnostics with the first actionable error location', () => {

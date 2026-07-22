@@ -48,7 +48,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   listEnvironmentNodes: {
     name: 'listEnvironmentNodes',
     group: 'environment',
-    followupDomain: 'tool-result',
     resultReplayMode: 'detail-excerpt',
     brief: '列出当前环境目录的一层或多层节点',
     schema: {
@@ -70,7 +69,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   inspectEnvironmentNode: {
     name: 'inspectEnvironmentNode',
     group: 'environment',
-    followupDomain: 'tool-result',
     resultReplayMode: 'detail-excerpt',
     brief: '检查一个环境节点',
     schema: {
@@ -93,7 +91,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   searchEnvironmentNodes: {
     name: 'searchEnvironmentNodes',
     group: 'environment',
-    followupDomain: 'tool-result',
     resultReplayMode: 'detail-excerpt',
     brief: '搜索当前环境目录',
     schema: {
@@ -132,7 +129,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   webSearch: {
     name: 'webSearch',
     group: 'web',
-    followupDomain: 'web',
     resultReplayMode: 'full-detail',
     brief: '联网搜索',
     schema: {
@@ -156,7 +152,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   readWebPage: {
     name: 'readWebPage',
     group: 'web',
-    followupDomain: 'web',
     resultReplayMode: 'full-detail',
     brief: '读取网页正文',
     schema: {
@@ -178,7 +173,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   listCalendars: {
     name: 'listCalendars',
     group: 'personalData',
-    followupDomain: 'tool-result',
     resultReplayMode: 'full-detail',
     brief: '读取可写系统日历',
     schema: {
@@ -198,7 +192,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   readCalendarEvents: {
     name: 'readCalendarEvents',
     group: 'personalData',
-    followupDomain: 'tool-result',
     resultReplayMode: 'full-detail',
     brief: '读取系统日历事件',
     schema: {
@@ -223,7 +216,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   createCalendarEvent: {
     name: 'createCalendarEvent',
     group: 'personalData',
-    followupDomain: 'tool-result',
     resultReplayMode: 'full-detail',
     brief: '创建系统日历事件',
     schema: {
@@ -253,7 +245,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   updateCalendarEvent: {
     name: 'updateCalendarEvent',
     group: 'personalData',
-    followupDomain: 'tool-result',
     resultReplayMode: 'full-detail',
     brief: '修改系统日历事件',
     schema: {
@@ -279,7 +270,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   deleteCalendarEvent: {
     name: 'deleteCalendarEvent',
     group: 'personalData',
-    followupDomain: 'tool-result',
     resultReplayMode: 'full-detail',
     brief: '删除系统日历事件',
     schema: {
@@ -299,7 +289,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   runCode: {
     name: 'runCode',
     group: 'card',
-    followupDomain: 'tool-result',
     resultReplayMode: 'detail-excerpt',
     brief: '在沙箱里执行 JavaScript',
     schema: {
@@ -366,7 +355,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   readMemoryDoc: {
     name: 'readMemoryDoc',
     group: 'memory',
-    followupDomain: 'reference-doc',
     resultReplayMode: 'full-detail',
     brief: '读取长期资料全文',
     schema: {
@@ -386,7 +374,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   searchMemory: {
     name: 'searchMemory',
     group: 'memoryRecall',
-    followupDomain: 'reference-doc',
     resultReplayMode: 'full-detail',
     brief: '搜索过往摘要和原文锚点',
     schema: {
@@ -413,7 +400,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   openMemorySource: {
     name: 'openMemorySource',
     group: 'memoryRecall',
-    followupDomain: 'reference-doc',
     resultReplayMode: 'full-detail',
     brief: '打开过往记忆原文',
     schema: {
@@ -436,7 +422,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   readPolarisKnowledge: {
     name: 'readPolarisKnowledge',
     group: 'knowledge',
-    followupDomain: 'reference-doc',
     resultReplayMode: 'full-detail',
     brief: '读取 Polaris 内置产品知识文档',
     schema: {
@@ -498,7 +483,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   wait: {
     name: 'wait',
     group: 'task',
-    followupDomain: 'tool-result',
     resultReplayMode: 'detail-excerpt',
     brief: '等待一小段时间后继续',
     schema: {
@@ -552,7 +536,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   listProactiveMessageRules: {
     name: 'listProactiveMessageRules',
     group: 'proactive',
-    followupDomain: 'tool-result',
     resultReplayMode: 'full-detail',
     brief: '查看主动消息规则',
     schema: {
@@ -570,7 +553,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   updateProactiveMessageRule: {
     name: 'updateProactiveMessageRule',
     group: 'proactive',
-    followupDomain: 'tool-result',
     resultReplayMode: 'detail-excerpt',
     brief: '修改主动消息规则',
     schema: {
@@ -600,7 +582,6 @@ export const UTILITY_TOOL_DEFINITION_MAP = {
   deleteProactiveMessageRule: {
     name: 'deleteProactiveMessageRule',
     group: 'proactive',
-    followupDomain: 'tool-result',
     resultReplayMode: 'detail-excerpt',
     brief: '取消主动消息规则',
     schema: {

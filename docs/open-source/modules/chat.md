@@ -10,6 +10,7 @@ Chat runs conversation workflows with collaborators, model providers, context, a
 - Message timeline projection and body loading status.
 - Request lifecycle coordination, streaming state, tool invocation lifecycle, and task settlement.
 - Writable conversation-body intent before mutating messages.
+- Explicit continuation state for tool exchanges, length recovery, preparation retry, and task activation.
 
 ## Does Not Own
 
@@ -46,6 +47,7 @@ Chat runs conversation workflows with collaborators, model providers, context, a
 - Conversation body is missing, unloaded, incomplete, timed out, or deleted.
 - Provider request fails before or during streaming.
 - Tool execution returns an explicit error or needs confirmation.
+- A settled tool exchange is replayed twice or a pending invocation is projected as completed evidence.
 - A historical lifecycle row stays out of live hydration instead of becoming an empty live conversation.
 
 ## Tests And Verification
@@ -59,7 +61,7 @@ Chat runs conversation workflows with collaborators, model providers, context, a
 ## Known Cleanup Still Owed
 
 - `src/stores/chatStore.ts` is still a large control room and should be split by conversation directory, body loading, task state, runtime feedback, and hydration/persistence adapter responsibilities.
-- `src/app/chat/chatReplyRuntime.ts` should be split into request/session orchestration, follow-up planning, tool evidence staging, task settlement, and runtime audit slices.
+- `src/app/chat/chatReplyRuntime.ts` still owns request/session orchestration, but continuation state, follow-up planning, tool evidence staging, task settlement, and runtime audit are separate owners.
 
 ## Related Intent
 

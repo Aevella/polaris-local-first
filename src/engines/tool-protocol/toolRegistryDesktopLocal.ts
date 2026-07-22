@@ -34,7 +34,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   listDesktopWorkspaces: {
     name: 'listDesktopWorkspaces',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'full-detail',
     brief: '列出已授权的 Mac 本机文件夹',
     schema: {
@@ -55,7 +54,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   listDesktopFiles: {
     name: 'listDesktopFiles',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'full-detail',
     brief: '列出已授权本机文件夹里的目录',
     schema: {
@@ -76,7 +74,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   readDesktopFile: {
     name: 'readDesktopFile',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'full-detail',
     brief: '读取已授权本机工作区里的 UTF-8 文件',
     schema: {
@@ -96,7 +93,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   searchDesktopFiles: {
     name: 'searchDesktopFiles',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '搜索已授权本机工作区里的常见文本文件',
     schema: {
@@ -119,7 +115,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   readDesktopFileContext: {
     name: 'readDesktopFileContext',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '读取已授权本机文件的行号上下文',
     schema: {
@@ -145,7 +140,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   writeDesktopFile: {
     name: 'writeDesktopFile',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '写入已授权本机工作区里的 UTF-8 文件',
     schema: {
@@ -167,7 +161,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   editDesktopFileText: {
     name: 'editDesktopFileText',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '精确局部替换已授权本机工作区里的文本文件',
     schema: {
@@ -191,7 +184,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   replaceDesktopFileLines: {
     name: 'replaceDesktopFileLines',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '按行替换已授权本机文件',
     schema: {
@@ -215,7 +207,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   createDesktopDirectory: {
     name: 'createDesktopDirectory',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '在已授权本机工作区里创建文件夹',
     schema: {
@@ -236,7 +227,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   deleteDesktopPath: {
     name: 'deleteDesktopPath',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '删除已授权本机工作区里的文件或文件夹',
     schema: {
@@ -257,7 +247,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   moveDesktopPath: {
     name: 'moveDesktopPath',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '移动或重命名已授权本机工作区里的路径',
     schema: {
@@ -279,7 +268,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   runDesktopCommand: {
     name: 'runDesktopCommand',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '在已授权本机工作区里运行命令',
     schema: {
@@ -305,7 +293,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   runDesktopCommandSequence: {
     name: 'runDesktopCommandSequence',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '在已授权本机工作区里顺序运行一组验证命令',
     schema: {
@@ -338,7 +325,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   startDesktopCommand: {
     name: 'startDesktopCommand',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '在已授权本机工作区里启动一个持久终端会话',
     schema: {
@@ -362,7 +348,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   listDesktopCommandSessions: {
     name: 'listDesktopCommandSessions',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '查看当前桌面宿主记录的本机终端会话',
     schema: {
@@ -381,7 +366,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   stopDesktopCommand: {
     name: 'stopDesktopCommand',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '停止一个持久本机终端会话',
     schema: {
@@ -401,7 +385,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   syncDesktopWorkspaceFromDisk: {
     name: 'syncDesktopWorkspaceFromDisk',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '把绑定的真实电脑文件夹同步进 Polaris 工作区',
     schema: {
@@ -424,7 +407,6 @@ export const DESKTOP_LOCAL_TOOL_DEFINITION_MAP = {
   syncDesktopWorkspaceToDisk: {
     name: 'syncDesktopWorkspaceToDisk',
     group: 'desktop',
-    followupDomain: 'desktop-agent',
     resultReplayMode: 'detail-excerpt',
     brief: '把绑定的 Polaris 工作区写回真实电脑文件夹',
     schema: {

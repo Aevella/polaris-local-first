@@ -2,7 +2,6 @@ import type { ToolInvocationKind } from '../../types/domain';
 import type { ToolActionKind } from '../toolActionTypes';
 import type {
   PolarisRegistryToolGroup,
-  PolarisToolFollowupDomain,
   PolarisToolResultReplayMode
 } from './toolRegistryShared';
 
@@ -16,10 +15,9 @@ export type PolarisToolExecutorPluginId =
   | 'utility'
   | 'web';
 
-export type PolarisToolManifestSeed = {
+export type PolarisToolFallbackMetadata = {
   label: string;
   group?: PolarisRegistryToolGroup;
-  followupDomain?: PolarisToolFollowupDomain;
   executorPlugin?: PolarisToolExecutorPluginId;
   resultReplayMode?: PolarisToolResultReplayMode;
 };
@@ -127,7 +125,7 @@ export const POLARIS_TOOL_EXECUTOR_BY_ACTION_KIND = {
   invokeMcpTool: 'mcp'
 } satisfies Record<ToolActionKind, PolarisToolExecutorPluginId>;
 
-export const POLARIS_TOOL_MANIFEST_SEEDS: Record<ToolInvocationKind, PolarisToolManifestSeed> = {
+export const POLARIS_TOOL_FALLBACK_METADATA: Record<ToolInvocationKind, PolarisToolFallbackMetadata> = {
   applyThemeCoordinates: { label: '整体坐标换肤' },
   applySurfaceTokens: { label: '单区域精修' },
   patchRawCss: { label: '创意 CSS 试穿' },
@@ -175,13 +173,13 @@ export const POLARIS_TOOL_MANIFEST_SEEDS: Record<ToolInvocationKind, PolarisTool
   searchMemory: { label: '搜索过往记忆', resultReplayMode: 'full-detail' },
   openMemorySource: { label: '打开记忆原文', resultReplayMode: 'full-detail' },
   readPolarisKnowledge: { label: '读取 Polaris 产品知识' },
-  listEnvironmentNodes: { label: '列出环境目录', group: 'environment', followupDomain: 'tool-result', resultReplayMode: 'detail-excerpt' },
-  inspectEnvironmentNode: { label: '检查环境节点', group: 'environment', followupDomain: 'tool-result', resultReplayMode: 'detail-excerpt' },
-  searchEnvironmentNodes: { label: '搜索环境目录', group: 'environment', followupDomain: 'tool-result', resultReplayMode: 'detail-excerpt' },
+  listEnvironmentNodes: { label: '列出环境目录', group: 'environment', resultReplayMode: 'detail-excerpt' },
+  inspectEnvironmentNode: { label: '检查环境节点', group: 'environment', resultReplayMode: 'detail-excerpt' },
+  searchEnvironmentNodes: { label: '搜索环境目录', group: 'environment', resultReplayMode: 'detail-excerpt' },
   searchReadableContext: { label: '搜索可读上下文' },
   startTask: { label: '开启任务' },
   completeTask: { label: '完成任务' },
-  wait: { label: '等待轮询', group: 'task', followupDomain: 'tool-result', resultReplayMode: 'detail-excerpt' },
+  wait: { label: '等待轮询', group: 'task', resultReplayMode: 'detail-excerpt' },
   createProactiveMessageRule: { label: '创建主动消息规则', group: 'proactive', resultReplayMode: 'detail-excerpt' },
   listProactiveMessageRules: { label: '查看主动消息规则', group: 'proactive', resultReplayMode: 'full-detail' },
   updateProactiveMessageRule: { label: '修改主动消息规则', group: 'proactive', resultReplayMode: 'detail-excerpt' },
@@ -227,8 +225,8 @@ export const POLARIS_TOOL_MANIFEST_SEEDS: Record<ToolInvocationKind, PolarisTool
   stopDesktopCommand: { label: '停止本机终端会话', group: 'desktop', resultReplayMode: 'detail-excerpt' },
   syncDesktopWorkspaceFromDisk: { label: '从电脑读入工作区', group: 'desktop', resultReplayMode: 'detail-excerpt' },
   syncDesktopWorkspaceToDisk: { label: '送到电脑工作区', group: 'desktop', resultReplayMode: 'detail-excerpt' },
-  invokeCodeCardTool: { label: '调用房间工具', group: 'card', followupDomain: 'room-card', resultReplayMode: 'detail-excerpt' },
-  invokeMcpTool: { label: '调用 MCP 工具', group: 'mcp', followupDomain: 'mcp', resultReplayMode: 'full-detail' }
+  invokeCodeCardTool: { label: '调用房间工具', group: 'card', resultReplayMode: 'detail-excerpt' },
+  invokeMcpTool: { label: '调用 MCP 工具', group: 'mcp', resultReplayMode: 'full-detail' }
 };
 
 export function resolveToolExecutorPluginId(kind: ToolActionKind): PolarisToolExecutorPluginId {

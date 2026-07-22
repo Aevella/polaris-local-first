@@ -993,8 +993,7 @@ describe('requestReply task activation', () => {
       collaboratorId: 'pharos',
       messages: conversationMessages,
       requestSnapshot: buildRequestSnapshot(currentTask),
-      refreshRequestSnapshot: () => buildRequestSnapshot(currentTask),
-      toolFollowupDepth: 2
+      refreshRequestSnapshot: () => buildRequestSnapshot(currentTask)
     });
 
     expect(requestCollaboratorReplyMock).toHaveBeenCalledTimes(2);

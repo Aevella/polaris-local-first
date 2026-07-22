@@ -23,30 +23,6 @@ function buildThemeImageAssetLines(context: AssistantToolContext | undefined) {
   return lines;
 }
 
-function buildCreativeThemeExampleLines(context: AssistantToolContext | undefined) {
-  const activeWorld = context?.uiSnapshot?.activeWorld ?? 'chat';
-  const collectionShelf = context?.uiSnapshot?.collectionShelf ?? 'code';
-
-  if (activeWorld === 'chat') {
-    return [
-      'CSS 示例：`replaceThemeCss.css` 接收完整 CSS；`appendThemeCss.css` 接收新增规则；`editThemeCss.newString` 接收基于当前 theme.css 的替换片段。',
-      '```css\n.app-shell.chat {\n  background: radial-gradient(circle at top, rgba(255,236,244,0.92), rgba(255,248,241,0.96));\n}\n\n.app-shell.chat .bubble.user {\n  background: linear-gradient(135deg, #ffe8f3, #fff2ea);\n  border-radius: 22px;\n  border: 1px solid rgba(255,182,208,0.42);\n}\n\n.app-shell.chat .bubble.assistant {\n  background: transparent;\n  border: 0;\n  box-shadow: none;\n}\n\n.world-chat .tool-event {\n  background: color-mix(in srgb, var(--surface) 10%, transparent);\n  border: 0;\n  border-left: 2px solid color-mix(in srgb, var(--accent) 34%, transparent);\n  box-shadow: none;\n}\n```'
-    ];
-  }
-
-  if (collectionShelf === 'dialogue') {
-    return [
-      'CSS 示例：`replaceThemeCss.css` 接收完整 CSS；`appendThemeCss.css` 接收新增规则；`editThemeCss.newString` 接收基于当前 theme.css 的替换片段。',
-      '```css\n.app-shell.collection .world-collection .conversation-card-actions {\n  background: color-mix(in srgb, var(--accent-soft) 58%, transparent);\n  border-radius: 16px;\n  color: var(--text);\n}\n```'
-    ];
-  }
-
-  return [
-    'CSS 示例：`replaceThemeCss.css` 接收完整 CSS；`appendThemeCss.css` 接收新增规则；`editThemeCss.newString` 接收基于当前 theme.css 的替换片段。',
-    '```css\n.app-shell.collection {\n  background: linear-gradient(180deg, #fff2f6 0%, #fff7fb 100%);\n}\n\n.app-shell.collection .world-collection .card {\n  background: rgba(255,255,255,0.88);\n  border: 1px solid rgba(255,196,214,0.52);\n  box-shadow: 0 16px 30px rgba(255,196,214,0.14);\n}\n```'
-  ];
-}
-
 function buildCreativeSelectorCatalogLines(context: AssistantToolContext | undefined) {
   const selectorHints = context?.uiSnapshot?.selectorHints;
   if (selectorHints?.length) {
@@ -72,16 +48,7 @@ export function buildCreativeThemeToolRules(context?: AssistantToolContext) {
     toolEnforcementMode === 'force'
       ? '这轮已经明确进入换肤辅助；写入工具会进入试穿，读取工具只返回 CSS 证据。'
       : null,
-    '可用 action：',
-    '1. readThemeCss：读取当前完整 `theme.css`，看清 blank-base / preset / custom / generated 的真实顺序。它是文件快照，不是每轮通行证。',
-    '2. editThemeCss：替换已有片段时用 oldString/newString 精确改 custom 或 generated 层，像改工作区文件一样。',
-    '3. appendThemeCss：新增 selector 或新增一段局部 CSS 时用它；不需要 oldString，默认追加到 generated 层末尾。',
-    '4. insertThemeCss：想把新增 CSS 放到某个已有片段前后时用它；需要 anchorString。',
-    '5. deleteThemeCss：删除 custom/generated 里的现有片段时用它；需要 oldString。',
-    '6. replaceThemeCss：用户要完整换一套皮肤时用它；它会清掉 preset，从纯自定义底座写入完整 CSS。',
-    '7. inspectThemeRender：试穿后读取关键区域 computed style，检查颜色、背景、边框和可读性。',
-    '8. applyPreset：只在明确要换回某个预设底座时再用。',
-    '当前换肤模式：创意模式。把皮肤当作 `theme.css` 文件编辑；replaceThemeCss 写完整 CSS，appendThemeCss 新增规则，editThemeCss 替换已有片段，readThemeCss 返回当前完整 CSS。',
+    '当前换肤模式：创意模式。把皮肤当作 `theme.css` 文件编辑；replaceThemeCss 写完整 CSS，appendThemeCss 新增规则，editThemeCss 替换已有片段。readThemeCss 只返回当前 CSS 快照，不是每轮通行证。',
     buildCreativeSelectorCatalogLines(context).join('\n'),
     THEME_PRESET_SUMMARY_LINE,
     '规则：',
@@ -104,11 +71,8 @@ export function buildCreativeThemeToolRules(context?: AssistantToolContext) {
     '- extractImagePalette 会从图片返回 background / surface / accent / text 建议。',
     '- 气泡装饰图只做视觉层，必须写 `pointer-events: none`，不要遮住正文、复制按钮、工具收据或输入区；正文可读性是硬边界，装饰贴图不清楚时缩小或移到气泡外沿。',
     ...buildThemeImageAssetLines(context),
-    '- 动作能力：replaceThemeCss 写完整 CSS；appendThemeCss 新增片段；editThemeCss 替换已有片段；insertThemeCss 贴着锚点插入；readThemeCss 返回 CSS 快照。',
-    '- 如果当前通道退到 `polaris-tools` JSON fallback，外层只保留 1 个 `actions` 数组；`css` 字段里只放纯 CSS，不要再把 `kind`、`actions` 或整段工具 JSON 塞进 `css` 里面。',
     '- patchRawCss 是旧入口；appendThemeCss 是新增 CSS 的当前入口。',
     '- 不要再输出坐标动作、surface token 动作或别的创意旧 action。',
-    '- 正文自然接话，具体改动结果由系统按执行回填。',
-    ...buildCreativeThemeExampleLines(context)
+    '- 正文自然接话，具体改动结果由系统按执行回填。'
   ].filter((line): line is string => Boolean(line));
 }
