@@ -25,8 +25,8 @@ recordAppRuntimeLogEntry({
 });
 
 async function startApplication() {
-  // Install the one LocalData backend, then finish or abandon any durable asset-import stage
-  // before store hydration can observe it.
+  // Install the one LocalData backend, reconcile only already-active pointers left behind by old
+  // clean builds, then finish or abandon any durable asset-import stage before stores hydrate.
   await initializeRuntimeStoreLocalDataBackend();
   ReactDOM.createRoot(rootElement!).render(
     <React.StrictMode>

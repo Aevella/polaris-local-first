@@ -86,13 +86,23 @@ afterEach(() => {
 });
 
 describe('installRuntimeStoreLocalDataBackend', () => {
-  it('recovers a pending asset import only after installing the selected LocalData backend', async () => {
+  it('reconciles legacy active pointers before recovering assets and before store hydration can start', async () => {
     const calls: string[] = [];
+    const activePointerReconciliation = {
+      status: 'reconciled' as const,
+      reconciledDomains: ['asset' as const],
+      unchangedDomains: [],
+      failures: []
+    };
 
     await expect(initializeRuntimeStoreLocalDataBackend({
       installBackend: () => {
         calls.push('install');
         return { installed: true, backend: 'native-sqlite' };
+      },
+      reconcileActivePointers: async () => {
+        calls.push('reconcile');
+        return activePointerReconciliation;
       },
       recoverAssetImport: async () => {
         calls.push('recover');
@@ -101,9 +111,10 @@ describe('installRuntimeStoreLocalDataBackend', () => {
     })).resolves.toEqual({
       installed: true,
       backend: 'native-sqlite',
+      activePointerReconciliation,
       assetImportRecovery: 'published'
     });
-    expect(calls).toEqual(['install', 'recover']);
+    expect(calls).toEqual(['install', 'reconcile', 'recover']);
   });
 
   it('installs the native SQLite backend into the store host when native SQLite is available', () => {

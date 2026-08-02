@@ -6,6 +6,10 @@ import {
 import { installStoreLocalDataBackend } from '../../stores/storeLocalDataBackendHost';
 import { recoverPendingAssetImportStage } from '../../infrastructure/assetStore';
 import { reportPersistenceError } from '../../infrastructure/persistenceDiagnostics';
+import {
+  reconcileLegacyActiveLocalDataPointers,
+  type LegacyActivePointerReconciliationResult
+} from '../../stores/localDataActivePointerReconciliation';
 
 export type RuntimeStoreLocalDataBackendKind = 'native-sqlite' | 'kv-default';
 
@@ -15,6 +19,7 @@ export type RuntimeStoreLocalDataBackendInstall = {
 };
 
 export type RuntimeStoreLocalDataBackendInitialization = RuntimeStoreLocalDataBackendInstall & {
+  activePointerReconciliation: LegacyActivePointerReconciliationResult;
   assetImportRecovery: 'none' | 'abandoned' | 'published' | 'failed';
 };
 
@@ -51,12 +56,15 @@ export function installRuntimeStoreLocalDataBackend(options: {
 
 export async function initializeRuntimeStoreLocalDataBackend(options: {
   installBackend?: typeof installRuntimeStoreLocalDataBackend;
+  reconcileActivePointers?: typeof reconcileLegacyActiveLocalDataPointers;
   recoverAssetImport?: typeof recoverPendingAssetImportStage;
 } = {}): Promise<RuntimeStoreLocalDataBackendInitialization> {
   const installed = (options.installBackend ?? installRuntimeStoreLocalDataBackend)();
+  const activePointerReconciliation = await (options.reconcileActivePointers
+    ?? reconcileLegacyActiveLocalDataPointers)();
   try {
     const assetImportRecovery = await (options.recoverAssetImport ?? recoverPendingAssetImportStage)();
-    return { ...installed, assetImportRecovery };
+    return { ...installed, activePointerReconciliation, assetImportRecovery };
   } catch (error) {
     reportPersistenceError({
       label: '[store:import:recovery]',
@@ -67,6 +75,6 @@ export async function initializeRuntimeStoreLocalDataBackend(options: {
       integrity: 'degraded',
       rowCount: 0
     }, error);
-    return { ...installed, assetImportRecovery: 'failed' };
+    return { ...installed, activePointerReconciliation, assetImportRecovery: 'failed' };
   }
 }

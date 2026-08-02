@@ -35,7 +35,8 @@ The native SQLite path is available early enough to be the source from first sav
   `MainActivity.onCreate` (`registerPlugin(LocalDataSqlitePlugin.class)`) — before the web app
   loads.
 - `src/main.tsx` calls `installRuntimeStoreLocalDataBackend()` before React renders, so the backend
-  is chosen before any store hydrates or persists.
+  is chosen before any store hydrates or persists. Bootstrap then reconciles metadata-only pointer
+  drift from older clean builds before pending asset-stage recovery, and only then mounts React.
 - The native plugin opens/creates `local-data.sqlite3` lazily on first `execute`/`query`, and the
   backend runs `CREATE TABLE IF NOT EXISTS` before its first read/commit. A fresh install therefore
   creates the table on first ordinary save with no migration step.
@@ -58,8 +59,15 @@ The native SQLite path is available early enough to be the source from first sav
 Installing SQLite only chooses where ordinary reads/writes land. It performs no promote, migrate, or
 catalog conversion. Existing package data becomes current SQLite-backed rows ONLY through the
 explicit import, migration, validation, and restore boundaries. Ordinary startup reads the current
-repository path and self-activates a domain from its own first committed rows. The
-`startupFactSourceBoundary` tests lock this: startup entrypoints may not promote or migrate.
+repository path and self-activates a domain from its own first committed rows.
+
+Older public clean builds could leave an already-active pointer at commit A after a later ordinary
+save committed rows and pointer B. Before hydration, startup may strictly validate those current B
+rows and advance that existing active pointer through the repository's trusted promotion path. This
+is a metadata reconciliation inside the installed backend: it copies no rows or bodies, reads no old
+store, and cannot activate a domain absent from the prior active row. Failed validation leaves A and
+all rows unchanged and reports degraded integrity. The `startupFactSourceBoundary` tests continue to
+lock out old-store migration, catalog conversion, and query-triggered promotion.
 
 ## What Is Automatically Proven
 
@@ -70,6 +78,9 @@ repository path and self-activates a domain from its own first committed rows. T
   (`storeLocalDataBackendBootstrap.test.ts`).
 - Installing SQLite performs no promote/activate; a fresh SQLite store reports every domain inactive
   until self-activation (`storeLocalDataBackendBootstrap.test.ts`).
+- Public-clean A→B active-pointer drift is repaired only after strict current-row validation, with
+  parity coverage on the default transactional KV backend and Node SQLite; never-active and
+  incomplete domains remain untouched (`localDataActivePointerReconciliation.test.ts`).
 - Repository read/validate/commit semantics are identical on the KV and real Node SQLite engines
   (`localDataBackendContract.test.ts`).
 - Both native plugins declare the full LocalData SQLite statement surface, including row discovery

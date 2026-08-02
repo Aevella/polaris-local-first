@@ -64,6 +64,7 @@ type FakeStore = {
 type FakeDb = {
   objectStoreNames: { contains: () => boolean };
   createObjectStore: () => void;
+  deleteObjectStore: (name: string) => void;
   transaction: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
   onclose: (() => void) | null;
@@ -99,6 +100,7 @@ function createFakeDb(transaction: FakeDb['transaction']): FakeDb {
   return {
     objectStoreNames: { contains: () => true },
     createObjectStore: vi.fn(),
+    deleteObjectStore: vi.fn(),
     transaction,
     close: vi.fn(),
     onclose: null,
@@ -147,6 +149,53 @@ describe('persistence IndexedDB connection recovery', () => {
     expect(indexedDB.open).toHaveBeenCalledTimes(2);
     expect(firstDb.close).toHaveBeenCalledTimes(1);
     expect(secondDb.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('upgrades IndexedDB v3 to v4 by adding only the durable asset stage store', async () => {
+    const stores = new Set(['kv', 'asset-binary', 'asset-meta', 'asset-preview', 'import-rollback']);
+    const transaction = vi.fn().mockReturnValue(createSuccessfulTransaction('preserved-kv'));
+    const db = createFakeDb(transaction);
+    db.objectStoreNames = { contains: (name?: string) => Boolean(name && stores.has(name)) };
+    db.createObjectStore = vi.fn((name?: string) => {
+      if (name) stores.add(name);
+    });
+    db.deleteObjectStore = vi.fn((name: string) => {
+      stores.delete(name);
+    });
+    const indexedDB = {
+      open: vi.fn((_name: string, _version: number) => {
+        const request: FakeOpenRequest = {
+          result: db,
+          onsuccess: null,
+          onerror: null,
+          onblocked: null,
+          onupgradeneeded: null,
+          error: null
+        };
+        queueMicrotask(() => {
+          request.onupgradeneeded?.();
+          request.onsuccess?.();
+        });
+        return request;
+      })
+    };
+    vi.stubGlobal('indexedDB', indexedDB);
+
+    const { kvGet } = await import('./persistence');
+    await expect(kvGet('legacy-key')).resolves.toBe('preserved-kv');
+
+    expect(indexedDB.open).toHaveBeenCalledWith('polaris-db', 4);
+    expect(db.createObjectStore).toHaveBeenCalledTimes(1);
+    expect(db.createObjectStore).toHaveBeenCalledWith('asset-import-stage');
+    expect(db.deleteObjectStore).toHaveBeenCalledTimes(1);
+    expect(db.deleteObjectStore).toHaveBeenCalledWith('import-rollback');
+    expect(stores).toEqual(new Set([
+      'kv',
+      'asset-binary',
+      'asset-meta',
+      'asset-preview',
+      'asset-import-stage'
+    ]));
   });
 
   it('routes public persistence helpers through the selected backend', async () => {

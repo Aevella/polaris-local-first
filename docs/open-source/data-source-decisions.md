@@ -39,6 +39,12 @@ The shared primitive for this direct activation shape is
 `activateDomainsFromCommittedRows(...)`. It is for rows the product just wrote as current data. It
 is not a migration validator.
 
+Older public clean builds could advance a domain commit pointer without advancing the already-active
+pointer. Startup reconciles that metadata drift only for domains already named in the active row:
+strict hydration of the latest current-backend rows must succeed before the repository's trusted
+promotion path advances the pointer. It does not copy content, consult an old store, or activate a
+new domain; failure leaves both rows and the previous pointer untouched.
+
 ## Domain Decisions
 
 | Domain | Ordinary save shape | Older store status | Current decision |

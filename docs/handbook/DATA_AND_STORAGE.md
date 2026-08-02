@@ -42,13 +42,20 @@ the space owner changes.
 
 ## Ordinary Startup
 
-Normal startup may hydrate current projections, reconcile in-memory workspace bindings, install the
-platform LocalData backend, and report leftover import rollback evidence.
+Normal startup may install the platform LocalData backend, reconcile in-memory workspace bindings,
+hydrate current projections, and report leftover durable asset-stage evidence. Before any store
+hydrates, it may also repair metadata drift left by older public clean builds: only a domain already
+present in the active row is eligible, its latest current-backend rows must pass strict hydration and
+coherence validation, and only its existing active pointer is advanced. No content is copied and no
+old store is read.
 
 Normal startup must not scan old storage to decide live data, read v1 store keys as product
-fallbacks, run LocalData auto-upgrade, promote active domains, compact old source keys, recover
-theme state from unrelated persistence backends, or apply legacy runtime/collection/persona fields
-as compatibility fallbacks.
+fallbacks, run LocalData auto-upgrade, activate a never-active domain, promote from old-source
+evidence, compact old source keys, recover theme state from unrelated persistence backends, or apply
+legacy runtime/collection/persona fields as compatibility fallbacks.
+
+The metadata repair above is not domain activation or a data migration. A never-active domain,
+missing commit pointer, or incomplete domain metadata remains untouched and is reported degraded.
 
 When a repository read proves a row is missing, deleted, incomplete, or timed out, that state is
 evidence. It cannot become an authoritative empty object.
