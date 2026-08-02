@@ -37,6 +37,7 @@ export function isLiveProductAssetState(state: AssetObjectState | undefined): bo
 
 export type AssetBlobEntry = {
   id: string;
+  storageKey?: string;
   bytes: number;
 };
 
@@ -54,6 +55,7 @@ export type AssetLocalDataProjection = {
 
 export type AssetObjectSeed = {
   id: string;
+  storageKey: string;
   meta: StoredAssetMeta | null;
   binaryBytes: number;
   previewBytes: number;
@@ -106,8 +108,8 @@ function classifyAssetKind(meta: StoredAssetMeta | null): AssetLocalDataObjectKi
 
 function buildSeeds(state: AssetLocalDataState): AssetObjectSeed[] {
   const metaById = new Map(state.meta.map((entry) => [entry.id, entry]));
-  const binaryById = new Map(state.binary.map((entry) => [entry.id, entry.bytes]));
-  const previewById = new Map(state.preview.map((entry) => [entry.id, entry.bytes]));
+  const binaryById = new Map(state.binary.map((entry) => [entry.id, entry]));
+  const previewById = new Map(state.preview.map((entry) => [entry.id, entry]));
   const ids = uniqueSortedIds([
     ...metaById.keys(),
     ...binaryById.keys(),
@@ -120,11 +122,14 @@ function buildSeeds(state: AssetLocalDataState): AssetObjectSeed[] {
     const hasPreview = previewById.has(id);
     return {
       id,
+      storageKey: binaryById.get(id)?.storageKey
+        ?? previewById.get(id)?.storageKey
+        ?? id,
       meta,
       hasBinary,
       hasPreview,
-      binaryBytes: binaryById.get(id) ?? 0,
-      previewBytes: previewById.get(id) ?? 0,
+      binaryBytes: binaryById.get(id)?.bytes ?? 0,
+      previewBytes: previewById.get(id)?.bytes ?? 0,
       previewOnly: !meta && !hasBinary && hasPreview,
       ownerRefs: toOwnerRefs(state.ownersByAssetId.get(id))
     };
@@ -135,6 +140,7 @@ function toAssetObjectRow(seed: AssetObjectSeed, updatedAt: number): AssetObject
   return {
     id: seed.id,
     objectId: `asset:${seed.id}`,
+    storageKey: seed.storageKey,
     kind: classifyAssetKind(seed.meta),
     name: seed.meta?.name ?? seed.id,
     mimeType: seed.meta?.mimeType ?? 'application/octet-stream',

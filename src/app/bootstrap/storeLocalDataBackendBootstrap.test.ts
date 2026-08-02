@@ -22,7 +22,10 @@ import {
   setPersistenceBackendForTesting,
   type PersistenceBackend
 } from '../../infrastructure/persistence';
-import { installRuntimeStoreLocalDataBackend } from './storeLocalDataBackendBootstrap';
+import {
+  initializeRuntimeStoreLocalDataBackend,
+  installRuntimeStoreLocalDataBackend
+} from './storeLocalDataBackendBootstrap';
 
 function createNodeSqliteDriver(db: DatabaseSync): LocalDataSqliteDriver {
   return {
@@ -83,6 +86,26 @@ afterEach(() => {
 });
 
 describe('installRuntimeStoreLocalDataBackend', () => {
+  it('recovers a pending asset import only after installing the selected LocalData backend', async () => {
+    const calls: string[] = [];
+
+    await expect(initializeRuntimeStoreLocalDataBackend({
+      installBackend: () => {
+        calls.push('install');
+        return { installed: true, backend: 'native-sqlite' };
+      },
+      recoverAssetImport: async () => {
+        calls.push('recover');
+        return 'published';
+      }
+    })).resolves.toEqual({
+      installed: true,
+      backend: 'native-sqlite',
+      assetImportRecovery: 'published'
+    });
+    expect(calls).toEqual(['install', 'recover']);
+  });
+
   it('installs the native SQLite backend into the store host when native SQLite is available', () => {
     const sqliteBackend: LocalDataBackend = createLocalDataSqliteBackend({
       driver: createNodeSqliteDriver(new DatabaseSync(':memory:'))

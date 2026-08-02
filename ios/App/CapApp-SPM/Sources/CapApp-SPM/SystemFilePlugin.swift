@@ -15,12 +15,7 @@ public class SystemFilePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDele
         CAPPluginMethod(name: "beginExportBackup", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "appendExportBackupChunk", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "finishExportBackup", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "cancelExportBackup", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "beginImportRollbackFile", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "appendImportRollbackFileChunk", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "finishImportRollbackFile", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "readImportRollbackFile", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "clearImportRollbackFile", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "cancelExportBackup", returnType: CAPPluginReturnPromise)
     ]
 
     private enum PendingOperation {
@@ -196,123 +191,6 @@ public class SystemFilePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDele
         }
     }
 
-    @objc public func beginImportRollbackFile(_ call: CAPPluginCall) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                let tempUrl = try self.importRollbackTempUrl()
-                try self.ensureImportRollbackDirectory()
-                if FileManager.default.fileExists(atPath: tempUrl.path) {
-                    try FileManager.default.removeItem(at: tempUrl)
-                }
-                FileManager.default.createFile(atPath: tempUrl.path, contents: nil)
-                DispatchQueue.main.async {
-                    call.resolve()
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    call.reject("创建导入回滚文件失败。", nil, error)
-                }
-            }
-        }
-    }
-
-    @objc public func appendImportRollbackFileChunk(_ call: CAPPluginCall) {
-        guard let dataBase64 = call.getString("dataBase64"), let data = Data(base64Encoded: dataBase64) else {
-            call.reject("导入回滚分块格式不正确。")
-            return
-        }
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                let tempUrl = try self.importRollbackTempUrl()
-                let handle = try FileHandle(forWritingTo: tempUrl)
-                try handle.seekToEnd()
-                try handle.write(contentsOf: data)
-                try handle.close()
-                DispatchQueue.main.async {
-                    call.resolve()
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    call.reject("写入导入回滚分块失败。", nil, error)
-                }
-            }
-        }
-    }
-
-    @objc public func finishImportRollbackFile(_ call: CAPPluginCall) {
-        let expectedByteLength = callInt(call, "expectedByteLength")
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                let tempUrl = try self.importRollbackTempUrl()
-                let finalUrl = try self.importRollbackUrl()
-                let size = try self.fileByteLength(tempUrl)
-                if let expectedByteLength, expectedByteLength != size {
-                    throw NSError(
-                        domain: "SystemFilePlugin",
-                        code: 1,
-                        userInfo: [NSLocalizedDescriptionKey: "导入回滚文件字节数不一致。"]
-                    )
-                }
-                if FileManager.default.fileExists(atPath: finalUrl.path) {
-                    try FileManager.default.removeItem(at: finalUrl)
-                }
-                try FileManager.default.moveItem(at: tempUrl, to: finalUrl)
-                DispatchQueue.main.async {
-                    call.resolve(["size": size])
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    call.reject("完成导入回滚文件失败。", nil, error)
-                }
-            }
-        }
-    }
-
-    @objc public func readImportRollbackFile(_ call: CAPPluginCall) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                let url = try self.importRollbackUrl()
-                guard FileManager.default.fileExists(atPath: url.path) else {
-                    DispatchQueue.main.async {
-                        call.resolve(["exists": false])
-                    }
-                    return
-                }
-                let size = try self.fileByteLength(url)
-                DispatchQueue.main.async {
-                    call.resolve([
-                        "exists": true,
-                        "fileUrl": url.absoluteString,
-                        "mimeType": "application/zip",
-                        "size": size
-                    ])
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    call.reject("读取导入回滚文件失败。", nil, error)
-                }
-            }
-        }
-    }
-
-    @objc public func clearImportRollbackFile(_ call: CAPPluginCall) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                try self.removeItemIfPresent(try self.importRollbackUrl())
-                try self.removeItemIfPresent(try self.importRollbackTempUrl())
-                DispatchQueue.main.async {
-                    call.resolve()
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    call.reject("清理导入回滚文件失败。", nil, error)
-                }
-            }
-        }
-    }
-
     public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         switch pendingOperation {
         case .importing(let call):
@@ -446,26 +324,6 @@ public class SystemFilePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDele
             return UTType(mimeType: token)
         }
         return types.isEmpty ? [.item] : types
-    }
-
-    private func importRollbackDirectory() throws -> URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        return base.appendingPathComponent("PolarisImportRollback", isDirectory: true)
-    }
-
-    private func ensureImportRollbackDirectory() throws {
-        try FileManager.default.createDirectory(at: try importRollbackDirectory(), withIntermediateDirectories: true)
-    }
-
-    private func importRollbackUrl() throws -> URL {
-        try ensureImportRollbackDirectory()
-        return try importRollbackDirectory().appendingPathComponent("polaris-import-rollback.zip")
-    }
-
-    private func importRollbackTempUrl() throws -> URL {
-        try ensureImportRollbackDirectory()
-        return try importRollbackDirectory().appendingPathComponent("polaris-import-rollback.zip.tmp")
     }
 
     private func fileByteLength(_ url: URL) throws -> Int {

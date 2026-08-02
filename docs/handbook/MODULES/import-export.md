@@ -16,7 +16,7 @@ Import/export owns:
 - Foreign-format conversion where explicitly supported.
 - LocalData reconstruction.
 - Migration staging and validation.
-- Rollback evidence for failed import.
+- Durable blob staging and startup recovery for interrupted import.
 
 Import/export does not own:
 
@@ -34,7 +34,6 @@ src/stores/storeImportApply.ts
 src/stores/storeImportProgress.ts
 src/stores/storeExportPackage.ts
 src/stores/kelivoImportAdapter.ts
-src/native/importRollbackFile.ts
 src/engines/localData/*Migration*.ts
 src/engines/localData/localDataExportRehearsal.ts
 src/engines/localData/localDataExportStagingReadback.ts
@@ -45,7 +44,7 @@ src/engines/localData/localDataExportStagingReadback.ts
 Import:
 
 ```txt
-package -> parse -> validate -> reconstruct LocalData rows -> promote domains -> refresh stores
+package -> parse -> validate -> stage blobs -> atomically replace and activate each domain -> refresh stores
 ```
 
 Export:
@@ -58,7 +57,7 @@ active LocalData facts + owned blobs/bodies -> package manifest -> zip
 
 - Use import for package evidence crossing into the current model.
 - Use migration planners for legacy source evidence.
-- Use rollback files only as failure protection, not as a normal read source.
+- Resolve interrupted asset stages from their durable manifest and the committed asset-domain pointer.
 
 ## Extension Rules
 
@@ -72,7 +71,7 @@ active LocalData facts + owned blobs/bodies -> package manifest -> zip
 ```bash
 npm run typecheck
 npm run test:data-boundary
-npm test -- src/stores/storeImportPackage.test.ts src/stores/storeExportPackage.test.ts src/stores/kelivoImportAdapter.test.ts src/native/importRollbackFile.test.ts
+npm test -- src/stores/storeImportPackage.test.ts src/stores/storeExportPackage.test.ts src/stores/kelivoImportAdapter.test.ts src/infrastructure/assetStore.test.ts
 npm test
 npm run build
 ```

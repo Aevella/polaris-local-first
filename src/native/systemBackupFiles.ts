@@ -22,10 +22,6 @@ type NativeZipPersistenceEntryResult = {
   size?: number;
 };
 
-type NativeRollbackReadResult =
-  | { exists: false }
-  | { exists: true; fileUrl?: string; dataBase64?: string; mimeType?: string; size?: number };
-
 type SystemFilePlugin = {
   importBackup: () => Promise<NativeImportResult>;
   exportBackup: (options: {
@@ -90,15 +86,6 @@ type SystemFilePlugin = {
   cancelZipExport?: (options: {
     exportId: string;
   }) => Promise<void>;
-  beginImportRollbackFile?: () => Promise<void>;
-  appendImportRollbackFileChunk?: (options: {
-    dataBase64: string;
-  }) => Promise<void>;
-  finishImportRollbackFile?: (options: {
-    expectedByteLength?: number;
-  }) => Promise<{ size?: number }>;
-  readImportRollbackFile?: () => Promise<NativeRollbackReadResult>;
-  clearImportRollbackFile?: () => Promise<void>;
 };
 
 const SystemFile = registerPlugin<SystemFilePlugin>('SystemFile');

@@ -23,6 +23,6 @@ describe('formatStoreImportResult', () => {
         stage: 'promotion',
         reason: 'verification unavailable'
       }]
-    })).toBe('部分导入完成：1 个数据域已更新。对话的激活或界面刷新仍需重新检查。');
+    })).toBe('部分导入完成：1 个数据域已更新。对话的激活、清理或界面刷新将在下次启动继续检查。');
   });
 });

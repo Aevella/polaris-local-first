@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   createCompleteLocalDataRow,
   getLocalDataActiveDataSourceKey,
+  getLocalDataCommitPointerKey,
   getLocalDataRowKey,
   LOCAL_DATA_SCHEMA_VERSION,
   type LocalDataActiveDataSourceRow,
@@ -205,6 +206,7 @@ describe('localDataStorePersistence', () => {
       async read<T>(key: string) {
         observedKeys.push(key);
         if (key === getLocalDataActiveDataSourceKey()) return activeSource as unknown as T;
+        if (key === getLocalDataCommitPointerKey(domain)) return activeSource.domains[domain] as unknown as T;
         if (key === domainMetaKey) return domainMetaRow as unknown as T;
         return null;
       },
@@ -261,7 +263,8 @@ describe('localDataStorePersistence', () => {
     for (const domain of localDataDomains) {
       const activeSource = activeSourceForDomain(domain);
       const values = new Map<string, unknown>([
-        [getLocalDataActiveDataSourceKey(), activeSource]
+        [getLocalDataActiveDataSourceKey(), activeSource],
+        [getLocalDataCommitPointerKey(domain), activeSource.domains[domain]]
       ]);
       setPersistenceBackendForTesting(createValuePersistenceBackend(values));
 
@@ -313,7 +316,8 @@ describe('localDataStorePersistence', () => {
   it('does not treat a repository domain as active when its domain meta row is missing', async () => {
     const activeSource = activeSourceForDomain('collection');
     const values = new Map<string, unknown>([
-      [getLocalDataActiveDataSourceKey(), activeSource]
+      [getLocalDataActiveDataSourceKey(), activeSource],
+      [getLocalDataCommitPointerKey('collection'), activeSource.domains.collection]
     ]);
     setPersistenceBackendForTesting(createValuePersistenceBackend(values));
 
@@ -322,6 +326,24 @@ describe('localDataStorePersistence', () => {
     values.set(getLocalDataRowKey({ domain: 'collection', kind: 'domainMeta', id: 'collection' }), completeDomainMetaRow('collection'));
 
     await expect(isLocalDataRepositoryDomainActive('collection')).resolves.toBe(true);
+  });
+
+  it('rejects an active domain pointer that does not name the current domain commit', async () => {
+    const activeSource = activeSourceForDomain('collection');
+    const values = new Map<string, unknown>([
+      [getLocalDataActiveDataSourceKey(), activeSource],
+      [getLocalDataCommitPointerKey('collection'), {
+        ...activeSource.domains.collection,
+        commitId: 'collection-newer-unpromoted'
+      }],
+      [
+        getLocalDataRowKey({ domain: 'collection', kind: 'domainMeta', id: 'collection' }),
+        completeDomainMetaRow('collection')
+      ]
+    ]);
+    setPersistenceBackendForTesting(createValuePersistenceBackend(values));
+
+    await expect(isLocalDataRepositoryDomainActive('collection')).resolves.toBe(false);
   });
 
   it('prunes repository commits to changed rows and fresh tombstones', () => {

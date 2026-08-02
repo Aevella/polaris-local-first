@@ -1,14 +1,10 @@
 import {
-  replaceAssetEntries,
-  upsertAssetEntries,
+  recoverPendingAssetImportStage,
+  stageAssetImportEntries,
   type AssetExportEntry,
   type StoredAssetMeta
 } from '../infrastructure/assetStore';
 import { flushPageLifecycleHandlers } from '../infrastructure/pageLifecycleFlush';
-import {
-  kvReplaceAll,
-  type PersistedKvEntry
-} from '../infrastructure/persistence';
 import type { PersistedChatState } from './chatCurrentPersistence';
 import type { PersistedCollectionState } from './collectionStorePersistence';
 import {
@@ -39,10 +35,6 @@ import {
 } from './storeExportPackage';
 import type { StoreImportProgressReporter } from './storeImportProgress';
 import type { Persona, ProjectFile, WorkspaceReferenceDoc } from '../types/domain';
-import {
-  clearImportRollbackFile,
-  readImportRollbackFile
-} from '../native/importRollbackFile';
 import type { StoreImportDomainFailure, StoreImportResult } from './storeImportResult';
 import { fingerprintDiagnosticId, reportPersistenceError } from '../infrastructure/persistenceDiagnostics';
 
@@ -73,17 +65,6 @@ export type ImportLocalStorageEntry = {
   value: string;
 };
 
-type ImportRollbackScope = {
-  kv: boolean;
-  localStorage: boolean;
-  assets: boolean;
-};
-
-const IMPORT_ROLLBACK_MANIFEST_PATH = 'rollback/manifest.json';
-const IMPORT_ROLLBACK_KV_PATH = 'rollback/kv.json';
-const IMPORT_ROLLBACK_LOCAL_STORAGE_PATH = 'rollback/localStorage.json';
-const IMPORT_ROLLBACK_ASSET_INDEX_PATH = 'rollback/assets.json';
-
 function restoreFailureReason(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -101,38 +82,15 @@ function readPolarisLocalStorage(): ImportLocalStorageEntry[] {
   return entries;
 }
 
-function clearPolarisLocalStorage() {
+function replacePolarisLocalStorage(entries: ImportLocalStorageEntry[]) {
   if (typeof window === 'undefined') return;
-
-  const keys: string[] = [];
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
-    if (key?.startsWith(LOCAL_STORAGE_PREFIX)) {
-      keys.push(key);
-    }
-  }
-
-  for (const key of keys) {
-    window.localStorage.removeItem(key);
-  }
-}
-
-function replacePolarisLocalStorage(
-  entries: ImportLocalStorageEntry[],
-  options: { removeAbsent?: boolean } = {}
-) {
-  if (typeof window === 'undefined') return;
-  const previous = options.removeAbsent
-    ? readPolarisLocalStorage()
-    : entries.map(({ key }) => ({ key, value: window.localStorage.getItem(key) }));
+  const previous = entries.map(({ key }) => ({ key, value: window.localStorage.getItem(key) }));
   try {
-    if (options.removeAbsent) clearPolarisLocalStorage();
     for (const entry of entries) {
       window.localStorage.setItem(entry.key, entry.value);
     }
   } catch (error) {
     try {
-      if (options.removeAbsent) clearPolarisLocalStorage();
       for (const entry of previous) {
         if (entry.value === null) window.localStorage.removeItem(entry.key);
         else window.localStorage.setItem(entry.key, entry.value);
@@ -151,96 +109,6 @@ function restorePolarisLocalStorageSnapshot(
   if (typeof window === 'undefined') return;
   for (const key of touchedKeys) window.localStorage.removeItem(key);
   for (const entry of entries) window.localStorage.setItem(entry.key, entry.value);
-}
-
-async function replaceKvEntries(entries: PersistedKvEntry[]) {
-  await kvReplaceAll(entries);
-}
-
-async function readImportRollbackZip(blob: Blob): Promise<{
-  kvEntries: PersistedKvEntry[];
-  localStorageEntries: ImportLocalStorageEntry[];
-  assetEntries: AssetExportEntry[];
-}> {
-  const { default: JSZip } = await import('jszip');
-  const zip = await JSZip.loadAsync(await blob.arrayBuffer());
-  const manifest = parseJsonFile<Record<string, unknown>>(
-    await readZipTextFile(zip, IMPORT_ROLLBACK_MANIFEST_PATH, IMPORT_ROLLBACK_MANIFEST_PATH),
-    IMPORT_ROLLBACK_MANIFEST_PATH
-  );
-  if (manifest.format !== 'polaris-import-rollback' || manifest.version !== 1) {
-    throw new Error('导入回滚包格式不正确。');
-  }
-  const kvEntries = parseJsonFile<PersistedKvEntry[]>(
-    await readZipTextFile(zip, IMPORT_ROLLBACK_KV_PATH, IMPORT_ROLLBACK_KV_PATH),
-    IMPORT_ROLLBACK_KV_PATH
-  );
-  const localStorageEntries = parseJsonFile<ImportLocalStorageEntry[]>(
-    await readZipTextFile(zip, IMPORT_ROLLBACK_LOCAL_STORAGE_PATH, IMPORT_ROLLBACK_LOCAL_STORAGE_PATH),
-    IMPORT_ROLLBACK_LOCAL_STORAGE_PATH
-  );
-  const assetIndex = parseJsonFile<Array<{
-    meta: StoredAssetMeta;
-    binaryPath: string;
-    previewPath?: string;
-  }>>(
-    await readZipTextFile(zip, IMPORT_ROLLBACK_ASSET_INDEX_PATH, IMPORT_ROLLBACK_ASSET_INDEX_PATH),
-    IMPORT_ROLLBACK_ASSET_INDEX_PATH
-  );
-  const assetEntries = await mapWithConcurrency(assetIndex, ASSET_READ_CONCURRENCY, async (entry) => ({
-    meta: entry.meta,
-    blob: await readZipBlobFile(zip, entry.binaryPath, entry.binaryPath),
-    previewBlob: entry.previewPath ? await readZipBlobFile(zip, entry.previewPath, entry.previewPath) : null
-  }));
-
-  return {
-    kvEntries,
-    localStorageEntries,
-    assetEntries
-  };
-}
-
-async function restoreImportRollbackZip(
-  blob: Blob,
-  scope: ImportRollbackScope = { kv: true, localStorage: true, assets: true }
-): Promise<void> {
-  const rollback = await readImportRollbackZip(blob);
-  const failures: string[] = [];
-  if (scope.kv) {
-    try {
-      await replaceKvEntries(rollback.kvEntries);
-    } catch (error) {
-      failures.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  if (scope.localStorage) {
-    try {
-      replacePolarisLocalStorage(rollback.localStorageEntries, { removeAbsent: true });
-    } catch (error) {
-      failures.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  if (scope.assets) {
-    try {
-      await replaceAssetEntries(rollback.assetEntries);
-    } catch (error) {
-      failures.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  if (failures.length > 0) {
-    throw new Error(`导入失败后回滚旧数据也失败：${failures.join('；')}`);
-  }
-}
-
-export async function recoverPendingStructuredImportRollback() {
-  const rollbackFile = await readImportRollbackFile();
-  if (!rollbackFile) return false;
-  await restoreImportRollbackZip(rollbackFile);
-  await clearImportRollbackFile();
-  return true;
 }
 
 async function refreshImportedStoresBestEffort() {
@@ -689,6 +557,8 @@ export async function importStructuredExportSnapshot(
 
   const failures: StoreImportDomainFailure[] = [];
   const skipDomains: Array<'space' | 'asset'> = [];
+  const importCommittedAt = Date.now();
+  const assetCommitId = `import-asset-${importCommittedAt}`;
   const previousLocalStorage = readPolarisLocalStorage();
   const importedLocalStorageEntries: ImportLocalStorageEntry[] = [{
     key: SPACE_STORE_KEY,
@@ -710,14 +580,15 @@ export async function importStructuredExportSnapshot(
     });
   }
 
-  let assetReceipt: Awaited<ReturnType<typeof upsertAssetEntries>> | null = null;
+  let assetStage: Awaited<ReturnType<typeof stageAssetImportEntries>> | null = null;
   options.onProgress?.({
     message: assetEntries.length > 0 ? '写入附件' : '刷新导入结果',
     current: assetEntries.length > 0 ? 0 : undefined,
     total: assetEntries.length > 0 ? assetEntries.length : undefined
   });
   try {
-    assetReceipt = await upsertAssetEntries(assetEntries, {
+    assetStage = await stageAssetImportEntries(assetEntries, {
+      assetCommitId,
       onProgress: (current, total) => options.onProgress?.({ message: '写入附件', current, total })
     });
   } catch (error) {
@@ -727,6 +598,11 @@ export async function importStructuredExportSnapshot(
       stage: 'asset-staging',
       reason: restoreFailureReason(error)
     });
+    try {
+      await recoverPendingAssetImportStage();
+    } catch {
+      // The durable manifest remains for startup recovery.
+    }
   }
 
   options.onProgress?.({ message: '重建当前数据库' });
@@ -737,8 +613,8 @@ export async function importStructuredExportSnapshot(
     personaMemoryDocContent,
     runtimeState,
     spaceState,
-    assetEntries
-  }, { skipDomains });
+    assetEntries: assetStage?.entries ?? []
+  }, { skipDomains, committedAt: importCommittedAt });
 
   for (const skipped of restoreResult.skippedDomains) {
     if (skipDomains.includes(skipped.domain as 'space' | 'asset')) continue;
@@ -763,8 +639,16 @@ export async function importStructuredExportSnapshot(
       importedLocalStorageEntries.map((entry) => entry.key)
     );
   }
-  if (assetReceipt && !restoreResult.restoredDomains.includes('asset')) {
-    await assetReceipt.rollback();
+  if (assetStage) {
+    try {
+      await recoverPendingAssetImportStage();
+    } catch (error) {
+      failures.push({
+        domain: 'asset',
+        stage: 'cleanup',
+        reason: restoreFailureReason(error)
+      });
+    }
   }
 
   if (restoreResult.restoredDomains.length === 7 && failures.length === 0) {
@@ -775,8 +659,6 @@ export async function importStructuredExportSnapshot(
   if (refreshFailure) {
     failures.push({ domain: 'runtime', stage: 'refresh', reason: refreshFailure });
   }
-  await clearImportRollbackFile();
-
   const importedDomains = restoreResult.restoredDomains;
   for (const failure of failures) {
     reportPersistenceError({

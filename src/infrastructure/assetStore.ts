@@ -1,5 +1,6 @@
 import { createUid } from '../engines/id';
 import {
+  ASSET_IMPORT_STAGE_STORE,
   ASSET_BINARY_STORE,
   ASSET_META_STORE,
   ASSET_PREVIEW_STORE,
@@ -21,6 +22,7 @@ import {
 } from '../stores/assetLocalDataPersistence';
 import { runExclusiveAssetPersistenceCommit } from '../stores/assetPersistenceCommitQueue';
 import {
+  readActiveLocalDataSourceForDomain,
   readLocalDataDomainRows,
   type LocalDataReadIntegrity
 } from '../stores/localDataStorePersistence';
@@ -29,6 +31,7 @@ import {
 } from '../stores/storeLocalDataBackendHost';
 import {
   getLocalDataActiveDataSourceKey,
+  getLocalDataCommitPointerKey,
   getLocalDataRowKey,
   isLegacyLifecycleAssetState,
   LOCAL_DATA_SCHEMA_VERSION,
@@ -63,6 +66,34 @@ export type AssetExportEntry = {
   previewBlob: Blob | null;
 };
 
+export type StagedAssetImportEntry = AssetExportEntry & {
+  storageKey: string;
+};
+
+type DurableAssetImportStage = {
+  schemaVersion: 1;
+  stageId: string;
+  assetCommitId: string;
+  createdAt: number;
+  entries: Array<{
+    assetId: string;
+    storageKey: string;
+    binaryBytes: number;
+    hasPreview: boolean;
+    previewBytes: number;
+  }>;
+  obsoleteStorageKeys: string[];
+};
+
+export type AssetImportStage = {
+  stageId: string;
+  assetCommitId: string;
+  entries: StagedAssetImportEntry[];
+};
+
+const PENDING_ASSET_IMPORT_STAGE_KEY = 'pending';
+const ASSET_IMPORT_STORAGE_KEY_PREFIX = 'asset-import-stage:';
+
 export function runExclusiveAssetMutation<T>(operation: () => Promise<T>): Promise<T> {
   // The blob write path shares the asset persistence queue with row maintenance, so blob facts
   // and active asset rows cannot interleave into a mismatched state.
@@ -84,7 +115,12 @@ export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 }
 
 export async function getActiveAssetStorageKey(assetId: string): Promise<string> {
-  return assetId;
+  if (!await isAssetLocalDataDomainActive()) return assetId;
+  const persisted = await readStoreLocalDataValue<LocalDataStoredRow<AssetObjectRow>>(
+    getLocalDataRowKey({ domain: 'asset', kind: 'asset', id: assetId })
+  );
+  const row = assetPayloadFromLocalDataRow(persisted);
+  return row?.storageKey ?? assetId;
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -109,23 +145,8 @@ function isLocalDataActiveAssetRow(value: unknown): value is LocalDataActiveData
     && isCommitPointerRow(value.domains.asset, 'asset');
 }
 
-function isCompleteAssetDomainMetaRow(value: unknown) {
-  if (!isObjectRecord(value) || !isObjectRecord(value.ref)) return false;
-  return value.schemaVersion === LOCAL_DATA_SCHEMA_VERSION
-    && value.key === getLocalDataRowKey({ domain: 'asset', kind: 'domainMeta', id: 'asset' })
-    && value.state === 'complete'
-    && value.ref.domain === 'asset'
-    && value.ref.kind === 'domainMeta'
-    && value.ref.id === 'asset';
-}
-
 async function isAssetLocalDataDomainActive() {
-  const activeRow = await readStoreLocalDataValue<LocalDataActiveDataSourceRow>(getLocalDataActiveDataSourceKey());
-  if (!isLocalDataActiveAssetRow(activeRow)) return false;
-  const domainMetaRow = await readStoreLocalDataValue<LocalDataStoredRow>(
-    getLocalDataRowKey({ domain: 'asset', kind: 'domainMeta', id: 'asset' })
-  );
-  return isCompleteAssetDomainMetaRow(domainMetaRow);
+  return await readActiveLocalDataSourceForDomain('asset') !== null;
 }
 
 function assetPayloadFromLocalDataRow(value: unknown): AssetObjectRow | null {
@@ -198,7 +219,7 @@ export async function listActiveAssetBinaryEntries(options: {
     const entries = await Promise.all(rows
       .filter((row) => row.hasBinary)
       .map(async (row): Promise<PersistedDbEntry<Blob> | null> => {
-        const blob = await dbStoreGet<Blob>(ASSET_BINARY_STORE, row.id);
+        const blob = await dbStoreGet<Blob>(ASSET_BINARY_STORE, row.storageKey ?? row.id);
         return blob ? { key: row.id, value: blob } : null;
       }));
     return entries.flatMap((entry) => entry ? [entry] : []);
@@ -214,7 +235,7 @@ export async function listActiveAssetPreviewEntries(options: {
     const entries = await Promise.all(rows
       .filter((row) => row.hasPreview)
       .map(async (row): Promise<PersistedDbEntry<Blob> | null> => {
-        const blob = await dbStoreGet<Blob>(ASSET_PREVIEW_STORE, row.id);
+        const blob = await dbStoreGet<Blob>(ASSET_PREVIEW_STORE, row.storageKey ?? row.id);
         return blob ? { key: row.id, value: blob } : null;
       }));
     return entries.flatMap((entry) => entry ? [entry] : []);
@@ -422,11 +443,11 @@ export async function listAssetMeta(options: {
 }
 
 export async function getAssetBlob(assetId: string): Promise<Blob | null> {
-  return await dbStoreGet<Blob>(ASSET_BINARY_STORE, assetId);
+  return await dbStoreGet<Blob>(ASSET_BINARY_STORE, await getActiveAssetStorageKey(assetId));
 }
 
 export async function getAssetPreviewBlob(assetId: string): Promise<Blob | null> {
-  return await dbStoreGet<Blob>(ASSET_PREVIEW_STORE, assetId);
+  return await dbStoreGet<Blob>(ASSET_PREVIEW_STORE, await getActiveAssetStorageKey(assetId));
 }
 
 export async function getAssetDataUrl(assetId: string): Promise<string | null> {
@@ -444,7 +465,7 @@ export async function getAssetPreviewUrl(assetId: string): Promise<string | null
 }
 
 async function deleteAssetUnlocked(assetId: string): Promise<void> {
-  await deleteAssetStorageEntries(assetId);
+  await deleteAssetStorageEntries(await getActiveAssetStorageKey(assetId));
   // Explicit delete: tombstone the active asset row too (never by absence — only this call removes
   // the row). A no-op when the asset domain is inactive.
   await commitAssetRowDeleteIfActive(assetId);
@@ -459,14 +480,14 @@ async function deleteAssetStorageEntries(storageKey: string): Promise<void> {
 }
 
 export async function deleteActiveAssetStorageEntries(assetId: string): Promise<void> {
-  await deleteAssetStorageEntries(assetId);
+  await deleteAssetStorageEntries(await getActiveAssetStorageKey(assetId));
   // Explicit governance delete: tombstone the active asset row too, so the row layer never claims
   // an asset whose blob/meta have been cleared. A no-op when the asset domain is inactive.
   await commitAssetRowDeleteIfActive(assetId);
 }
 
 export async function deleteActiveAssetPreviewEntry(assetId: string): Promise<void> {
-  await dbStoreDelete(ASSET_PREVIEW_STORE, assetId);
+  await dbStoreDelete(ASSET_PREVIEW_STORE, await getActiveAssetStorageKey(assetId));
   // Keep the active asset row consistent: clear its preview fields, or tombstone a now-empty
   // preview-only asset. A no-op when the asset domain is inactive.
   await commitAssetRowPreviewClearedIfActive(assetId);
@@ -580,73 +601,164 @@ export async function replaceAssetEntries(
   await runExclusiveAssetMutation(() => replaceAssetEntriesUnlocked(entries, options));
 }
 
-type AssetStorageSnapshot = {
-  id: string;
-  meta: StoredAssetMeta | null;
-  blob: Blob | null;
-  previewBlob: Blob | null;
-};
+export async function stageAssetImportEntries(
+  entries: AssetExportEntry[],
+  options: {
+    assetCommitId: string;
+    onProgress?: (current: number, total: number) => void;
+  }
+): Promise<AssetImportStage> {
+  await recoverPendingAssetImportStage();
+  return await runExclusiveAssetMutation(async () => {
+    const stageId = createUid('asset-import');
+    const stagedEntries = entries.map((entry): StagedAssetImportEntry => ({
+      ...entry,
+      storageKey: `${ASSET_IMPORT_STORAGE_KEY_PREFIX}${stageId}:${entry.meta.id}`
+    }));
+    const manifest: DurableAssetImportStage = {
+      schemaVersion: 1,
+      stageId,
+      assetCommitId: options.assetCommitId,
+      createdAt: Date.now(),
+      entries: stagedEntries.map((entry) => ({
+        assetId: entry.meta.id,
+        storageKey: entry.storageKey,
+        binaryBytes: entry.blob.size,
+        hasPreview: Boolean(entry.previewBlob),
+        previewBytes: entry.previewBlob?.size ?? 0
+      })),
+      obsoleteStorageKeys: await listCurrentAssetStorageKeys()
+    };
 
-export type AssetUpsertReceipt = {
-  count: number;
-  rollback: () => Promise<void>;
-};
+    // The durable manifest lands before the first staged byte. A process death after this point
+    // leaves enough persisted evidence for startup to abandon or finish the stage without memory.
+    await dbStoreSet(ASSET_IMPORT_STAGE_STORE, PENDING_ASSET_IMPORT_STAGE_KEY, manifest);
 
-async function restoreAssetStorageSnapshot(snapshot: AssetStorageSnapshot) {
-  const restore = async (storeName: string, value: unknown | null) => {
-    if (value === null) await dbStoreDelete(storeName, snapshot.id);
-    else await dbStoreSet(storeName, snapshot.id, value);
-  };
-  await restore(ASSET_META_STORE, snapshot.meta);
-  await restore(ASSET_BINARY_STORE, snapshot.blob);
-  await restore(ASSET_PREVIEW_STORE, snapshot.previewBlob);
+    for (let index = 0; index < stagedEntries.length; index += 1) {
+      const entry = stagedEntries[index]!;
+      await dbStoreSet(ASSET_BINARY_STORE, entry.storageKey, entry.blob);
+      if (entry.previewBlob) await dbStoreSet(ASSET_PREVIEW_STORE, entry.storageKey, entry.previewBlob);
+
+      const [writtenBlob, writtenPreview] = await Promise.all([
+        dbStoreGet<Blob>(ASSET_BINARY_STORE, entry.storageKey),
+        entry.previewBlob
+          ? dbStoreGet<Blob>(ASSET_PREVIEW_STORE, entry.storageKey)
+          : Promise.resolve(null)
+      ]);
+      if (
+        !writtenBlob
+        || writtenBlob.size !== entry.blob.size
+        || (entry.previewBlob && (!writtenPreview || writtenPreview.size !== entry.previewBlob.size))
+      ) {
+        throw new Error(`Asset staging verification failed: ${entry.meta.id}`);
+      }
+      options.onProgress?.(index + 1, stagedEntries.length);
+    }
+
+    return { stageId, assetCommitId: options.assetCommitId, entries: stagedEntries };
+  });
 }
 
-export async function upsertAssetEntries(
-  entries: AssetExportEntry[],
-  options: { onProgress?: (current: number, total: number) => void } = {}
-): Promise<AssetUpsertReceipt> {
-  const snapshots = await runExclusiveAssetMutation(async () => {
-    const previous = await Promise.all(entries.map(async (entry): Promise<AssetStorageSnapshot> => ({
-      id: entry.meta.id,
-      meta: await dbStoreGet<StoredAssetMeta>(ASSET_META_STORE, entry.meta.id),
-      blob: await dbStoreGet<Blob>(ASSET_BINARY_STORE, entry.meta.id),
-      previewBlob: await dbStoreGet<Blob>(ASSET_PREVIEW_STORE, entry.meta.id)
-    })));
+async function listCurrentAssetStorageKeys() {
+  const rows = await listActiveAssetRowsFromLocalData();
+  if (rows) {
+    return Array.from(new Set(rows.map((row) => row.storageKey ?? row.id))).sort();
+  }
+  const keys = await Promise.all([
+    dbStoreKeys(ASSET_BINARY_STORE),
+    dbStoreKeys(ASSET_META_STORE),
+    dbStoreKeys(ASSET_PREVIEW_STORE)
+  ]);
+  return Array.from(new Set(keys.flat().filter((key) => !key.startsWith(ASSET_IMPORT_STORAGE_KEY_PREFIX)))).sort();
+}
 
-    try {
-      for (let index = 0; index < entries.length; index += 1) {
-        const entry = entries[index]!;
-        await dbStoreSet(ASSET_BINARY_STORE, entry.meta.id, entry.blob);
-        await dbStoreSet(ASSET_META_STORE, entry.meta.id, entry.meta);
-        if (entry.previewBlob) await dbStoreSet(ASSET_PREVIEW_STORE, entry.meta.id, entry.previewBlob);
-        else await dbStoreDelete(ASSET_PREVIEW_STORE, entry.meta.id);
+function isDurableAssetImportStage(value: unknown): value is DurableAssetImportStage {
+  if (!isObjectRecord(value) || value.schemaVersion !== 1) return false;
+  if (
+    typeof value.stageId !== 'string'
+    || typeof value.assetCommitId !== 'string'
+    || typeof value.createdAt !== 'number'
+    || !Array.isArray(value.entries)
+    || !Array.isArray(value.obsoleteStorageKeys)
+  ) return false;
+  return value.entries.every((entry) => (
+    isObjectRecord(entry)
+    && typeof entry.assetId === 'string'
+    && typeof entry.storageKey === 'string'
+    && entry.storageKey.startsWith(`${ASSET_IMPORT_STORAGE_KEY_PREFIX}${value.stageId}:`)
+    && typeof entry.binaryBytes === 'number'
+    && Number.isFinite(entry.binaryBytes)
+    && entry.binaryBytes >= 0
+    && typeof entry.hasPreview === 'boolean'
+    && typeof entry.previewBytes === 'number'
+    && Number.isFinite(entry.previewBytes)
+    && entry.previewBytes >= 0
+    && (entry.hasPreview || entry.previewBytes === 0)
+  )) && value.obsoleteStorageKeys.every((key) => typeof key === 'string');
+}
 
-        const [writtenMeta, writtenBlob] = await Promise.all([
-          dbStoreGet<StoredAssetMeta>(ASSET_META_STORE, entry.meta.id),
-          dbStoreGet<Blob>(ASSET_BINARY_STORE, entry.meta.id)
-        ]);
-        if (!writtenMeta || writtenMeta.id !== entry.meta.id || !writtenBlob || writtenBlob.size !== entry.blob.size) {
-          throw new Error(`Asset staging verification failed: ${entry.meta.id}`);
-        }
-        options.onProgress?.(index + 1, entries.length);
-      }
-      return previous;
-    } catch (error) {
-      for (const snapshot of previous) await restoreAssetStorageSnapshot(snapshot);
-      throw error;
+async function isAssetImportStagePublished(stage: DurableAssetImportStage) {
+  const [active, pointer] = await Promise.all([
+    readActiveLocalDataSourceForDomain('asset'),
+    readStoreLocalDataValue<CommitPointerRow>(getLocalDataCommitPointerKey('asset'))
+  ]);
+  const activePointer = isLocalDataActiveAssetRow(active) ? active.domains.asset : null;
+  if (
+    !activePointer
+    || !isCommitPointerRow(pointer, 'asset')
+    || activePointer.commitId !== stage.assetCommitId
+    || pointer.commitId !== stage.assetCommitId
+    || activePointer.version !== pointer.version
+    || activePointer.committedAt !== pointer.committedAt
+  ) return false;
+
+  for (const entry of stage.entries) {
+    const persisted = await readStoreLocalDataValue<LocalDataStoredRow<AssetObjectRow>>(
+      getLocalDataRowKey({ domain: 'asset', kind: 'asset', id: entry.assetId })
+    );
+    const row = assetPayloadFromLocalDataRow(persisted);
+    if (
+      !row
+      || (row.storageKey ?? row.id) !== entry.storageKey
+      || row.binaryBytes !== entry.binaryBytes
+      || row.previewBytes !== entry.previewBytes
+      || row.hasPreview !== entry.hasPreview
+    ) {
+      throw new Error(`Published asset import row does not match its durable stage: ${entry.assetId}`);
     }
+    const [blob, preview] = await Promise.all([
+      dbStoreGet<Blob>(ASSET_BINARY_STORE, entry.storageKey),
+      entry.hasPreview
+        ? dbStoreGet<Blob>(ASSET_PREVIEW_STORE, entry.storageKey)
+        : Promise.resolve(null)
+    ]);
+    if (
+      !blob
+      || blob.size !== entry.binaryBytes
+      || (entry.hasPreview && (!preview || preview.size !== entry.previewBytes))
+    ) {
+      throw new Error(`Published asset import bytes do not match their durable stage: ${entry.assetId}`);
+    }
+  }
+  return true;
+}
+
+export async function recoverPendingAssetImportStage(): Promise<'none' | 'abandoned' | 'published'> {
+  return await runExclusiveAssetMutation(async () => {
+    const persisted = await dbStoreGet<unknown>(ASSET_IMPORT_STAGE_STORE, PENDING_ASSET_IMPORT_STAGE_KEY);
+    if (persisted === null) return 'none';
+    if (!isDurableAssetImportStage(persisted)) {
+      throw new Error('Pending asset import stage manifest is invalid.');
+    }
+
+    const published = await isAssetImportStagePublished(persisted);
+    const storageKeysToDelete = published
+      ? persisted.obsoleteStorageKeys.filter((key) => !persisted.entries.some((entry) => entry.storageKey === key))
+      : persisted.entries.map((entry) => entry.storageKey);
+    for (const storageKey of storageKeysToDelete) {
+      await deleteAssetStorageEntries(storageKey);
+    }
+    await dbStoreDelete(ASSET_IMPORT_STAGE_STORE, PENDING_ASSET_IMPORT_STAGE_KEY);
+    return published ? 'published' : 'abandoned';
   });
-
-  let rolledBack = false;
-  return {
-    count: entries.length,
-    rollback: async () => {
-      if (rolledBack) return;
-      rolledBack = true;
-      await runExclusiveAssetMutation(async () => {
-        for (const snapshot of snapshots) await restoreAssetStorageSnapshot(snapshot);
-      });
-    }
-  };
 }

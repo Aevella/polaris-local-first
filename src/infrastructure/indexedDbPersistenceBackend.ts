@@ -12,6 +12,7 @@ type IndexedDbPersistenceBackendConfig = {
   assetMetaStore: string;
   assetPreviewStore: string;
   additionalStores?: string[];
+  obsoleteStores?: string[];
   openTimeoutMs: number;
   transactionTimeoutMs: number;
 };
@@ -42,6 +43,9 @@ export function createIndexedDbPersistenceBackend(config: IndexedDbPersistenceBa
 
       req.onupgradeneeded = () => {
         const db = req.result;
+        (config.obsoleteStores ?? []).forEach((storeName) => {
+          if (db.objectStoreNames.contains(storeName)) db.deleteObjectStore(storeName);
+        });
         [
           config.kvStore,
           config.assetBinaryStore,

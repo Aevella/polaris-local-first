@@ -6,9 +6,12 @@ import {
   LOCAL_DATA_NAMESPACE,
   createCompleteLocalDataRow,
   createLocalDataRepository,
+  getLocalDataActiveDataSourceKey,
   getLocalDataCommitPointerKey,
   getLocalDataRowKey,
   type LocalDataBackend,
+  type LocalDataCommitMeta,
+  type LocalDataMigrationValidationReport,
   type LocalDataRef
 } from './index';
 import { createLocalDataKvBackend } from './localDataKvBackend';
@@ -170,6 +173,30 @@ afterEach(() => {
 });
 
 describe.each(backendCases)('LocalData repository contract over the $name backend', ({ make }) => {
+  function validChatReport(meta: LocalDataCommitMeta): LocalDataMigrationValidationReport {
+    return {
+      id: `report:${meta.commitId}`,
+      domain: meta.domain,
+      commitId: meta.commitId,
+      version: meta.version,
+      validatedAt: 200,
+      stagingHydrated: true,
+      legacyBaselineCount: 1,
+      legacyBaselineObjectIds: [refB.id],
+      activeBaselineObjectIds: [refB.id],
+      activeObjectCount: 1,
+      activeObjectIds: [refB.id],
+      quarantinedObjectCount: 0,
+      quarantinedObjectIds: [],
+      duplicateObjectIdCount: 0,
+      missingActiveCollaboratorIdCount: 0,
+      missingActiveCollaboratorIds: [],
+      activeIncompleteRowCount: 0,
+      activeTimedOutRowCount: 0,
+      recoveredMetadata: { activeConversationId: refB.id }
+    };
+  }
+
   it('commits rows plus the domain pointer and reads them back complete', async () => {
     const backend = make();
     const repository = makeRepository(backend);
@@ -186,6 +213,29 @@ describe.each(backendCases)('LocalData repository contract over the $name backen
     expect(await repository.read(refA)).toEqual(expect.objectContaining({ status: 'complete', value: { messages: ['a'] } }));
     expect(await repository.read(refB)).toEqual(expect.objectContaining({ status: 'complete', value: { messages: ['b'] } }));
     expect(await backend.read(getLocalDataCommitPointerKey('chat'))).toEqual(meta);
+  });
+
+  it('advances an already-active domain pointer in the same transaction as later saves', async () => {
+    const backend = make();
+    const repository = makeRepository(backend);
+    const firstMeta = await repository.commit({
+      domain: 'chat',
+      version: 1,
+      mutations: [{ type: 'put', row: completeRow(refA, { messages: ['first'] }, 1, 10) }]
+    });
+    await repository.activateDomainsFromCommittedRows([firstMeta]);
+
+    const nextMeta = await repository.commit({
+      domain: 'chat',
+      version: 1,
+      mutations: [{ type: 'put', row: completeRow(refB, { messages: ['next'] }, 1, 20) }]
+    });
+
+    expect(await backend.read(getLocalDataCommitPointerKey('chat'))).toEqual(nextMeta);
+    expect(await backend.read(getLocalDataActiveDataSourceKey())).toEqual(expect.objectContaining({
+      activeCommitId: nextMeta.commitId,
+      domains: { chat: nextMeta }
+    }));
   });
 
   it('lists committed row keys under a prefix, excluding the domain commit pointer', async () => {
@@ -350,5 +400,47 @@ describe.each(backendCases)('LocalData repository contract over the $name backen
     // The prior fact survives; the failed write never became truth.
     expect(await repository.read(refA)).toEqual(expect.objectContaining({ status: 'complete', value: { messages: ['a'] } }));
     expect(await repository.read(refB)).toEqual(expect.objectContaining({ status: 'incomplete' }));
+  });
+
+  it('commits a domain replacement and its active pointer in one backend transaction', async () => {
+    const backend = make();
+    const repository = makeRepository(backend);
+
+    const result = await repository.commitAndPromoteActiveDataSource({
+      domain: 'chat',
+      version: 1,
+      mutations: [{ type: 'put', row: completeRow(refB, { messages: ['replacement'] }, 1, 20) }]
+    }, (meta) => validChatReport(meta));
+
+    expect(await repository.read(refB)).toEqual(expect.objectContaining({
+      status: 'complete',
+      value: { messages: ['replacement'] }
+    }));
+    expect(await backend.read(getLocalDataCommitPointerKey('chat'))).toEqual(result.commitMeta);
+    expect(await backend.read(getLocalDataActiveDataSourceKey())).toEqual(expect.objectContaining({
+      activeCommitId: result.commitMeta.commitId,
+      domains: { chat: result.commitMeta }
+    }));
+  });
+
+  it('exposes neither replacement rows nor an active pointer when atomic promotion fails', async () => {
+    const backend = withCommitFailureAfterFirst(make());
+    const repository = makeRepository(backend);
+    const originalMeta = await repository.commit({
+      domain: 'chat',
+      version: 1,
+      mutations: [{ type: 'put', row: completeRow(refA, { messages: ['original'] }, 1, 10) }]
+    });
+
+    await expect(repository.commitAndPromoteActiveDataSource({
+      domain: 'chat',
+      version: 1,
+      mutations: [{ type: 'put', row: completeRow(refB, { messages: ['replacement'] }, 1, 20) }]
+    }, (meta) => validChatReport(meta))).rejects.toBeInstanceOf(UntrustedPersistenceError);
+
+    expect(await repository.read(refA)).toEqual(expect.objectContaining({ value: { messages: ['original'] } }));
+    expect(await repository.read(refB)).toEqual(expect.objectContaining({ status: 'incomplete' }));
+    expect(await backend.read(getLocalDataCommitPointerKey('chat'))).toEqual(originalMeta);
+    expect(await backend.read(getLocalDataActiveDataSourceKey())).toBeNull();
   });
 });

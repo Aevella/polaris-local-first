@@ -1,6 +1,7 @@
 import {
   createLocalDataRepository,
   getLocalDataActiveDataSourceKey,
+  getLocalDataCommitPointerKey,
   getLocalDataRowKey,
   LOCAL_DATA_SCHEMA_VERSION,
   type CommitPointerRow,
@@ -44,7 +45,10 @@ export async function readActiveLocalDataSourceForDomain(domain: LocalDataDomain
   const row = await readStoreLocalDataValue<LocalDataActiveDataSourceRow>(getLocalDataActiveDataSourceKey());
   if (!isLocalDataActiveDataSourceRow(row)) return null;
   if (row.activeDataSource !== 'repository') return null;
-  if (!isCommitPointerRow(row.domains[domain], domain)) return null;
+  const activePointer = row.domains[domain];
+  if (!isCommitPointerRow(activePointer, domain)) return null;
+  const committedPointer = await readStoreLocalDataValue<CommitPointerRow>(getLocalDataCommitPointerKey(domain));
+  if (!commitPointersMatch(activePointer, committedPointer)) return null;
   if (!await hasCompleteDomainMetaRow(domain)) return null;
   return row;
 }
@@ -184,6 +188,13 @@ function isCommitPointerRow(value: unknown, domain: LocalDataDomain): value is C
     && typeof value.committedAt === 'number'
     && typeof value.commitId === 'string'
     && value.commitId.trim().length > 0;
+}
+
+function commitPointersMatch(left: CommitPointerRow, right: unknown): right is CommitPointerRow {
+  return isCommitPointerRow(right, left.domain)
+    && right.version === left.version
+    && right.committedAt === left.committedAt
+    && right.commitId === left.commitId;
 }
 
 async function hasCompleteDomainMetaRow(domain: LocalDataDomain) {

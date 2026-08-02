@@ -64,6 +64,7 @@ function observedRepository(repository: LocalDataRepository) {
         return repository.read<T>(ref);
       },
       commit: repository.commit,
+      commitAndPromoteActiveDataSource: repository.commitAndPromoteActiveDataSource,
       async promoteActiveDataSource() {
         throw new Error('chat migration readback must not promote activeDataSource');
       },

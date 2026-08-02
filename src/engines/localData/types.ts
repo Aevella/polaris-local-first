@@ -556,6 +556,8 @@ export type AssetLegacyCatalogRef = {
 export type AssetObjectRow = {
   id: string;
   objectId: string;
+  /** Physical blob-store key. Older rows omit it and therefore use `id`. */
+  storageKey?: string;
   kind: AssetLocalDataObjectKind;
   name: string;
   mimeType: string;

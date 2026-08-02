@@ -281,6 +281,7 @@ describe('collection LocalData persistence', () => {
 
     expect(mutationBatches).toHaveLength(1);
     expect(mutationBatches[0]?.map((mutation) => mutation.key).sort()).toEqual([
+      getLocalDataActiveDataSourceKey(),
       getLocalDataCommitPointerKey('collection'),
       getLocalDataRowKey(getCollectionObjectLocalDataRef('card', 'card-2')),
       getLocalDataRowKey(getCollectionDomainMetaLocalDataRef())

@@ -53,6 +53,7 @@ function assetMetaFromRow(row: AssetObjectRow): StoredAssetMeta | null {
 function rowToSeed(row: AssetObjectRow): AssetObjectSeed {
   return {
     id: row.id,
+    storageKey: row.storageKey ?? row.id,
     meta: assetMetaFromRow(row),
     hasBinary: row.hasBinary,
     hasPreview: row.hasPreview,
@@ -95,8 +96,8 @@ function buildStateFromSeeds(seeds: Iterable<AssetObjectSeed>): AssetLocalDataSt
   const preview: AssetLocalDataState['preview'] = [];
   for (const seed of seeds) {
     if (seed.meta) meta.push(seed.meta);
-    if (seed.hasBinary) binary.push({ id: seed.id, bytes: seed.binaryBytes });
-    if (seed.hasPreview) preview.push({ id: seed.id, bytes: seed.previewBytes });
+    if (seed.hasBinary) binary.push({ id: seed.id, storageKey: seed.storageKey, bytes: seed.binaryBytes });
+    if (seed.hasPreview) preview.push({ id: seed.id, storageKey: seed.storageKey, bytes: seed.previewBytes });
     ownersByAssetId.set(seed.id, seed.ownerRefs.map(ownerRefToReferenceOwner));
   }
   return { meta, binary, preview, ownersByAssetId };
@@ -145,6 +146,7 @@ async function readSavedAssetUpsertSeed(
         : [];
   return {
     id: args.meta.id,
+    storageKey: args.meta.id,
     meta: args.meta,
     hasBinary: true,
     hasPreview: args.hasPreview,

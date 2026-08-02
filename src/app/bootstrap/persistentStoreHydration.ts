@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { isDeveloperModeEnabled } from '../developer/developerModeRuntime';
-import { recordAppRuntimeLogEntry } from '../../infrastructure/appRuntimeLog';
 import { reportPersistenceError } from '../../infrastructure/persistenceDiagnostics';
 import { useChatStore } from '../../stores/chatStore';
 import { useCollectionStore } from '../../stores/collectionStore';
@@ -12,10 +11,6 @@ import {
   readPersistedSpaceThemeState,
   writePersistedSpaceThemeState
 } from '../../stores/spaceStorePersistence';
-import {
-  peekImportRollbackFileStatus,
-  type ImportRollbackFileStatus
-} from '../../native/importRollbackFile';
 
 export type SpaceThemeHydrationState = Awaited<ReturnType<typeof readPersistedSpaceThemeState>>;
 type StartupStoreName = 'chat' | 'collection' | 'persona' | 'runtime';
@@ -77,39 +72,6 @@ export async function hydrateSpaceThemeState({
   }
 }
 
-function describeLegacyImportRollbackFile(status: Extract<ImportRollbackFileStatus, { exists: true }>) {
-  const size = status.size === null ? 'unknown size' : `${status.size} bytes`;
-  const readMode = status.canReadWithoutMaterializing ? 'metadata only' : 'content already materialized by bridge';
-  return `Legacy import rollback file remains in ${status.storage} storage (${size}, ${readMode}). Startup skipped automatic recovery.`;
-}
-
-export function probeLegacyImportRollbackFileInBackground({
-  peekRollbackFileStatus = peekImportRollbackFileStatus,
-  onLegacyRollbackFound = (status) => {
-    recordAppRuntimeLogEntry({
-      at: Date.now(),
-      kind: 'startup',
-      title: 'Legacy import rollback file detected',
-      detail: describeLegacyImportRollbackFile(status)
-    });
-  },
-  reportError = (error) => {
-    reportPersistenceError({ label: '[store:import]', store: 'structured-import', operation: 'startup-rollback-probe' }, error);
-  }
-}: {
-  peekRollbackFileStatus?: typeof peekImportRollbackFileStatus;
-  onLegacyRollbackFound?: (status: Extract<ImportRollbackFileStatus, { exists: true }>) => void;
-  reportError?: (error: unknown) => void;
-} = {}) {
-  void peekRollbackFileStatus()
-    .then((status) => {
-      if (status.exists) {
-        onLegacyRollbackFound(status);
-      }
-    })
-    .catch(reportError);
-}
-
 async function hydrateStartupStore<T>(
   store: StartupStoreName,
   hydrate: () => Promise<T>,
@@ -165,8 +127,6 @@ export function usePersistentStoreHydration(spaceThemeHydratedRef: MutableRefObj
 
     void (async () => {
       try {
-        probeLegacyImportRollbackFileInBackground();
-
         const storeHydrationPromise = hydrateStartupStores().finally(() => {
           if (!cancelled) {
             setStartupStoresReady(true);

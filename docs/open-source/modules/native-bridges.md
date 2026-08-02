@@ -9,7 +9,7 @@ This module is about native capability. Tablet adaptation is documented separate
 ## Owns
 
 - Native SQLite plugin registration and execution.
-- File picker, photo, backup, and rollback file capabilities.
+- File picker, photo, and user-selected backup file capabilities.
 - Native provider HTTP streaming and WebView shell integration.
 - Chunked reads for large native JSON values that cannot safely cross the bridge in one payload.
 - Local notifications and platform-specific capability availability.
@@ -35,7 +35,7 @@ This module is about native capability. Tablet adaptation is documented separate
 
 - Platform capability state from Capacitor.
 - Native SQLite database contents through the plugin boundary.
-- Picked files and backup/rollback files selected by the user.
+- Picked files and backup files selected by the user.
 - Writable EventKit calendar identifiers, account sources, and the user-selected default calendar.
 
 ## Data It Writes
@@ -52,7 +52,7 @@ This module is about native capability. Tablet adaptation is documented separate
 - A native provider build is missing the provider HTTP plugin; provider calls fail explicitly instead of silently changing transport.
 - A chunked JSON read reports a different length or checksum from the stored value.
 - Native SQLite rejects a statement because the allowlist drifted.
-- File import or rollback file handling fails.
+- File import or backup file handling fails.
 - A platform check is mistaken for a release-channel claim.
 - A tablet layout issue is patched as an iOS or Android bridge issue without proving it crosses a native capability boundary.
 

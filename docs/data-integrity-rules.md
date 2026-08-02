@@ -27,7 +27,7 @@ Polaris local data falls into these responsibility classes:
   and cached request projections.
 - **Derived data:** previews, thumbnails, embeddings, semantic recall candidates,
   generated summaries, usage statistics, and health counts.
-- **Temporary data:** import rollback points, replacement/staging directories,
+- **Temporary data:** durable import stages, replacement/staging directories,
   chunked-write temp files, pending indexes, and interrupted commit artifacts.
 
 Only source data is user truth. Indexes help find truth, derived data may be
@@ -168,12 +168,12 @@ Export rules:
 
 Import rules:
 
-- Create a recoverable rollback point before destructive replacement.
+- Stage imported source records durably before changing their live pointers.
 - Validate imported source data before replacing existing source data.
 - Import success is decided before cleanup.
 - Cleanup failure after import success must not restore the old profile.
-- A leftover rollback file must not automatically roll back a later successful
-  import without proving the import is incomplete.
+- A leftover import stage must be resolved from durable commit evidence at startup:
+  unpublished staged records are discarded, while published staged records stay live.
 
 ## Asset Rules
 

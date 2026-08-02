@@ -36,8 +36,6 @@ import java.util.zip.ZipOutputStream;
 public class SystemFilePlugin extends Plugin {
     private static final int BUFFER_BYTES = 1024 * 1024;
     private static final String DEFAULT_BACKUP_MIME_TYPE = "application/zip";
-    private static final String ROLLBACK_FILE_NAME = "polaris-import-rollback.zip";
-    private static final String ROLLBACK_TEMP_FILE_NAME = "polaris-import-rollback.tmp";
 
     private final ExecutorService fileExecutor = Executors.newSingleThreadExecutor();
     private final Map<String, File> pendingExportFiles = new ConcurrentHashMap<>();
@@ -456,114 +454,12 @@ public class SystemFilePlugin extends Plugin {
         });
     }
 
-    @PluginMethod
-    public void beginImportRollbackFile(PluginCall call) {
-        fileExecutor.execute(() -> {
-            try {
-                File temp = rollbackTempFile();
-                deleteQuietly(temp);
-                ensureDirectory("rollback");
-                if (!temp.createNewFile()) {
-                    throw new SystemFileException("创建导入回滚文件失败。");
-                }
-                call.resolve();
-            } catch (Exception error) {
-                call.reject("创建导入回滚文件失败。", error);
-            }
-        });
-    }
-
-    @PluginMethod
-    public void appendImportRollbackFileChunk(PluginCall call) {
-        String dataBase64 = call.getString("dataBase64");
-        if (dataBase64 == null) {
-            call.reject("导入回滚分块格式不正确。");
-            return;
-        }
-        fileExecutor.execute(() -> {
-            try (FileOutputStream output = new FileOutputStream(rollbackTempFile(), true)) {
-                output.write(Base64.decode(dataBase64, Base64.DEFAULT));
-                call.resolve();
-            } catch (Exception error) {
-                call.reject("写入导入回滚分块失败。", error);
-            }
-        });
-    }
-
-    @PluginMethod
-    public void finishImportRollbackFile(PluginCall call) {
-        Integer expectedByteLength = call.getInt("expectedByteLength");
-        fileExecutor.execute(() -> {
-            try {
-                File temp = rollbackTempFile();
-                long size = temp.length();
-                if (expectedByteLength != null && size != expectedByteLength.longValue()) {
-                    throw new SystemFileException("导入回滚文件字节数不一致。");
-                }
-                File destination = rollbackFile();
-                deleteQuietly(destination);
-                try (InputStream input = new FileInputStream(temp)) {
-                    copy(input, destination);
-                }
-                deleteQuietly(temp);
-                JSObject response = new JSObject();
-                response.put("size", size);
-                call.resolve(response);
-            } catch (Exception error) {
-                call.reject("完成导入回滚文件失败。", error);
-            }
-        });
-    }
-
-    @PluginMethod
-    public void readImportRollbackFile(PluginCall call) {
-        fileExecutor.execute(() -> {
-            try {
-                File file = rollbackFile();
-                JSObject response = new JSObject();
-                if (!file.exists()) {
-                    response.put("exists", false);
-                    call.resolve(response);
-                    return;
-                }
-                response.put("exists", true);
-                response.put("fileUrl", file.getAbsolutePath());
-                response.put("mimeType", DEFAULT_BACKUP_MIME_TYPE);
-                response.put("size", file.length());
-                call.resolve(response);
-            } catch (Exception error) {
-                call.reject("读取导入回滚文件失败。", error);
-            }
-        });
-    }
-
-    @PluginMethod
-    public void clearImportRollbackFile(PluginCall call) {
-        fileExecutor.execute(() -> {
-            try {
-                deleteQuietly(rollbackTempFile());
-                deleteQuietly(rollbackFile());
-                call.resolve();
-            } catch (Exception error) {
-                call.reject("清理导入回滚文件失败。", error);
-            }
-        });
-    }
-
     private File ensureDirectory(String name) throws SystemFileException {
         File directory = new File(getContext().getCacheDir(), "system-file/" + name);
         if (!directory.exists() && !directory.mkdirs()) {
             throw new SystemFileException("创建系统文件缓存目录失败。");
         }
         return directory;
-    }
-
-    private File rollbackFile() throws SystemFileException {
-        return new File(ensureDirectory("rollback"), ROLLBACK_FILE_NAME);
-    }
-
-    private File rollbackTempFile() throws SystemFileException {
-        return new File(ensureDirectory("rollback"), ROLLBACK_TEMP_FILE_NAME);
     }
 
     private void beginZipEntry(PluginCall call) {

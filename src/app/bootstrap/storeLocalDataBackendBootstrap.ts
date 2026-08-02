@@ -4,12 +4,18 @@ import {
   createNativeLocalDataSqliteBackend
 } from '../../native/localDataSqlite';
 import { installStoreLocalDataBackend } from '../../stores/storeLocalDataBackendHost';
+import { recoverPendingAssetImportStage } from '../../infrastructure/assetStore';
+import { reportPersistenceError } from '../../infrastructure/persistenceDiagnostics';
 
 export type RuntimeStoreLocalDataBackendKind = 'native-sqlite' | 'kv-default';
 
 export type RuntimeStoreLocalDataBackendInstall = {
   installed: boolean;
   backend: RuntimeStoreLocalDataBackendKind;
+};
+
+export type RuntimeStoreLocalDataBackendInitialization = RuntimeStoreLocalDataBackendInstall & {
+  assetImportRecovery: 'none' | 'abandoned' | 'published' | 'failed';
 };
 
 /**
@@ -41,4 +47,26 @@ export function installRuntimeStoreLocalDataBackend(options: {
   const install = options.install ?? installStoreLocalDataBackend;
   install(createNativeBackend());
   return { installed: true, backend: 'native-sqlite' };
+}
+
+export async function initializeRuntimeStoreLocalDataBackend(options: {
+  installBackend?: typeof installRuntimeStoreLocalDataBackend;
+  recoverAssetImport?: typeof recoverPendingAssetImportStage;
+} = {}): Promise<RuntimeStoreLocalDataBackendInitialization> {
+  const installed = (options.installBackend ?? installRuntimeStoreLocalDataBackend)();
+  try {
+    const assetImportRecovery = await (options.recoverAssetImport ?? recoverPendingAssetImportStage)();
+    return { ...installed, assetImportRecovery };
+  } catch (error) {
+    reportPersistenceError({
+      label: '[store:import:recovery]',
+      store: 'asset',
+      operation: 'recover-pending-import-stage',
+      domain: 'asset',
+      stage: 'startup-recovery',
+      integrity: 'degraded',
+      rowCount: 0
+    }, error);
+    return { ...installed, assetImportRecovery: 'failed' };
+  }
 }

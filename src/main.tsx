@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { installBootRescueSurface } from './app/bootstrap/bootRescueSurface';
 import { installClientDiagnosticsReporter } from './app/bootstrap/clientDiagnosticsReporter';
 import { installGlobalClientErrorLogging } from './app/bootstrap/clientErrorLog';
-import { installRuntimeStoreLocalDataBackend } from './app/bootstrap/storeLocalDataBackendBootstrap';
+import { initializeRuntimeStoreLocalDataBackend } from './app/bootstrap/storeLocalDataBackendBootstrap';
 import { recordAppRuntimeLogEntry } from './infrastructure/appRuntimeLog';
 import { AppErrorBoundary } from './ui/AppErrorBoundary';
 import { AppShell } from './ui/AppShell';
@@ -14,9 +14,6 @@ import './styles/base.css';
 
 installGlobalClientErrorLogging();
 installClientDiagnosticsReporter();
-// Choose the store LocalData backend before any store hydrates or persists: native SQLite when
-// available, otherwise the host's KV default. This is the only product runtime install point.
-installRuntimeStoreLocalDataBackend();
 const rootElement = document.getElementById('root');
 const bootRescueSurface = installBootRescueSurface({ root: rootElement });
 
@@ -27,11 +24,18 @@ recordAppRuntimeLogEntry({
   detail: 'app-shell · 空 root boot 面承接到 React 挂载'
 });
 
-ReactDOM.createRoot(rootElement!).render(
-  <React.StrictMode>
-    <AppErrorBoundary>
-      <AppShell />
-    </AppErrorBoundary>
-  </React.StrictMode>
-);
-bootRescueSurface.watchReactRoot();
+async function startApplication() {
+  // Install the one LocalData backend, then finish or abandon any durable asset-import stage
+  // before store hydration can observe it.
+  await initializeRuntimeStoreLocalDataBackend();
+  ReactDOM.createRoot(rootElement!).render(
+    <React.StrictMode>
+      <AppErrorBoundary>
+        <AppShell />
+      </AppErrorBoundary>
+    </React.StrictMode>
+  );
+  bootRescueSurface.watchReactRoot();
+}
+
+void startApplication();

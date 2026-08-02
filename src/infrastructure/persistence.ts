@@ -2,14 +2,14 @@ import { createIndexedDbPersistenceBackend } from './indexedDbPersistenceBackend
 import { createNativePersistenceBackend, getNativePersistencePlatform } from './nativePersistenceBackend';
 
 const DB_NAME = 'polaris-db';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const IDB_OPEN_TIMEOUT_MS = 30000;
 const IDB_TRANSACTION_TIMEOUT_MS = 60000;
 export const KV_STORE = 'kv';
 export const ASSET_BINARY_STORE = 'asset-binary';
 export const ASSET_META_STORE = 'asset-meta';
 export const ASSET_PREVIEW_STORE = 'asset-preview';
-export const IMPORT_ROLLBACK_STORE = 'import-rollback';
+export const ASSET_IMPORT_STAGE_STORE = 'asset-import-stage';
 
 export type PersistedDbEntry<T = unknown> = {
   key: string;
@@ -78,7 +78,8 @@ function createIndexedDbBackend() {
     assetBinaryStore: ASSET_BINARY_STORE,
     assetMetaStore: ASSET_META_STORE,
     assetPreviewStore: ASSET_PREVIEW_STORE,
-    additionalStores: [IMPORT_ROLLBACK_STORE],
+    additionalStores: [ASSET_IMPORT_STAGE_STORE],
+    obsoleteStores: ['import-rollback'],
     openTimeoutMs: IDB_OPEN_TIMEOUT_MS,
     transactionTimeoutMs: IDB_TRANSACTION_TIMEOUT_MS
   });

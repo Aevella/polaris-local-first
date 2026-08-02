@@ -16,7 +16,24 @@ const persistenceMocks = vi.hoisted(() => ({
   kvKeysWithPrefix: vi.fn()
 }));
 
+const assetPersistenceContracts = [
+  {
+    name: 'IndexedDB object storage',
+    persist(value: unknown) {
+      return value;
+    }
+  },
+  {
+    name: 'native JSON/binary bridge storage',
+    persist(value: unknown) {
+      if (value instanceof Blob) return value.slice(0, value.size, value.type);
+      return JSON.parse(JSON.stringify(value)) as unknown;
+    }
+  }
+] as const;
+
 vi.mock('./persistence', () => ({
+  ASSET_IMPORT_STAGE_STORE: 'asset-import-stage',
   ASSET_BINARY_STORE: 'asset-binary',
   ASSET_META_STORE: 'asset-meta',
   ASSET_PREVIEW_STORE: 'asset-preview',
@@ -183,26 +200,27 @@ describe('assetStore', () => {
     );
   });
 
-  it('restores every touched blob entry when staged asset upsert is interrupted', async () => {
+  it.each(assetPersistenceContracts)('abandons a partially written durable stage after simulated $name process loss', async ({ persist }) => {
     const stores = new Map<string, Map<string, unknown>>([
       ['asset-binary', new Map([['asset-old', new Blob(['old'])]])],
       ['asset-meta', new Map([['asset-old', {
         id: 'asset-old', kind: 'file', name: 'old.txt', mimeType: 'text/plain', size: 3, createdAt: 1
       }]])],
-      ['asset-preview', new Map()]
+      ['asset-preview', new Map()],
+      ['asset-import-stage', new Map()]
     ]);
     const store = (name: string) => stores.get(name)!;
     persistenceMocks.dbStoreGet.mockImplementation(async (name: string, key: string) => store(name).get(key) ?? null);
+    persistenceMocks.dbStoreKeys.mockImplementation(async (name: string) => Array.from(store(name).keys()));
     persistenceMocks.dbStoreDelete.mockImplementation(async (name: string, key: string) => {
       store(name).delete(key);
     });
     persistenceMocks.dbStoreSet.mockImplementation(async (name: string, key: string, value: unknown) => {
-      if (key === 'asset-new-2' && name === 'asset-binary') throw new Error('injected asset write interruption');
-      store(name).set(key, value);
+      store(name).set(key, persist(value));
     });
 
-    const { upsertAssetEntries } = await import('./assetStore');
-    await expect(upsertAssetEntries([
+    const { recoverPendingAssetImportStage, stageAssetImportEntries } = await import('./assetStore');
+    await expect(stageAssetImportEntries([
       {
         meta: { id: 'asset-old', kind: 'file', name: 'new-old.txt', mimeType: 'text/plain', size: 3, createdAt: 2 },
         blob: new Blob(['new']),
@@ -213,11 +231,123 @@ describe('assetStore', () => {
         blob: new Blob(['new']),
         previewBlob: null
       }
-    ])).rejects.toThrow('injected asset write interruption');
+    ], {
+      assetCommitId: 'import-asset-process-loss',
+      onProgress: (current) => {
+        if (current === 1) throw new Error('simulated process exit');
+      }
+    })).rejects.toThrow('simulated process exit');
 
-    expect((store('asset-binary').get('asset-old') as Blob).size).toBe(3);
+    expect(store('asset-import-stage').has('pending')).toBe(true);
+    expect(Array.from(store('asset-binary').keys()).some((key) => key.startsWith('asset-import-stage:'))).toBe(true);
+
+    // A new startup has no receipt or closure from the dead process; it recovers from persisted
+    // manifest + LocalData state only.
+    await expect(recoverPendingAssetImportStage()).resolves.toBe('abandoned');
+
+    expect(await (store('asset-binary').get('asset-old') as Blob).text()).toBe('old');
     expect(store('asset-meta').get('asset-old')).toMatchObject({ name: 'old.txt' });
-    expect(store('asset-binary').has('asset-new-2')).toBe(false);
-    expect(store('asset-meta').has('asset-new-2')).toBe(false);
+    expect(Array.from(store('asset-binary').keys()).some((key) => key.startsWith('asset-import-stage:'))).toBe(false);
+    expect(store('asset-import-stage').has('pending')).toBe(false);
+  });
+
+  it.each(assetPersistenceContracts)('finishes a published stage after $name restart without deleting its newly active bytes', async ({ persist }) => {
+    const stores = new Map<string, Map<string, unknown>>([
+      ['asset-binary', new Map([['asset-old', new Blob(['old'])]])],
+      ['asset-meta', new Map([['asset-old', {
+        id: 'asset-old', kind: 'file', name: 'old.txt', mimeType: 'text/plain', size: 3, createdAt: 1
+      }]])],
+      ['asset-preview', new Map()],
+      ['asset-import-stage', new Map()]
+    ]);
+    const store = (name: string) => stores.get(name)!;
+    persistenceMocks.dbStoreGet.mockImplementation(async (name: string, key: string) => store(name).get(key) ?? null);
+    persistenceMocks.dbStoreKeys.mockImplementation(async (name: string) => Array.from(store(name).keys()));
+    persistenceMocks.dbStoreDelete.mockImplementation(async (name: string, key: string) => {
+      store(name).delete(key);
+    });
+    persistenceMocks.dbStoreSet.mockImplementation(async (name: string, key: string, value: unknown) => {
+      store(name).set(key, persist(value));
+    });
+
+    const { recoverPendingAssetImportStage, stageAssetImportEntries } = await import('./assetStore');
+    const stage = await stageAssetImportEntries([{
+      meta: { id: 'asset-old', kind: 'file', name: 'new.txt', mimeType: 'text/plain', size: 3, createdAt: 2 },
+      blob: new Blob(['new']),
+      previewBlob: null
+    }], { assetCommitId: 'import-asset-published' });
+    const pointer = {
+      domain: 'asset', version: 1, committedAt: 20, commitId: 'import-asset-published'
+    };
+    const localData = new Map<string, unknown>([
+      ['local-data-v1:pointer:asset', pointer],
+      ['local-data-v1:active-data-source', {
+        schemaVersion: 1,
+        key: 'local-data-v1:active-data-source',
+        activeDataSource: 'repository',
+        activeCommitId: pointer.commitId,
+        stagingCommitId: null,
+        updatedAt: 20,
+        domains: { asset: pointer }
+      }],
+      ['local-data-v1:row:asset:asset:asset-old', {
+        schemaVersion: 1,
+        key: 'local-data-v1:row:asset:asset:asset-old',
+        ref: { domain: 'asset', kind: 'asset', id: 'asset-old' },
+        version: 1,
+        updatedAt: 20,
+        state: 'complete',
+        value: {
+          id: 'asset-old',
+          objectId: 'asset:asset-old',
+          storageKey: stage.entries[0]!.storageKey,
+          kind: 'file',
+          name: 'new.txt',
+          mimeType: 'text/plain',
+          size: 3,
+          createdAt: 2,
+          hasMeta: true,
+          hasBinary: true,
+          hasPreview: false,
+          binaryBytes: 3,
+          previewBytes: 0,
+          ownerRefs: [],
+          ownerCount: 0,
+          orphan: true,
+          updatedAt: 2
+        }
+      }],
+      ['local-data-v1:row:asset:domainMeta:asset', {
+        schemaVersion: 1,
+        key: 'local-data-v1:row:asset:domainMeta:asset',
+        ref: { domain: 'asset', kind: 'domainMeta', id: 'asset' },
+        version: 1,
+        updatedAt: 20,
+        state: 'complete',
+        value: { id: 'asset', totalObjectCount: 1 }
+      }]
+    ]);
+    installStoreLocalDataBackend({
+      mode: 'transactional',
+      read: async <T>(key: string) => (localData.get(key) as T | undefined) ?? null,
+      listKeysWithPrefix: async (prefix: string) => Array.from(localData.keys()).filter((key) => key.startsWith(prefix)),
+      commitAtomic: async () => {}
+    });
+
+    // If durable commit evidence exists but storage lost the staged body, recovery must keep the
+    // old bytes and manifest for diagnosis/retry instead of classifying the stage as unpublished.
+    store('asset-binary').delete(stage.entries[0]!.storageKey);
+    await expect(recoverPendingAssetImportStage()).rejects.toThrow(
+      'Published asset import bytes do not match their durable stage'
+    );
+    expect(await (store('asset-binary').get('asset-old') as Blob).text()).toBe('old');
+    expect(store('asset-import-stage').has('pending')).toBe(true);
+
+    store('asset-binary').set(stage.entries[0]!.storageKey, persist(stage.entries[0]!.blob));
+    await expect(recoverPendingAssetImportStage()).resolves.toBe('published');
+
+    expect(store('asset-binary').has('asset-old')).toBe(false);
+    expect(await (store('asset-binary').get(stage.entries[0]!.storageKey) as Blob).text()).toBe('new');
+    expect(store('asset-import-stage').has('pending')).toBe(false);
   });
 });

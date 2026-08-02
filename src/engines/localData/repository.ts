@@ -45,6 +45,17 @@ export class LocalDataContractError extends Error {
 export type LocalDataRepository = {
   read<T>(ref: LocalDataRef): Promise<LocalDataReadResult<T>>;
   commit(unitOfWork: LocalDataUnitOfWork): Promise<LocalDataCommitMeta>;
+  commitAndPromoteActiveDataSource(
+    unitOfWork: LocalDataUnitOfWork,
+    buildValidationReport: (
+      meta: LocalDataCommitMeta,
+      mutations: LocalDataBackendMutation[]
+    ) => LocalDataMigrationValidationReport | Promise<LocalDataMigrationValidationReport>
+  ): Promise<{
+    commitMeta: LocalDataCommitMeta;
+    validationReport: LocalDataMigrationValidationReport;
+    activeDataSource: LocalDataActiveDataSourceRow;
+  }>;
   promoteActiveDataSource(
     meta: LocalDataCommitMeta,
     validationReport: LocalDataMigrationValidationReport
@@ -148,6 +159,15 @@ function assertMatchingDomainCommitPointer(value: unknown, meta: LocalDataCommit
       'verify-failed'
     );
   }
+}
+
+function commitPointersMatch(left: unknown, right: unknown, domain: LocalDataCommitMeta['domain']) {
+  if (!isObjectRecord(left) || !isObjectRecord(right)) return false;
+  return left.domain === domain
+    && right.domain === domain
+    && left.version === right.version
+    && left.committedAt === right.committedAt
+    && left.commitId === right.commitId;
 }
 
 function createActiveDataSourceRowForPromotions(
@@ -435,6 +455,16 @@ export function createLocalDataRepository(options: LocalDataRepositoryOptions): 
     return `${unitOfWork.domain}:${unitOfWork.version}:${committedAt}`;
   });
 
+  const createCommitMeta = (unitOfWork: LocalDataUnitOfWork): LocalDataCommitMeta => {
+    const committedAt = now();
+    return {
+      commitId: unitOfWork.id ?? createCommitId(unitOfWork, committedAt),
+      domain: unitOfWork.domain,
+      version: unitOfWork.version,
+      committedAt
+    };
+  };
+
   const commitMutations = async (mutations: LocalDataBackendMutation[], meta: LocalDataCommitMeta) => {
     if (options.backend.mode === 'transactional') {
       await options.backend.commitAtomic(mutations, meta);
@@ -461,6 +491,15 @@ export function createLocalDataRepository(options: LocalDataRepositoryOptions): 
     }
   };
 
+  const buildActiveAdvanceForAlreadyActiveDomain = async (meta: LocalDataCommitMeta) => {
+    const previousValue = await options.backend.read<LocalDataActiveDataSourceRow>(getLocalDataActiveDataSourceKey());
+    if (!isLocalDataActiveDataSourceRow(previousValue)) return null;
+    const activePointer = previousValue.domains[meta.domain];
+    const committedPointer = await options.backend.read<CommitPointerRow>(getLocalDataCommitPointerKey(meta.domain));
+    if (!commitPointersMatch(activePointer, committedPointer, meta.domain)) return null;
+    return createActiveDataSourceRowForPromotions([meta], previousValue, meta.committedAt);
+  };
+
   return {
     async read<T>(ref: LocalDataRef): Promise<LocalDataReadResult<T>> {
       try {
@@ -474,22 +513,50 @@ export function createLocalDataRepository(options: LocalDataRepositoryOptions): 
     },
 
     async commit(unitOfWork: LocalDataUnitOfWork): Promise<LocalDataCommitMeta> {
-      const committedAt = now();
-      const meta: LocalDataCommitMeta = {
-        commitId: unitOfWork.id ?? createCommitId(unitOfWork, committedAt),
-        domain: unitOfWork.domain,
-        version: unitOfWork.version,
-        committedAt
-      };
+      const meta = createCommitMeta(unitOfWork);
       const mutations = buildLocalDataCommitMutations(unitOfWork, meta);
 
       try {
         await validateLocalDataUnitOfWorkDoesNotOverwriteProtectedRows(options.backend, unitOfWork);
-        await commitMutations(mutations, meta);
+        const activeAdvance = await buildActiveAdvanceForAlreadyActiveDomain(meta);
+        await commitMutations(activeAdvance
+          ? [...mutations, buildActiveDataSourcePromotionMutation(activeAdvance)]
+          : mutations, meta);
         return meta;
       } catch (error) {
         if (error instanceof LocalDataContractError) throw error;
         throw toUntrustedPersistenceError(error, `Commit ${unitOfWork.domain}/${meta.commitId}`);
+      }
+    },
+
+    async commitAndPromoteActiveDataSource(
+      unitOfWork,
+      buildValidationReport
+    ) {
+      const meta = createCommitMeta(unitOfWork);
+      const commitMutationsForUnit = buildLocalDataCommitMutations(unitOfWork, meta);
+
+      try {
+        await validateLocalDataUnitOfWorkDoesNotOverwriteProtectedRows(options.backend, unitOfWork);
+        const validationReport = await buildValidationReport(meta, commitMutationsForUnit);
+        assertValidMigrationPromotionReport(meta, validationReport);
+
+        const previousValue = await options.backend.read<LocalDataActiveDataSourceRow>(getLocalDataActiveDataSourceKey());
+        const previousRow = isLocalDataActiveDataSourceRow(previousValue) ? previousValue : null;
+        const activeDataSource = createActiveDataSourceRowForPromotions([meta], previousRow, meta.committedAt);
+
+        await commitMutations([
+          ...commitMutationsForUnit,
+          buildActiveDataSourcePromotionMutation(activeDataSource)
+        ], meta);
+
+        return { commitMeta: meta, validationReport, activeDataSource };
+      } catch (error) {
+        if (error instanceof LocalDataContractError) throw error;
+        if (error instanceof LocalDataMigrationValidationError) {
+          throw new UntrustedPersistenceError(error.message, 'verify-failed', error);
+        }
+        throw toUntrustedPersistenceError(error, `Commit and promote ${unitOfWork.domain}/${meta.commitId}`);
       }
     },
 

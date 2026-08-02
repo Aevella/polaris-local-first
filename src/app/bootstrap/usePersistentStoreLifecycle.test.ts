@@ -13,11 +13,9 @@ import {
 } from './persistentStoreFlush';
 import {
   hydrateStartupStores,
-  hydrateSpaceThemeState,
-  probeLegacyImportRollbackFileInBackground
+  hydrateSpaceThemeState
 } from './persistentStoreHydration';
 import type { SpaceThemeHydrationState } from './persistentStoreHydration';
-import type { ImportRollbackFileStatus } from '../../native/importRollbackFile';
 
 describe('persistent store lifecycle guards', () => {
   it('flushes the latest state even when no debounce is pending', async () => {
@@ -214,51 +212,6 @@ describe('persistent store lifecycle guards', () => {
       shouldPersistRuntimeAfterHydration: false
     });
     expect(reportError).toHaveBeenCalledWith('chat', chatError);
-  });
-
-  it('probes a legacy import rollback file without blocking startup', async () => {
-    let resolveStatus!: (status: ImportRollbackFileStatus) => void;
-    const pendingStatus = new Promise<ImportRollbackFileStatus>((resolve) => {
-      resolveStatus = resolve;
-    });
-    const peekRollbackFileStatus = vi.fn(() => pendingStatus);
-    const onLegacyRollbackFound = vi.fn();
-
-    probeLegacyImportRollbackFileInBackground({
-      peekRollbackFileStatus,
-      onLegacyRollbackFound
-    });
-
-    expect(peekRollbackFileStatus).toHaveBeenCalledTimes(1);
-    expect(onLegacyRollbackFound).not.toHaveBeenCalled();
-
-    const status: ImportRollbackFileStatus = {
-      exists: true,
-      size: 2048,
-      storage: 'native',
-      canReadWithoutMaterializing: true
-    };
-    resolveStatus(status);
-
-    await vi.waitFor(() => {
-      expect(onLegacyRollbackFound).toHaveBeenCalledWith(status);
-    });
-  });
-
-  it('reports legacy import rollback probe failures', async () => {
-    const error = new Error('rollback status unavailable');
-    const reportError = vi.fn();
-
-    probeLegacyImportRollbackFileInBackground({
-      peekRollbackFileStatus: async () => {
-        throw error;
-      },
-      reportError
-    });
-
-    await vi.waitFor(() => {
-      expect(reportError).toHaveBeenCalledWith(error);
-    });
   });
 
   it('does not write chat defaults just because hydration completed', () => {

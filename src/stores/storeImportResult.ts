@@ -2,7 +2,7 @@ import type { LocalDataDomain } from '../engines/localData';
 
 export type StoreImportDomainFailure = {
   domain: LocalDataDomain | 'localStorage';
-  stage: 'asset-staging' | 'domain-commit' | 'promotion' | 'local-storage' | 'refresh';
+  stage: 'asset-staging' | 'domain-commit' | 'promotion' | 'local-storage' | 'refresh' | 'cleanup';
   reason: string;
 };
 
@@ -31,14 +31,14 @@ export function formatStoreImportResult(result: StoreImportResult) {
     .filter((entry) => entry.stage !== 'promotion' && entry.stage !== 'refresh')
     .map((entry) => DOMAIN_LABELS[entry.domain]);
   const verification = result.retainedDomains
-    .filter((entry) => entry.stage === 'promotion' || entry.stage === 'refresh')
+    .filter((entry) => entry.stage === 'promotion' || entry.stage === 'refresh' || entry.stage === 'cleanup')
     .map((entry) => DOMAIN_LABELS[entry.domain]);
   const parts = [`部分导入完成：${result.importedDomains.length} 个数据域已更新。`];
   if (retained.length > 0) {
     parts.push(`${Array.from(new Set(retained)).join('、')}写入失败，已有数据没有被清空。`);
   }
   if (verification.length > 0) {
-    parts.push(`${Array.from(new Set(verification)).join('、')}的激活或界面刷新仍需重新检查。`);
+    parts.push(`${Array.from(new Set(verification)).join('、')}的激活、清理或界面刷新将在下次启动继续检查。`);
   }
   return parts.join('');
 }
