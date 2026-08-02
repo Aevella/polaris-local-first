@@ -4,6 +4,7 @@ import type { WorkspaceBannerState } from '../../../../engines/workspaceBannerSt
 import type { ChatAttachment, ChatCardReference, ChatMessage, ChatMessageVoiceCache, CodeCard, Conversation, Persona, ThemeToolMode } from '../../../../types/domain';
 import type { PolarisToolPromptGroup } from '../../../../engines/tool-protocol/assistantToolProtocolTypes';
 import type { ChatCommandStatus, ChatEditingState, ChatStreamingState, ChatSubmitFlightState } from './ChatUiState';
+import type { ChatConversationBodyStatus } from '../../../../stores/chatConversationBodyStatus';
 
 // Split map lives in CHAT_CONTEXT_SPLIT.md so future拆分 has a stable field-level boundary.
 export type ChatContextPresentationValue = {
@@ -22,6 +23,7 @@ export type ChatContextPresentationValue = {
   interactionLocked: boolean;
   hasUnsupportedPendingImages: boolean;
   timelineDensity: 'light' | 'dense' | 'heavy';
+  activeConversationBodyStatus: ChatConversationBodyStatus | null;
 };
 
 export type ChatContextComposerValue = {

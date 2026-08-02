@@ -1,6 +1,7 @@
 export type ClientDiagnosticsEventKind =
   | 'startup'
   | 'storage-summary'
+  | 'persistence-error'
   | 'window-error'
   | 'unhandled-rejection';
 
@@ -48,12 +49,11 @@ export type ClientDiagnosticsLocalDataDomainSourceSummary = {
   repositoryRowCount: number;
   legacySourceCount: number;
   issueCount: number;
-  issues: string[];
 };
 
 export type ClientDiagnosticsCollaboratorOrphanSummary = {
-  collaboratorId: string;
-  rowKey: string;
+  collaboratorFingerprint: string;
+  rowFingerprint: string;
   rowState: 'complete' | 'unloaded' | 'incomplete' | 'timedOut' | 'deleted' | 'missing' | 'unreadable';
   rowUpdatedAt: number | null;
   rowDeletedAt: number | null;
@@ -74,6 +74,17 @@ export type ClientDiagnosticsErrorSummary = {
   context?: string;
 };
 
+export type ClientDiagnosticsPersistenceSummary = {
+  backend: string;
+  store: string;
+  domain?: string;
+  operation: string;
+  stage: string;
+  integrity: 'complete' | 'degraded' | 'failed';
+  rowCount: number;
+  fingerprint?: string;
+};
+
 export type ClientDiagnosticsPayload = {
   schemaVersion: 1;
   eventId: string;
@@ -87,6 +98,7 @@ export type ClientDiagnosticsPayload = {
   storage?: ClientDiagnosticsStorageSummary;
   localData?: ClientDiagnosticsLocalDataUsageSummary;
   error?: ClientDiagnosticsErrorSummary;
+  persistence?: ClientDiagnosticsPersistenceSummary;
 };
 
 export type ClientDiagnosticsLogEntry = ClientDiagnosticsPayload & {
@@ -171,6 +183,7 @@ function normalizePlatform(value: unknown): ClientDiagnosticsPlatform {
 function normalizeEventKind(value: unknown): ClientDiagnosticsEventKind | null {
   return value === 'startup'
     || value === 'storage-summary'
+    || value === 'persistence-error'
     || value === 'window-error'
     || value === 'unhandled-rejection'
     ? value
@@ -247,8 +260,7 @@ function normalizeLocalDataDomainSourceSummary(value: unknown): ClientDiagnostic
     objectCount: normalizeNumber(value.objectCount),
     repositoryRowCount: normalizeNumber(value.repositoryRowCount),
     legacySourceCount: normalizeNumber(value.legacySourceCount),
-    issueCount: normalizeNumber(value.issueCount),
-    issues: normalizeStringList(value.issues, 8)
+    issueCount: normalizeNumber(value.issueCount)
   };
 }
 
@@ -277,13 +289,13 @@ function normalizeCollaboratorOrphanRowState(
 
 function normalizeCollaboratorOrphanSummary(value: unknown): ClientDiagnosticsCollaboratorOrphanSummary | null {
   if (!isRecord(value)) return null;
-  const collaboratorId = normalizeForensicString(value.collaboratorId);
-  const rowKey = normalizeForensicString(value.rowKey);
+  const collaboratorFingerprint = normalizeForensicString(value.collaboratorFingerprint);
+  const rowFingerprint = normalizeForensicString(value.rowFingerprint);
   const rowState = normalizeCollaboratorOrphanRowState(value.rowState);
-  if (!collaboratorId || !rowKey || !rowState) return null;
+  if (!collaboratorFingerprint?.startsWith('anon-') || !rowFingerprint?.startsWith('anon-') || !rowState) return null;
   return {
-    collaboratorId,
-    rowKey,
+    collaboratorFingerprint,
+    rowFingerprint,
     rowState,
     rowUpdatedAt: normalizeOptionalNumber(value.rowUpdatedAt),
     rowDeletedAt: normalizeOptionalNumber(value.rowDeletedAt),
@@ -344,6 +356,30 @@ function normalizeErrorSummary(value: unknown): ClientDiagnosticsErrorSummary | 
   };
 }
 
+function normalizePersistenceSummary(value: unknown): ClientDiagnosticsPersistenceSummary | undefined {
+  if (!isRecord(value)) return undefined;
+  const backend = normalizeForensicString(value.backend, 120);
+  const store = normalizeForensicString(value.store, 64);
+  const operation = normalizeForensicString(value.operation, 80);
+  const stage = normalizeForensicString(value.stage, 80);
+  const integrity = value.integrity === 'complete' || value.integrity === 'degraded' || value.integrity === 'failed'
+    ? value.integrity
+    : null;
+  const domain = normalizeLocalDataDomainList([value.domain])[0];
+  const fingerprint = normalizeForensicString(value.fingerprint, 80);
+  if (!backend || !store || !operation || !stage || !integrity) return undefined;
+  return {
+    backend,
+    store,
+    operation,
+    stage,
+    integrity,
+    rowCount: normalizeNumber(value.rowCount),
+    ...(domain ? { domain } : {}),
+    ...(fingerprint?.startsWith('anon-') ? { fingerprint } : {})
+  };
+}
+
 export function normalizeClientDiagnosticsPayload(
   value: unknown,
   receivedAt = Date.now()
@@ -356,8 +392,10 @@ export function normalizeClientDiagnosticsPayload(
   const storage = normalizeStorageSummary(value.storage);
   const localData = normalizeLocalDataUsageSummary(value.localData);
   const error = normalizeErrorSummary(value.error);
+  const persistence = normalizePersistenceSummary(value.persistence);
   if ((eventKind === 'storage-summary' || eventKind === 'startup') && !storage) return null;
   if ((eventKind === 'window-error' || eventKind === 'unhandled-rejection') && !error) return null;
+  if (eventKind === 'persistence-error' && (!error || !persistence)) return null;
 
   return {
     schemaVersion: 1,
@@ -372,6 +410,7 @@ export function normalizeClientDiagnosticsPayload(
     ...(storage ? { storage } : {}),
     ...(localData ? { localData } : {}),
     ...(error ? { error } : {}),
+    ...(persistence ? { persistence } : {}),
     receivedAt
   };
 }

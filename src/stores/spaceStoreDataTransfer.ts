@@ -1,11 +1,13 @@
 import { importStructuredExportPackage } from './storeImportPackage';
 import { importKelivoBackupPackageIfMatched } from './kelivoImportAdapter';
 import type { StoreImportProgressReporter } from './storeImportProgress';
+import type { StoreImportResult } from './storeImportResult';
+import { fingerprintDiagnosticId, reportPersistenceError } from '../infrastructure/persistenceDiagnostics';
 
 export async function importAllData(
   file: Blob,
   options: { onProgress?: StoreImportProgressReporter } = {}
-): Promise<void> {
+): Promise<StoreImportResult> {
   options.onProgress?.({ message: '识别备份包' });
   const header = new Uint8Array(await file.slice(0, 4).arrayBuffer());
   const isZip =
@@ -21,8 +23,20 @@ export async function importAllData(
     throw new Error('无法识别的备份格式：请选择 Polaris 导出的 zip 备份');
   }
 
-  if (await importKelivoBackupPackageIfMatched(file, options)) {
-    return;
+  try {
+    const kelivoResult = await importKelivoBackupPackageIfMatched(file, options);
+    if (kelivoResult) return kelivoResult;
+    return await importStructuredExportPackage(file, options);
+  } catch (error) {
+    reportPersistenceError({
+      label: '[store:import]',
+      store: 'import',
+      operation: 'import-preflight-failed',
+      stage: 'package-preflight',
+      integrity: 'failed',
+      rowCount: 0,
+      fingerprint: fingerprintDiagnosticId(`package:${file.size}:${file.type}`)
+    }, error);
+    throw error;
   }
-  await importStructuredExportPackage(file, options);
 }

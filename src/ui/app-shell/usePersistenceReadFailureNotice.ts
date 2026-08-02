@@ -13,7 +13,7 @@ export type PersistenceReadFailureNoticeState = {
   visible: boolean;
   error: PersistenceDiagnosticEntry | null;
   blockedStores: string[];
-  reason: 'read-failure' | null;
+  reason: 'read-failure' | 'isolated-row' | null;
 };
 
 export type PersistenceReadFailureHydrationState = {
@@ -42,12 +42,21 @@ export function derivePersistenceReadFailureNotice(
     !hydration.personaHydrated ? '协作者' : null,
     !hydration.runtimeHydrated ? '设置' : null
   ].filter((item): item is string => Boolean(item));
+  const isolated = error?.operation === 'read-isolated-row';
+  const coreStoresHydrated = blockedStores.length === 0;
+  const isolatedStore = error ? ({
+    chat: '对话', collection: '房间', persona: '协作者', runtime: '设置',
+    space: '界面状态', document: '文档', asset: '附件'
+  } as Record<string, string>)[error.store] : null;
 
   return {
-    visible: Boolean(blockedStores.length > 0 && hydration.startupReady && isCoreHydrationReadFailure(error)),
+    visible: Boolean(hydration.startupReady && (
+      (isolated && coreStoresHydrated)
+      || (blockedStores.length > 0 && isCoreHydrationReadFailure(error))
+    )),
     error,
-    blockedStores,
-    reason: isCoreHydrationReadFailure(error) ? 'read-failure' : null
+    blockedStores: isolated ? [isolatedStore ?? error?.store ?? '本地数据'] : blockedStores,
+    reason: isolated ? 'isolated-row' : isCoreHydrationReadFailure(error) ? 'read-failure' : null
   };
 }
 

@@ -21,14 +21,16 @@ import {
 } from '../stores/assetLocalDataPersistence';
 import { runExclusiveAssetPersistenceCommit } from '../stores/assetPersistenceCommitQueue';
 import {
-  listStoreLocalDataKeysWithPrefix,
+  readLocalDataDomainRows,
+  type LocalDataReadIntegrity
+} from '../stores/localDataStorePersistence';
+import {
   readStoreLocalDataValue
 } from '../stores/storeLocalDataBackendHost';
 import {
   getLocalDataActiveDataSourceKey,
   getLocalDataRowKey,
   isLegacyLifecycleAssetState,
-  LOCAL_DATA_NAMESPACE,
   LOCAL_DATA_SCHEMA_VERSION,
   type AssetObjectRow,
   type CommitPointerRow,
@@ -159,18 +161,26 @@ function assetMetaFromLocalDataRow(row: AssetObjectRow): StoredAssetMeta | null 
   };
 }
 
-async function listActiveAssetRowsFromLocalData(): Promise<AssetObjectRow[] | null> {
+async function listActiveAssetRowsFromLocalData(
+  integrity: LocalDataReadIntegrity = 'recover'
+): Promise<AssetObjectRow[] | null> {
   if (!await isAssetLocalDataDomainActive()) return null;
-  const keys = await listStoreLocalDataKeysWithPrefix(`${LOCAL_DATA_NAMESPACE}:row:asset:asset:`);
-  const values = await Promise.all(keys.map(async (key) => await readStoreLocalDataValue<unknown>(key)));
-  return values.flatMap((value) => {
+  const { rows } = await readLocalDataDomainRows({
+    domain: 'asset',
+    integrity,
+    isRequiredRef: (ref) => ref.kind === 'domainMeta'
+  });
+  return rows.flatMap((value) => {
+    if (value.ref.kind !== 'asset') return [];
     const row = assetPayloadFromLocalDataRow(value);
     return row ? [row] : [];
   });
 }
 
-export async function listActiveAssetMetaEntries(): Promise<PersistedDbEntry<StoredAssetMeta>[]> {
-  const rows = await listActiveAssetRowsFromLocalData();
+export async function listActiveAssetMetaEntries(options: {
+  integrity?: LocalDataReadIntegrity;
+} = {}): Promise<PersistedDbEntry<StoredAssetMeta>[]> {
+  const rows = await listActiveAssetRowsFromLocalData(options.integrity);
   if (rows) {
     return rows.flatMap((row) => {
       const meta = assetMetaFromLocalDataRow(row);
@@ -180,8 +190,10 @@ export async function listActiveAssetMetaEntries(): Promise<PersistedDbEntry<Sto
   return await dbStoreEntries<StoredAssetMeta>(ASSET_META_STORE);
 }
 
-export async function listActiveAssetBinaryEntries(): Promise<PersistedDbEntry<Blob>[]> {
-  const rows = await listActiveAssetRowsFromLocalData();
+export async function listActiveAssetBinaryEntries(options: {
+  integrity?: LocalDataReadIntegrity;
+} = {}): Promise<PersistedDbEntry<Blob>[]> {
+  const rows = await listActiveAssetRowsFromLocalData(options.integrity);
   if (rows) {
     const entries = await Promise.all(rows
       .filter((row) => row.hasBinary)
@@ -194,8 +206,10 @@ export async function listActiveAssetBinaryEntries(): Promise<PersistedDbEntry<B
   return await dbStoreEntries<Blob>(ASSET_BINARY_STORE);
 }
 
-export async function listActiveAssetPreviewEntries(): Promise<PersistedDbEntry<Blob>[]> {
-  const rows = await listActiveAssetRowsFromLocalData();
+export async function listActiveAssetPreviewEntries(options: {
+  integrity?: LocalDataReadIntegrity;
+} = {}): Promise<PersistedDbEntry<Blob>[]> {
+  const rows = await listActiveAssetRowsFromLocalData(options.integrity);
   if (rows) {
     const entries = await Promise.all(rows
       .filter((row) => row.hasPreview)
@@ -400,8 +414,10 @@ export async function getAssetMeta(assetId: string): Promise<StoredAssetMeta | n
   return await dbStoreGet<StoredAssetMeta>(ASSET_META_STORE, assetId);
 }
 
-export async function listAssetMeta(): Promise<StoredAssetMeta[]> {
-  const entries = await listActiveAssetMetaEntries();
+export async function listAssetMeta(options: {
+  integrity?: LocalDataReadIntegrity;
+} = {}): Promise<StoredAssetMeta[]> {
+  const entries = await listActiveAssetMetaEntries(options);
   return entries.map((entry) => entry.value);
 }
 
@@ -488,9 +504,9 @@ export async function exportAssetSnapshot(): Promise<AssetSnapshotEntry[]> {
 
 export async function exportAssetEntries(): Promise<AssetExportEntry[]> {
   const [metaEntries, binaryEntries, previewEntries] = await Promise.all([
-    listActiveAssetMetaEntries(),
-    listActiveAssetBinaryEntries(),
-    listActiveAssetPreviewEntries()
+    listActiveAssetMetaEntries({ integrity: 'strict' }),
+    listActiveAssetBinaryEntries({ integrity: 'strict' }),
+    listActiveAssetPreviewEntries({ integrity: 'strict' })
   ]);
   const binaryById = new Map(binaryEntries.map((entry) => [entry.key, entry.value]));
   const previewById = new Map(previewEntries.map((entry) => [entry.key, entry.value]));
@@ -562,4 +578,75 @@ export async function replaceAssetEntries(
   options: { onProgress?: (current: number, total: number) => void } = {}
 ): Promise<void> {
   await runExclusiveAssetMutation(() => replaceAssetEntriesUnlocked(entries, options));
+}
+
+type AssetStorageSnapshot = {
+  id: string;
+  meta: StoredAssetMeta | null;
+  blob: Blob | null;
+  previewBlob: Blob | null;
+};
+
+export type AssetUpsertReceipt = {
+  count: number;
+  rollback: () => Promise<void>;
+};
+
+async function restoreAssetStorageSnapshot(snapshot: AssetStorageSnapshot) {
+  const restore = async (storeName: string, value: unknown | null) => {
+    if (value === null) await dbStoreDelete(storeName, snapshot.id);
+    else await dbStoreSet(storeName, snapshot.id, value);
+  };
+  await restore(ASSET_META_STORE, snapshot.meta);
+  await restore(ASSET_BINARY_STORE, snapshot.blob);
+  await restore(ASSET_PREVIEW_STORE, snapshot.previewBlob);
+}
+
+export async function upsertAssetEntries(
+  entries: AssetExportEntry[],
+  options: { onProgress?: (current: number, total: number) => void } = {}
+): Promise<AssetUpsertReceipt> {
+  const snapshots = await runExclusiveAssetMutation(async () => {
+    const previous = await Promise.all(entries.map(async (entry): Promise<AssetStorageSnapshot> => ({
+      id: entry.meta.id,
+      meta: await dbStoreGet<StoredAssetMeta>(ASSET_META_STORE, entry.meta.id),
+      blob: await dbStoreGet<Blob>(ASSET_BINARY_STORE, entry.meta.id),
+      previewBlob: await dbStoreGet<Blob>(ASSET_PREVIEW_STORE, entry.meta.id)
+    })));
+
+    try {
+      for (let index = 0; index < entries.length; index += 1) {
+        const entry = entries[index]!;
+        await dbStoreSet(ASSET_BINARY_STORE, entry.meta.id, entry.blob);
+        await dbStoreSet(ASSET_META_STORE, entry.meta.id, entry.meta);
+        if (entry.previewBlob) await dbStoreSet(ASSET_PREVIEW_STORE, entry.meta.id, entry.previewBlob);
+        else await dbStoreDelete(ASSET_PREVIEW_STORE, entry.meta.id);
+
+        const [writtenMeta, writtenBlob] = await Promise.all([
+          dbStoreGet<StoredAssetMeta>(ASSET_META_STORE, entry.meta.id),
+          dbStoreGet<Blob>(ASSET_BINARY_STORE, entry.meta.id)
+        ]);
+        if (!writtenMeta || writtenMeta.id !== entry.meta.id || !writtenBlob || writtenBlob.size !== entry.blob.size) {
+          throw new Error(`Asset staging verification failed: ${entry.meta.id}`);
+        }
+        options.onProgress?.(index + 1, entries.length);
+      }
+      return previous;
+    } catch (error) {
+      for (const snapshot of previous) await restoreAssetStorageSnapshot(snapshot);
+      throw error;
+    }
+  });
+
+  let rolledBack = false;
+  return {
+    count: entries.length,
+    rollback: async () => {
+      if (rolledBack) return;
+      rolledBack = true;
+      await runExclusiveAssetMutation(async () => {
+        for (const snapshot of snapshots) await restoreAssetStorageSnapshot(snapshot);
+      });
+    }
+  };
 }

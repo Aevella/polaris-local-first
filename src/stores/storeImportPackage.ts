@@ -1,5 +1,6 @@
 import {
   replaceAssetEntries,
+  upsertAssetEntries,
   type AssetExportEntry,
   type StoredAssetMeta
 } from '../infrastructure/assetStore';
@@ -17,10 +18,8 @@ import type { RuntimePayload } from './runtimeStorePersistence';
 import { normalizeRuntimePayload } from './runtimeStorePersistence';
 import type { PersistedSpaceState } from './spaceStorePersistence';
 import {
-  SPACE_THEME_STATE_KEY,
   migratePersistedSpaceState,
-  serializePersistedSpaceLocalState,
-  serializePersistedSpaceThemeState
+  serializePersistedSpaceLocalState
 } from './spaceStorePersistence';
 import { normalizeAppCustomization } from './runtimeStoreCustomization';
 import { migrateLegacyProjectCards } from './collectionStoreProjectFiles';
@@ -29,14 +28,14 @@ import { repairCollectionProjectTopology } from './collectionStoreProjectTopolog
 import { applyImportedPersistedStores } from './storeImportApply';
 import { clearLegacyLocalDataKvShadowIfStoreBackendInstalled } from './localDataLegacyKvShadowCleanup';
 import { restoreStructuredImportToLocalDataRepository } from './storeImportLocalDataRestore';
-import { LOCAL_DATA_NAMESPACE } from '../engines/localData';
 import {
   ASSET_INDEX_PATH,
   PERSONA_MEMORY_DOC_CONTENT_PATH,
   SPACE_STORE_KEY,
   SPACE_STORE_VERSION,
   type AssetIndexEntry,
-  type ExportManifest
+  type ExportManifest,
+  type StructuredExportSnapshot
 } from './storeExportPackage';
 import type { StoreImportProgressReporter } from './storeImportProgress';
 import type { Persona, ProjectFile, WorkspaceReferenceDoc } from '../types/domain';
@@ -44,7 +43,8 @@ import {
   clearImportRollbackFile,
   readImportRollbackFile
 } from '../native/importRollbackFile';
-import { clearStoreLocalDataEntriesWithPrefix } from './storeLocalDataBackendHost';
+import type { StoreImportDomainFailure, StoreImportResult } from './storeImportResult';
+import { fingerprintDiagnosticId, reportPersistenceError } from '../infrastructure/persistenceDiagnostics';
 
 const LOCAL_STORAGE_PREFIX = 'polaris';
 const ASSET_READ_CONCURRENCY = 4;
@@ -84,6 +84,23 @@ const IMPORT_ROLLBACK_KV_PATH = 'rollback/kv.json';
 const IMPORT_ROLLBACK_LOCAL_STORAGE_PATH = 'rollback/localStorage.json';
 const IMPORT_ROLLBACK_ASSET_INDEX_PATH = 'rollback/assets.json';
 
+function restoreFailureReason(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function readPolarisLocalStorage(): ImportLocalStorageEntry[] {
+  if (typeof window === 'undefined') return [];
+  const entries: ImportLocalStorageEntry[] = [];
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (key?.startsWith(LOCAL_STORAGE_PREFIX)) {
+      const value = window.localStorage.getItem(key);
+      if (value !== null) entries.push({ key, value });
+    }
+  }
+  return entries;
+}
+
 function clearPolarisLocalStorage() {
   if (typeof window === 'undefined') return;
 
@@ -100,12 +117,40 @@ function clearPolarisLocalStorage() {
   }
 }
 
-function replacePolarisLocalStorage(entries: ImportLocalStorageEntry[]) {
+function replacePolarisLocalStorage(
+  entries: ImportLocalStorageEntry[],
+  options: { removeAbsent?: boolean } = {}
+) {
   if (typeof window === 'undefined') return;
-  clearPolarisLocalStorage();
-  for (const entry of entries) {
-    window.localStorage.setItem(entry.key, entry.value);
+  const previous = options.removeAbsent
+    ? readPolarisLocalStorage()
+    : entries.map(({ key }) => ({ key, value: window.localStorage.getItem(key) }));
+  try {
+    if (options.removeAbsent) clearPolarisLocalStorage();
+    for (const entry of entries) {
+      window.localStorage.setItem(entry.key, entry.value);
+    }
+  } catch (error) {
+    try {
+      if (options.removeAbsent) clearPolarisLocalStorage();
+      for (const entry of previous) {
+        if (entry.value === null) window.localStorage.removeItem(entry.key);
+        else window.localStorage.setItem(entry.key, entry.value);
+      }
+    } catch (rollbackError) {
+      throw new Error(`localStorage 写入失败且旧值恢复失败：${String(rollbackError)}；原始错误：${String(error)}`);
+    }
+    throw error;
   }
+}
+
+function restorePolarisLocalStorageSnapshot(
+  entries: ImportLocalStorageEntry[],
+  touchedKeys: string[]
+) {
+  if (typeof window === 'undefined') return;
+  for (const key of touchedKeys) window.localStorage.removeItem(key);
+  for (const entry of entries) window.localStorage.setItem(entry.key, entry.value);
 }
 
 async function replaceKvEntries(entries: PersistedKvEntry[]) {
@@ -171,7 +216,7 @@ async function restoreImportRollbackZip(
 
   if (scope.localStorage) {
     try {
-      replacePolarisLocalStorage(rollback.localStorageEntries);
+      replacePolarisLocalStorage(rollback.localStorageEntries, { removeAbsent: true });
     } catch (error) {
       failures.push(error instanceof Error ? error.message : String(error));
     }
@@ -201,49 +246,11 @@ export async function recoverPendingStructuredImportRollback() {
 async function refreshImportedStoresBestEffort() {
   try {
     await applyImportedPersistedStores();
-  } catch {
+    return null;
+  } catch (error) {
     // Persisted data is already replaced; the next hydration pass can read it again.
+    return error instanceof Error ? error.message : String(error);
   }
-}
-
-function formatSkippedImportDomains(
-  skippedDomains: Array<{ domain: string; reason: string }>
-) {
-  return skippedDomains
-    .map((entry) => `${entry.domain}: ${entry.reason}`)
-    .join('；');
-}
-
-function formatPromotionSkippedImportDomains(
-  skippedDomains: Array<{ domain: string; status: string; reasons: string[] }>
-) {
-  return skippedDomains
-    .map((entry) => `${entry.domain}: ${entry.status}${entry.reasons.length > 0 ? ` (${entry.reasons.join(', ')})` : ''}`)
-    .join('；');
-}
-
-export async function importPersistedDataDirectly(params: {
-  kvEntries: PersistedKvEntry[];
-  localStorageEntries: ImportLocalStorageEntry[];
-  assetEntries: AssetExportEntry[];
-  onProgress?: StoreImportProgressReporter;
-}) {
-  params.onProgress?.({ message: '收束未保存数据' });
-  await flushPageLifecycleHandlers();
-  params.onProgress?.({ message: '写入对话和设置' });
-  await replaceKvEntries(params.kvEntries);
-  replacePolarisLocalStorage(params.localStorageEntries);
-  params.onProgress?.({
-    message: params.assetEntries.length > 0 ? '写入附件' : '刷新导入结果',
-    current: params.assetEntries.length > 0 ? 0 : undefined,
-    total: params.assetEntries.length > 0 ? params.assetEntries.length : undefined
-  });
-  await replaceAssetEntries(params.assetEntries, {
-    onProgress: (current, total) => params.onProgress?.({ message: '写入附件', current, total })
-  });
-  params.onProgress?.({ message: '刷新导入结果' });
-  await refreshImportedStoresBestEffort();
-  await clearImportRollbackFile();
 }
 
 function parseJsonFile<T>(content: string, label: string): T {
@@ -254,7 +261,7 @@ function parseJsonFile<T>(content: string, label: string): T {
   }
 }
 
-function ensureObject(value: unknown, label: string) {
+function ensureObject(value: unknown, label: string): asserts value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${label} 缺少或格式不正确`);
   }
@@ -296,6 +303,18 @@ function validateChatState(value: unknown): PersistedChatState {
   if (!Array.isArray(payload.conversations)) {
     throw new Error('chat store 缺少 conversations');
   }
+  for (const conversation of payload.conversations) {
+    ensureObject(conversation, 'chat conversation');
+    if (typeof conversation.id !== 'string' || !conversation.id.trim() || !Array.isArray(conversation.messages)) {
+      throw new Error('chat conversation 缺少 id 或 messages');
+    }
+    for (const message of conversation.messages) {
+      ensureObject(message, 'chat message');
+      if (typeof message.id !== 'string' || typeof message.role !== 'string' || typeof message.content !== 'string') {
+        throw new Error('chat message 缺少必要字段');
+      }
+    }
+  }
   return {
     conversations: payload.conversations,
     activeConversationId:
@@ -319,6 +338,19 @@ function validateCollectionState(value: unknown): PersistedCollectionState {
   const payload = value as Partial<PersistedCollectionState> & { activeCardId?: string | null };
   if (!Array.isArray(payload.cards) || !Array.isArray(payload.imageCards)) {
     throw new Error('collection store 缺少必要字段');
+  }
+  for (const [label, entries] of Object.entries({
+    cards: payload.cards,
+    imageCards: payload.imageCards,
+    projectFiles: payload.projectFiles ?? [],
+    workspaceReferenceDocs: payload.workspaceReferenceDocs ?? [],
+    roomProjects: payload.roomProjects ?? []
+  })) {
+    if (!Array.isArray(entries)) throw new Error(`collection store ${label} 格式不正确`);
+    for (const entry of entries) {
+      ensureObject(entry, `collection ${label} entry`);
+      if (typeof entry.id !== 'string' || !entry.id.trim()) throw new Error(`collection ${label} 缺少 id`);
+    }
   }
   const migrated = migrateLegacyProjectCards({
     cards: payload.cards,
@@ -345,6 +377,12 @@ function validatePersonaState(value: unknown): PersistedPersonaState {
   const payload = value as Partial<PersistedPersonaState>;
   if (!Array.isArray(payload.personas)) {
     throw new Error('persona store 缺少 personas');
+  }
+  for (const persona of payload.personas) {
+    ensureObject(persona, 'persona');
+    if (typeof persona.id !== 'string' || !persona.id.trim() || typeof persona.name !== 'string') {
+      throw new Error('persona store 包含无效协作者');
+    }
   }
   return {
     personas: payload.personas,
@@ -382,6 +420,10 @@ function validateRuntimeState(value: unknown): RuntimePayload {
   if (!Array.isArray(payload.providers)) {
     throw new Error('runtime store 缺少 providers');
   }
+  for (const provider of payload.providers) {
+    ensureObject(provider, 'runtime provider');
+    if (typeof provider.id !== 'string' || !provider.id.trim()) throw new Error('runtime provider 缺少 id');
+  }
   return normalizeRuntimePayload(payload);
 }
 
@@ -390,6 +432,8 @@ function validateAssetIndex(value: unknown): AssetIndexEntry[] {
     throw new Error('资产索引格式不正确');
   }
 
+  const assetIds = new Set<string>();
+  const assetPaths = new Set<string>();
   return value.map((entry) => {
     ensureObject(entry, '资产索引项');
     const asset = entry as Partial<AssetIndexEntry>;
@@ -399,19 +443,35 @@ function validateAssetIndex(value: unknown): AssetIndexEntry[] {
       || typeof asset.name !== 'string'
       || typeof asset.mimeType !== 'string'
       || typeof asset.filePath !== 'string'
+      || asset.id.trim().length === 0
+      || asset.filePath.trim().length === 0
+      || typeof asset.size !== 'number'
+      || !Number.isFinite(asset.size)
+      || asset.size < 0
     ) {
       throw new Error('资产索引缺少必要字段');
     }
+    const previewPath = typeof asset.previewPath === 'string' ? asset.previewPath : undefined;
+    if (
+      assetIds.has(asset.id)
+      || assetPaths.has(asset.filePath)
+      || (previewPath !== undefined && assetPaths.has(previewPath))
+    ) {
+      throw new Error('资产索引包含重复 id 或文件路径');
+    }
+    assetIds.add(asset.id);
+    assetPaths.add(asset.filePath);
+    if (previewPath) assetPaths.add(previewPath);
     return {
       id: asset.id,
       kind: asset.kind,
       name: asset.name,
       mimeType: asset.mimeType,
-      size: typeof asset.size === 'number' ? asset.size : 0,
+      size: asset.size,
       createdAt: typeof asset.createdAt === 'number' ? asset.createdAt : Date.now(),
       textContent: typeof asset.textContent === 'string' ? asset.textContent : undefined,
       filePath: asset.filePath,
-      previewPath: typeof asset.previewPath === 'string' ? asset.previewPath : undefined
+      previewPath
     };
   });
 }
@@ -481,6 +541,9 @@ async function readAssetEntriesFromExportZip(
         blob: await readZipBlobFile(zip, asset.filePath, asset.filePath),
         previewBlob: asset.previewPath ? await readZipBlobFile(zip, asset.previewPath, asset.previewPath) : null
       };
+      if (entry.blob.size !== asset.size) {
+        throw new Error(`附件 ${asset.id} 的大小与资产索引不一致`);
+      }
       completedAssetReads += 1;
       onProgress?.({ message: '读取附件', current: completedAssetReads, total: assetIndex.length });
       return entry;
@@ -491,7 +554,7 @@ async function readAssetEntriesFromExportZip(
 export async function importStructuredExportPackage(
   file: Blob,
   options: ImportStructuredExportPackageOptions = {}
-): Promise<void> {
+): Promise<StoreImportResult> {
   const { default: JSZip } = await import('jszip');
   options.onProgress?.({ message: '读取备份包' });
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
@@ -567,30 +630,7 @@ export async function importStructuredExportPackage(
     activeCardId: typeof spaceState.activeCardId === 'string' ? spaceState.activeCardId : importedActiveCardId
   } satisfies PersistedSpaceState;
   const migratedSpaceState = migratePersistedSpaceState(importedSpaceState);
-  options.onProgress?.({ message: '收束未保存数据' });
-  await flushPageLifecycleHandlers();
-  options.onProgress?.({ message: '写入对话和设置' });
-  await replaceKvEntries([]);
-  replacePolarisLocalStorage([{
-    key: SPACE_STORE_KEY,
-    value: JSON.stringify({
-      state: serializePersistedSpaceLocalState(migratedSpaceState),
-      version: SPACE_STORE_VERSION
-    })
-  }]);
-  options.onProgress?.({
-    message: assetEntries.length > 0 ? '写入附件' : '刷新导入结果',
-    current: assetEntries.length > 0 ? 0 : undefined,
-    total: assetEntries.length > 0 ? assetEntries.length : undefined
-  });
-  await replaceAssetEntries(assetEntries, {
-    onProgress: (current, total) => options.onProgress?.({ message: '写入附件', current, total })
-  });
-  options.onProgress?.({ message: '重建当前数据库' });
-  await clearStoreLocalDataEntriesWithPrefix(`${LOCAL_DATA_NAMESPACE}:`, {
-    commitId: `structured-import-reset-${Date.now()}`
-  });
-  const restoreResult = await restoreStructuredImportToLocalDataRepository({
+  return await importStructuredExportSnapshot({
     chatState,
     collectionState,
     personaState,
@@ -598,21 +638,161 @@ export async function importStructuredExportPackage(
     runtimeState,
     spaceState: migratedSpaceState,
     assetEntries
+  }, options);
+}
+
+function validateStructuredAssetEntries(value: unknown): AssetExportEntry[] {
+  if (!Array.isArray(value)) throw new Error('备份缺少附件清单');
+  const ids = new Set<string>();
+  return value.map((entry) => {
+    ensureObject(entry, '附件');
+    const asset = entry as Partial<AssetExportEntry>;
+    ensureObject(asset.meta, '附件元数据');
+    if (
+      typeof asset.meta.id !== 'string'
+      || asset.meta.id.trim().length === 0
+      || (asset.meta.kind !== 'image' && asset.meta.kind !== 'file')
+      || typeof asset.meta.name !== 'string'
+      || typeof asset.meta.mimeType !== 'string'
+      || typeof asset.meta.size !== 'number'
+      || !Number.isFinite(asset.meta.size)
+      || asset.meta.size < 0
+      || !(asset.blob instanceof Blob)
+      || (asset.previewBlob !== null && !(asset.previewBlob instanceof Blob))
+    ) {
+      throw new Error('附件数据不完整');
+    }
+    if (ids.has(asset.meta.id)) throw new Error('附件清单包含重复 id');
+    if (asset.blob.size !== asset.meta.size) throw new Error(`附件 ${asset.meta.id} 的大小不一致`);
+    ids.add(asset.meta.id);
+    return asset as AssetExportEntry;
   });
-  if (restoreResult.skippedDomains.length > 0) {
-    throw new Error(`备份已解析，但以下数据域没有恢复：${formatSkippedImportDomains(restoreResult.skippedDomains)}`);
+}
+
+export async function importStructuredExportSnapshot(
+  snapshot: StructuredExportSnapshot,
+  options: ImportStructuredExportPackageOptions = {}
+): Promise<StoreImportResult> {
+  ensureObject(snapshot, '备份快照');
+  const spaceState = migratePersistedSpaceState(validateSpaceState(snapshot.spaceState));
+  const chatState = validateChatState(snapshot.chatState);
+  const collectionState = validateCollectionState(snapshot.collectionState);
+  const personaState = validatePersonaState(snapshot.personaState);
+  const personaMemoryDocContent = snapshot.personaMemoryDocContent === null
+    ? null
+    : validatePersonaMemoryDocContent(snapshot.personaMemoryDocContent);
+  const runtimeState = validateRuntimeState(snapshot.runtimeState);
+  const assetEntries = validateStructuredAssetEntries(snapshot.assetEntries);
+
+  options.onProgress?.({ message: '收束未保存数据' });
+  await flushPageLifecycleHandlers();
+
+  const failures: StoreImportDomainFailure[] = [];
+  const skipDomains: Array<'space' | 'asset'> = [];
+  const previousLocalStorage = readPolarisLocalStorage();
+  const importedLocalStorageEntries: ImportLocalStorageEntry[] = [{
+    key: SPACE_STORE_KEY,
+    value: JSON.stringify({
+      state: serializePersistedSpaceLocalState(spaceState),
+      version: SPACE_STORE_VERSION
+    })
+  }];
+  let localStorageApplied = false;
+  try {
+    replacePolarisLocalStorage(importedLocalStorageEntries);
+    localStorageApplied = true;
+  } catch (error) {
+    skipDomains.push('space');
+    failures.push({
+      domain: 'space',
+      stage: 'local-storage',
+      reason: restoreFailureReason(error)
+    });
+  }
+
+  let assetReceipt: Awaited<ReturnType<typeof upsertAssetEntries>> | null = null;
+  options.onProgress?.({
+    message: assetEntries.length > 0 ? '写入附件' : '刷新导入结果',
+    current: assetEntries.length > 0 ? 0 : undefined,
+    total: assetEntries.length > 0 ? assetEntries.length : undefined
+  });
+  try {
+    assetReceipt = await upsertAssetEntries(assetEntries, {
+      onProgress: (current, total) => options.onProgress?.({ message: '写入附件', current, total })
+    });
+  } catch (error) {
+    skipDomains.push('asset');
+    failures.push({
+      domain: 'asset',
+      stage: 'asset-staging',
+      reason: restoreFailureReason(error)
+    });
+  }
+
+  options.onProgress?.({ message: '重建当前数据库' });
+  const restoreResult = await restoreStructuredImportToLocalDataRepository({
+    chatState,
+    collectionState,
+    personaState,
+    personaMemoryDocContent,
+    runtimeState,
+    spaceState,
+    assetEntries
+  }, { skipDomains });
+
+  for (const skipped of restoreResult.skippedDomains) {
+    if (skipDomains.includes(skipped.domain as 'space' | 'asset')) continue;
+    failures.push({ domain: skipped.domain, stage: 'domain-commit', reason: skipped.reason });
+  }
+  for (const skipped of restoreResult.promotionSkippedDomains) {
+    failures.push({
+      domain: skipped.domain,
+      stage: 'promotion',
+      reason: `${skipped.status}: ${skipped.reasons.join(', ')}`
+    });
   }
   if (restoreResult.promotionFailure) {
-    throw new Error(`备份已解析，但没有激活到当前数据源：${restoreResult.promotionFailure}`);
+    for (const domain of restoreResult.restoredDomains) {
+      failures.push({ domain, stage: 'promotion', reason: restoreResult.promotionFailure });
+    }
   }
-  if (restoreResult.promotionSkippedDomains.length > 0) {
-    throw new Error(`备份已解析，但以下数据域没有激活：${formatPromotionSkippedImportDomains(restoreResult.promotionSkippedDomains)}`);
+
+  if (localStorageApplied && !restoreResult.restoredDomains.includes('space')) {
+    restorePolarisLocalStorageSnapshot(
+      previousLocalStorage,
+      importedLocalStorageEntries.map((entry) => entry.key)
+    );
   }
-  if (restoreResult.restoredDomains.length > 0 && restoreResult.promotedDomains.length === 0) {
-    throw new Error('备份已解析，但没有任何数据域激活到当前数据源。');
+  if (assetReceipt && !restoreResult.restoredDomains.includes('asset')) {
+    await assetReceipt.rollback();
   }
-  await clearLegacyLocalDataKvShadowIfStoreBackendInstalled();
+
+  if (restoreResult.restoredDomains.length === 7 && failures.length === 0) {
+    await clearLegacyLocalDataKvShadowIfStoreBackendInstalled();
+  }
   options.onProgress?.({ message: '刷新导入结果' });
-  await refreshImportedStoresBestEffort();
+  const refreshFailure = await refreshImportedStoresBestEffort();
+  if (refreshFailure) {
+    failures.push({ domain: 'runtime', stage: 'refresh', reason: refreshFailure });
+  }
   await clearImportRollbackFile();
+
+  const importedDomains = restoreResult.restoredDomains;
+  for (const failure of failures) {
+    reportPersistenceError({
+      label: '[store:import]',
+      store: 'import',
+      operation: 'import-domain-failed',
+      domain: failure.domain === 'localStorage' ? undefined : failure.domain,
+      stage: failure.stage,
+      integrity: 'failed',
+      rowCount: 0,
+      fingerprint: fingerprintDiagnosticId(`${failure.domain}:${failure.stage}:${failure.reason}`)
+    }, new Error(`Import ${failure.domain} failed during ${failure.stage}.`));
+  }
+  return {
+    status: failures.length === 0 ? 'complete' : 'partial',
+    importedDomains,
+    retainedDomains: failures
+  };
 }

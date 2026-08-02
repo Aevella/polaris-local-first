@@ -16,9 +16,11 @@ import { readRuntimePayloadFromLocalDataRepositoryIfActive } from './runtimeLoca
 import {
   buildPersonaMemoryDocContentPayload,
   readPersonaMemoryDocContentPayload,
+  loadPersonaMemoryReferenceDocsContent,
   stripPersonaMemoryDocContent,
   type PersonaMemoryDocContentPayload
 } from './personaMemoryReferenceDocPersistence';
+import { assertDocumentLocalDataStrictlyReadableIfActive } from './documentLocalDataPersistence';
 import { readPersonaStateFromLocalDataRepositoryIfActive } from './personaLocalDataPersistence';
 import type { PersistedCollectionState } from './collectionStorePersistence';
 import type { PersistedSpaceState } from './spaceStorePersistence';
@@ -190,7 +192,7 @@ function jsonEntry(value: unknown) {
 }
 
 async function readPersistedSpaceState(): Promise<PersistedSpaceState> {
-  const persistedThemeState = (await readPersistedSpaceThemeState())?.themeState ?? null;
+  const persistedThemeState = (await readPersistedSpaceThemeState({ integrity: 'strict' }))?.themeState ?? null;
   if (typeof window === 'undefined') {
     return persistedThemeState ? migratePersistedSpaceState(persistedThemeState) : {};
   }
@@ -223,7 +225,7 @@ async function readPersistedChatState(): Promise<ExportChatState> {
 }
 
 async function readPersistedCollectionState(): Promise<PersistedCollectionState> {
-  const repositoryState = await readCollectionStateFromLocalDataRepositoryIfActive();
+  const repositoryState = await readCollectionStateFromLocalDataRepositoryIfActive({ integrity: 'strict' });
   const collectionState = repositoryState ?? {
     cards: [],
     projectFiles: [],
@@ -239,10 +241,14 @@ async function readPersistedCollectionState(): Promise<PersistedCollectionState>
 }
 
 async function readPersistedPersonaInputs(): Promise<ExportPersonaInputs> {
-  const repositoryPayload = await readPersonaStateFromLocalDataRepositoryIfActive();
+  const repositoryPayload = await readPersonaStateFromLocalDataRepositoryIfActive({ integrity: 'strict' });
   if (repositoryPayload) {
+    const state = {
+      ...repositoryPayload,
+      personas: await loadPersonaMemoryReferenceDocsContent(repositoryPayload.personas)
+    };
     return {
-      state: repositoryPayload,
+      state,
       existingMemoryDocContent: null
     };
   }
@@ -259,7 +265,7 @@ async function readPersistedPersonaInputs(): Promise<ExportPersonaInputs> {
 }
 
 async function readPersistedRuntimeState(): Promise<RuntimePayload> {
-  const repositoryRead = await readRuntimePayloadFromLocalDataRepositoryIfActive();
+  const repositoryRead = await readRuntimePayloadFromLocalDataRepositoryIfActive({ integrity: 'strict' });
   if (repositoryRead) return normalizeRuntimePayload(repositoryRead.payload);
 
   const payload = await kvGet<Partial<RuntimePayload>>('runtime-providers-v2');
@@ -270,6 +276,7 @@ async function readStructuredExportStores(
   snapshot: StructuredExportSnapshot = {},
   options: StructuredExportPackageOptions = {}
 ) {
+  await assertDocumentLocalDataStrictlyReadableIfActive();
   const now = new Date();
   const timestampLabel = buildExportTimestamp(now);
   options.onProgress?.({ message: '读取对话和设置' });
@@ -523,7 +530,7 @@ async function streamPersistedAssets(
   assetIndex: AssetIndexEntry[],
   report: ExportReport
 ) {
-  const assets = await listAssetMeta();
+  const assets = await listAssetMeta({ integrity: 'strict' });
   report.assets.indexed = assets.length;
   handlers.onProgress?.({
     message: assets.length > 0 ? '整理附件' : '准备压缩备份',

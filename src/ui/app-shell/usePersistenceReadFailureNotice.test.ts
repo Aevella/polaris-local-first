@@ -107,4 +107,34 @@ describe('derivePersistenceReadFailureNotice', () => {
       reason: 'read-failure'
     });
   });
+
+  it('shows a non-blocking isolation notice after healthy records finish hydrating', () => {
+    const isolated = {
+      ...error,
+      store: 'document',
+      operation: 'read-isolated-row',
+      integrity: 'degraded' as const,
+      fingerprint: 'anon-1234abcd'
+    };
+    expect(derivePersistenceReadFailureNotice(isolated, {
+      startupReady: true,
+      chatHydrated: true,
+      collectionHydrated: true,
+      personaHydrated: true,
+      runtimeHydrated: true
+    })).toEqual({
+      visible: true,
+      error: isolated,
+      blockedStores: ['文档'],
+      reason: 'isolated-row'
+    });
+
+    expect(derivePersistenceReadFailureNotice(isolated, {
+      startupReady: true,
+      chatHydrated: true,
+      collectionHydrated: false,
+      personaHydrated: true,
+      runtimeHydrated: true
+    }).visible).toBe(false);
+  });
 });

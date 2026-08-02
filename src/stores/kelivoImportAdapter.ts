@@ -1001,41 +1001,28 @@ async function convertKelivoZipToStructuredExportSnapshot(
 export async function importKelivoBackupPackage(
   file: Blob,
   options: { onProgress?: StoreImportProgressReporter } = {}
-): Promise<void> {
-  const converted = await convertKelivoBackupZip(file, options);
-  const { importPersistedDataDirectly } = await import('./storeImportPackage');
-  await importPersistedDataDirectly({
-    kvEntries: converted.kvEntries,
-    localStorageEntries: converted.localStorageEntries,
-    assetEntries: converted.assetEntries,
-    onProgress: options.onProgress
-  });
+): Promise<import('./storeImportResult').StoreImportResult> {
+  const converted = await convertKelivoZipToStructuredExportSnapshot(await loadKelivoZip(file), options);
+  const { importStructuredExportSnapshot } = await import('./storeImportPackage');
+  return await importStructuredExportSnapshot(converted.snapshot, options);
 }
 
 export async function importKelivoBackupPackageIfMatched(
   file: Blob,
   options: { onProgress?: StoreImportProgressReporter } = {}
-): Promise<boolean> {
+): Promise<import('./storeImportResult').StoreImportResult | null> {
   let zip: KelivoZip;
   try {
     zip = await loadKelivoZip(file);
   } catch {
-    return false;
+    return null;
   }
   if (!isKelivoZipShape(zip)) {
-    return false;
+    return null;
   }
 
   options.onProgress?.({ message: '识别为 Kelivo 备份' });
-  const converted = convertKelivoStructuredExportToImportConversion(
-    await convertKelivoZipToStructuredExportSnapshot(zip, options)
-  );
-  const { importPersistedDataDirectly } = await import('./storeImportPackage');
-  await importPersistedDataDirectly({
-    kvEntries: converted.kvEntries,
-    localStorageEntries: converted.localStorageEntries,
-    assetEntries: converted.assetEntries,
-    onProgress: options.onProgress
-  });
-  return true;
+  const converted = await convertKelivoZipToStructuredExportSnapshot(zip, options);
+  const { importStructuredExportSnapshot } = await import('./storeImportPackage');
+  return await importStructuredExportSnapshot(converted.snapshot, options);
 }

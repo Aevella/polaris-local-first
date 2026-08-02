@@ -27,7 +27,9 @@ import {
   createStoreLocalDataRepository,
   discoverLocalDataDomainRefs,
   isLocalDataRepositoryDomainActive,
-  localDataPayloadsMatch
+  localDataPayloadsMatch,
+  readLocalDataDomainRows,
+  type LocalDataReadIntegrity
 } from '../localDataStorePersistence';
 import {
   stageWorkspaceReferenceDocContentFromDocs,
@@ -44,10 +46,12 @@ export type CollectionObjectLifecycleEntry = {
 /** Historical lifecycle map keyed by object id (`kind:id`). */
 export type CollectionLegacyLifecycleMap = Record<string, CollectionObjectLifecycleEntry>;
 
-export async function readCollectionStateFromLocalDataRepositoryIfActive() {
+export async function readCollectionStateFromLocalDataRepositoryIfActive(options: {
+  integrity?: LocalDataReadIntegrity;
+} = {}) {
   if (!(await isLocalDataRepositoryDomainActive('collection'))) return null;
 
-  const rows = await readActiveCollectionRows();
+  const rows = await readActiveCollectionRows(options.integrity ?? 'recover');
   // Partition sealed legacy lifecycle object rows out of the live hydration: only live rows feed
   // the preview that reconstructs the product collection, while archive / recovering / quarantine
   // / missing-body rows are surfaced as a separate lifecycle map (never as live objects).
@@ -93,21 +97,12 @@ export async function readCollectionStateFromLocalDataRepositoryIfActive() {
   } satisfies PersistedCollectionState;
 }
 
-async function readActiveCollectionRows() {
-  const repository = createStoreLocalDataRepository();
-  const rows: LocalDataStoredRow[] = [];
-  for (const ref of await discoverLocalDataDomainRefs('collection')) {
-    const result = await repository.read<CollectionRowValue>(ref);
-    if (result.status === 'deleted') {
-      rows.push(result.row);
-      continue;
-    }
-    if (result.status !== 'complete') {
-      throw new Error(`Active collection LocalData row ${ref.kind}:${ref.id} is ${result.status}.`);
-    }
-    rows.push(result.row);
-  }
-  return rows;
+async function readActiveCollectionRows(integrity: LocalDataReadIntegrity) {
+  return (await readLocalDataDomainRows({
+    domain: 'collection',
+    integrity,
+    isRequiredRef: (ref) => ref.kind === 'domainMeta'
+  })).rows;
 }
 
 type CollectionRowValue =

@@ -16,6 +16,7 @@ import {
   exportCompleteBackup,
   formatCompleteBackupExportError
 } from './completeBackupExport';
+import { formatStoreImportResult } from '../../stores/storeImportResult';
 
 type MenuBackupTransferUi = {
   alert: (message: string) => void;
@@ -61,7 +62,7 @@ export function resolveMenuLocalBackupDetails(systemBackupAvailability: ReturnTy
 
 async function importBackupData(file: Blob, onProgress: (progress: StoreTransferProgress) => void) {
   const { importAllData } = await import('../../stores/spaceStoreDataTransfer');
-  await importAllData(file, { onProgress });
+  return await importAllData(file, { onProgress });
 }
 
 export function useMenuBackupTransferController({
@@ -94,8 +95,8 @@ export function useMenuBackupTransferController({
     try {
       setImportingData(true);
       setImportProgress({ message: '识别备份包' });
-      await importBackupData(file, setImportProgress);
-      ui.alert('已恢复备份。');
+      const result = await importBackupData(file, setImportProgress);
+      ui.alert(formatStoreImportResult(result));
     } catch (error) {
       const message = error instanceof Error ? error.message : '文件格式不正确';
       ui.alert(message);
@@ -140,8 +141,8 @@ export function useMenuBackupTransferController({
       setImportProgress({ message: '等待选择备份包' });
       const file = await importBackupViaSystemFiles();
       if (!file) return;
-      await importBackupData(file, setImportProgress);
-      completionMessage = '已恢复备份。';
+      const result = await importBackupData(file, setImportProgress);
+      completionMessage = formatStoreImportResult(result);
     } catch (error) {
       completionMessage = formatMenuLocalBackupError(error, '导入');
     } finally {
@@ -175,8 +176,8 @@ export function useMenuBackupTransferController({
       setImportingWebDav(true);
       if (!ui.confirm('会从 WebDAV 拉取最近一份备份，并覆盖当前数据，确定吗？')) return;
       const file = await downloadLatestBackupFromWebDav(webdav);
-      await importBackupData(file, setImportProgress);
-      ui.alert('已恢复备份。');
+      const result = await importBackupData(file, setImportProgress);
+      ui.alert(formatStoreImportResult(result));
     } catch (error) {
       const message = error instanceof Error ? error.message : '读取 WebDAV 备份失败';
       ui.alert(message);

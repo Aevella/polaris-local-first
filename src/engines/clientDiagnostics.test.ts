@@ -115,8 +115,8 @@ describe('client diagnostics', () => {
         ],
         collaboratorOrphans: [
           {
-            collaboratorId: 'persona-1780414739321-u6zf3d',
-            rowKey: 'local-data-v1:row:persona:collaborator:persona-1780414739321-u6zf3d',
+            collaboratorFingerprint: 'anon-1234abcd',
+            rowFingerprint: 'anon-5678efab',
             rowState: 'deleted',
             rowUpdatedAt: 1781502700004,
             rowDeletedAt: 1781502800004,
@@ -158,12 +158,11 @@ describe('client diagnostics', () => {
           objectCount: 2,
           repositoryRowCount: 4,
           legacySourceCount: 1,
-          issueCount: 1,
-          issues: ['缺正文 1']
+          issueCount: 1
         }],
         collaboratorOrphans: [{
-          collaboratorId: 'persona-1780414739321-u6zf3d',
-          rowKey: 'local-data-v1:row:persona:collaborator:persona-1780414739321-u6zf3d',
+          collaboratorFingerprint: 'anon-1234abcd',
+          rowFingerprint: 'anon-5678efab',
           rowState: 'deleted',
           rowUpdatedAt: 1781502700004,
           rowDeletedAt: 1781502800004,
@@ -193,5 +192,45 @@ describe('client diagnostics', () => {
       createdAt: 1,
       platform: 'web'
     })).toBeNull();
+  });
+
+  it('keeps persistence diagnostics to backend, counts, stage, integrity, and anonymous fingerprints', () => {
+    const normalized = normalizeClientDiagnosticsPayload({
+      schemaVersion: 1,
+      eventId: 'event-persistence',
+      sessionId: 'session-1',
+      eventKind: 'persistence-error',
+      createdAt: 1,
+      platform: 'ios',
+      persistence: {
+        backend: 'native-transactional',
+        store: 'chat',
+        domain: 'chat',
+        operation: 'read-isolated-row',
+        stage: 'hydrate-row',
+        integrity: 'degraded',
+        rowCount: 1,
+        fingerprint: 'anon-1234abcd',
+        body: 'private conversation body',
+        title: 'private title'
+      },
+      error: {
+        source: 'persistence',
+        message: 'Local persistence integrity event.'
+      }
+    });
+
+    expect(normalized?.persistence).toEqual({
+      backend: 'native-transactional',
+      store: 'chat',
+      domain: 'chat',
+      operation: 'read-isolated-row',
+      stage: 'hydrate-row',
+      integrity: 'degraded',
+      rowCount: 1,
+      fingerprint: 'anon-1234abcd'
+    });
+    expect(normalized?.persistence).not.toHaveProperty('body');
+    expect(normalized?.persistence).not.toHaveProperty('title');
   });
 });

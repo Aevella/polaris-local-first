@@ -182,4 +182,42 @@ describe('assetStore', () => {
       expect.anything()
     );
   });
+
+  it('restores every touched blob entry when staged asset upsert is interrupted', async () => {
+    const stores = new Map<string, Map<string, unknown>>([
+      ['asset-binary', new Map([['asset-old', new Blob(['old'])]])],
+      ['asset-meta', new Map([['asset-old', {
+        id: 'asset-old', kind: 'file', name: 'old.txt', mimeType: 'text/plain', size: 3, createdAt: 1
+      }]])],
+      ['asset-preview', new Map()]
+    ]);
+    const store = (name: string) => stores.get(name)!;
+    persistenceMocks.dbStoreGet.mockImplementation(async (name: string, key: string) => store(name).get(key) ?? null);
+    persistenceMocks.dbStoreDelete.mockImplementation(async (name: string, key: string) => {
+      store(name).delete(key);
+    });
+    persistenceMocks.dbStoreSet.mockImplementation(async (name: string, key: string, value: unknown) => {
+      if (key === 'asset-new-2' && name === 'asset-binary') throw new Error('injected asset write interruption');
+      store(name).set(key, value);
+    });
+
+    const { upsertAssetEntries } = await import('./assetStore');
+    await expect(upsertAssetEntries([
+      {
+        meta: { id: 'asset-old', kind: 'file', name: 'new-old.txt', mimeType: 'text/plain', size: 3, createdAt: 2 },
+        blob: new Blob(['new']),
+        previewBlob: null
+      },
+      {
+        meta: { id: 'asset-new-2', kind: 'file', name: 'new.txt', mimeType: 'text/plain', size: 3, createdAt: 2 },
+        blob: new Blob(['new']),
+        previewBlob: null
+      }
+    ])).rejects.toThrow('injected asset write interruption');
+
+    expect((store('asset-binary').get('asset-old') as Blob).size).toBe(3);
+    expect(store('asset-meta').get('asset-old')).toMatchObject({ name: 'old.txt' });
+    expect(store('asset-binary').has('asset-new-2')).toBe(false);
+    expect(store('asset-meta').has('asset-new-2')).toBe(false);
+  });
 });

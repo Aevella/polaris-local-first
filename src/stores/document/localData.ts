@@ -16,11 +16,13 @@ import {
   type LocalDataUnitMutation
 } from '../../engines/localData';
 import { kvKeysWithPrefix } from '../../infrastructure/persistence';
+import { fingerprintDiagnosticId, reportPersistenceError } from '../../infrastructure/persistenceDiagnostics';
 import { runExclusiveDocumentPersistenceCommit } from '../documentPersistenceCommitQueue';
 import {
   createStoreLocalDataRepository,
   discoverLocalDataDomainRefs,
-  isLocalDataRepositoryDomainActive
+  isLocalDataRepositoryDomainActive,
+  readLocalDataDomainRows
 } from '../localDataStorePersistence';
 
 const MISSING_ROW_REASON = 'Local data row is missing.';
@@ -34,6 +36,15 @@ export type DocumentBodyReadResult =
   | { status: 'complete'; content: string }
   | { status: 'incomplete'; reason: string }
   | { status: 'missing' };
+
+export async function assertDocumentLocalDataStrictlyReadableIfActive() {
+  if (!(await isLocalDataRepositoryDomainActive('document'))) return;
+  await readLocalDataDomainRows({
+    domain: 'document',
+    integrity: 'strict',
+    isRequiredRef: (ref) => ref.kind === 'domainMeta'
+  });
+}
 
 /**
  * Read one document body from its row when the document domain is active. Returns
@@ -53,6 +64,16 @@ export async function readDocumentBodyIfActive(
   if (result.status === 'complete') return { status: 'complete', content: result.value.content };
   if (result.status === 'incomplete') {
     if (result.reason === MISSING_ROW_REASON) return { status: 'missing' };
+    reportPersistenceError({
+      label: '[store:persist:isolation]',
+      store: 'document',
+      operation: 'read-isolated-row',
+      domain: 'document',
+      stage: 'read-body',
+      integrity: 'degraded',
+      rowCount: 1,
+      fingerprint: fingerprintDiagnosticId(`${kind}:${id}`)
+    }, new Error('A document body row is incomplete and was isolated.'));
     return { status: 'incomplete', reason: result.reason };
   }
   return { status: 'missing' };

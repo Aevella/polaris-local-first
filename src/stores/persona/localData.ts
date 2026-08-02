@@ -21,7 +21,9 @@ import {
   createStoreLocalDataRepository,
   discoverLocalDataDomainRefs,
   isLocalDataRepositoryDomainActive,
-  localDataPayloadsMatch
+  localDataPayloadsMatch,
+  readLocalDataDomainRows,
+  type LocalDataReadIntegrity
 } from '../localDataStorePersistence';
 import { runExclusivePersonaPersistenceCommit } from '../personaPersistenceCommitQueue';
 import {
@@ -47,10 +49,12 @@ export type PersonaLocalDataPayload = {
   legacyLifecycleByPersonaId?: Record<string, PersonaCollaboratorLifecycleEntry>;
 };
 
-export async function readPersonaStateFromLocalDataRepositoryIfActive() {
+export async function readPersonaStateFromLocalDataRepositoryIfActive(options: {
+  integrity?: LocalDataReadIntegrity;
+} = {}) {
   if (!(await isLocalDataRepositoryDomainActive('persona'))) return null;
 
-  const rows = await readActivePersonaRows();
+  const rows = await readActivePersonaRows(options.integrity ?? 'recover');
   // Partition sealed legacy lifecycle collaborator rows out of the live hydration: only live
   // (active) rows feed the preview that reconstructs the product persona list, while archive /
   // recovering / quarantine / missing-body rows are surfaced as a separate lifecycle map.
@@ -127,21 +131,12 @@ async function hasPreexistingLegacyPersonaState(): Promise<boolean> {
   return (await kvGet<unknown>('persona-state-v2')) !== null;
 }
 
-async function readActivePersonaRows() {
-  const repository = createStoreLocalDataRepository();
-  const rows: LocalDataStoredRow[] = [];
-  for (const ref of await discoverLocalDataDomainRefs('persona')) {
-    const result = await repository.read<PersonaRowValue>(ref);
-    if (result.status === 'deleted') {
-      rows.push(result.row);
-      continue;
-    }
-    if (result.status !== 'complete') {
-      throw new Error(`Active persona LocalData row ${ref.kind}:${ref.id} is ${result.status}.`);
-    }
-    rows.push(result.row);
-  }
-  return rows;
+async function readActivePersonaRows(integrity: LocalDataReadIntegrity) {
+  return (await readLocalDataDomainRows({
+    domain: 'persona',
+    integrity,
+    isRequiredRef: (ref) => ref.kind === 'domainMeta'
+  })).rows;
 }
 
 type PersonaRowValue =

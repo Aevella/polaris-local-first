@@ -46,11 +46,18 @@ export function projectHydratedChatStorePatch(
   const loadedConversationIds = (payload?.loadedConversationIds ?? []).filter((conversationId) =>
     conversationIds.has(conversationId)
   );
+  const failedConversationIds = (payload?.failedConversationIds ?? []).filter((conversationId) =>
+    conversationIds.has(conversationId)
+  );
 
   return {
     conversations,
     activeConversationId,
-    conversationBodyStatuses: hydrateConversationBodyStatuses(conversations, loadedConversationIds),
+    conversationBodyStatuses: hydrateConversationBodyStatuses(
+      conversations,
+      loadedConversationIds,
+      failedConversationIds
+    ),
     loadedMessageConversationIds: loadedConversationIds,
     loadingMessageConversationIds: [],
     inputDraft: activeConversation?.draft ?? '',

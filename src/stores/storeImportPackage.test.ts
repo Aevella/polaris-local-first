@@ -1,7 +1,6 @@
 import JSZip from 'jszip';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  importPersistedDataDirectly,
   importStructuredExportPackage,
   mapWithConcurrency,
   recoverPendingStructuredImportRollback
@@ -48,7 +47,8 @@ const persistenceMocks = vi.hoisted(() => ({
 
 const assetStoreMocks = vi.hoisted(() => ({
   exportAssetEntries: vi.fn(),
-  replaceAssetEntries: vi.fn()
+  replaceAssetEntries: vi.fn(),
+  upsertAssetEntries: vi.fn()
 }));
 
 const pageLifecycleMocks = vi.hoisted(() => ({
@@ -92,7 +92,8 @@ vi.mock('../infrastructure/assetStore', () => ({
   listActiveAssetMetaEntries: async () =>
     Array.from(getDbStore(persistenceMocks.ASSET_META_STORE).entries()).map(([key, value]) => ({ key, value })),
   listActiveAssetPreviewKeys: async () => Array.from(getDbStore(persistenceMocks.ASSET_PREVIEW_STORE).keys()),
-  replaceAssetEntries: assetStoreMocks.replaceAssetEntries
+  replaceAssetEntries: assetStoreMocks.replaceAssetEntries,
+  upsertAssetEntries: assetStoreMocks.upsertAssetEntries
 }));
 
 vi.mock('../infrastructure/pageLifecycleFlush', () => ({
@@ -444,6 +445,41 @@ beforeEach(() => {
       options?.onProgress?.(index + 1, entries.length);
     }
   });
+  assetStoreMocks.upsertAssetEntries.mockImplementation(async (
+    entries: Array<{ meta: { id: string }; blob: Blob; previewBlob: Blob | null }>,
+    options?: { onProgress?: (current: number, total: number) => void }
+  ) => {
+    const snapshots = entries.map((entry) => ({
+      id: entry.meta.id,
+      binary: getDbStore(persistenceMocks.ASSET_BINARY_STORE).get(entry.meta.id),
+      meta: getDbStore(persistenceMocks.ASSET_META_STORE).get(entry.meta.id),
+      preview: getDbStore(persistenceMocks.ASSET_PREVIEW_STORE).get(entry.meta.id)
+    }));
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index]!;
+      getDbStore(persistenceMocks.ASSET_BINARY_STORE).set(entry.meta.id, entry.blob);
+      getDbStore(persistenceMocks.ASSET_META_STORE).set(entry.meta.id, entry.meta);
+      if (entry.previewBlob) getDbStore(persistenceMocks.ASSET_PREVIEW_STORE).set(entry.meta.id, entry.previewBlob);
+      else getDbStore(persistenceMocks.ASSET_PREVIEW_STORE).delete(entry.meta.id);
+      options?.onProgress?.(index + 1, entries.length);
+    }
+    return {
+      count: entries.length,
+      rollback: async () => {
+        for (const snapshot of snapshots) {
+          for (const [storeName, value] of [
+            [persistenceMocks.ASSET_BINARY_STORE, snapshot.binary],
+            [persistenceMocks.ASSET_META_STORE, snapshot.meta],
+            [persistenceMocks.ASSET_PREVIEW_STORE, snapshot.preview]
+          ] as const) {
+            const store = getDbStore(storeName);
+            if (value === undefined) store.delete(snapshot.id);
+            else store.set(snapshot.id, value);
+          }
+        }
+      }
+    };
+  });
   importApplyMocks.applyImportedPersistedStores.mockResolvedValue(undefined);
   let rollbackBlob: Blob | null = null;
   rollbackFileMocks.writeImportRollbackFile.mockImplementation(async (blob: Blob) => {
@@ -477,6 +513,7 @@ afterEach(() => {
   persistenceMocks.withExclusiveKvWriteGate.mockReset();
   assetStoreMocks.exportAssetEntries.mockReset();
   assetStoreMocks.replaceAssetEntries.mockReset();
+  assetStoreMocks.upsertAssetEntries.mockReset();
   pageLifecycleMocks.flushPageLifecycleHandlers.mockReset();
   importApplyMocks.applyImportedPersistedStores.mockReset();
   rollbackFileMocks.clearImportRollbackFile.mockReset();
@@ -503,6 +540,47 @@ describe('mapWithConcurrency', () => {
 });
 
 describe('importStructuredExportPackage', () => {
+  it('rejects a package without a manifest before mutating installed data', async () => {
+    const zip = new JSZip();
+    zip.file('stores/chat.json', JSON.stringify({ conversations: [], activeConversationId: null }));
+
+    await expect(importStructuredExportPackage(await zip.generateAsync({ type: 'blob' })))
+      .rejects
+      .toThrow('导出包缺少 manifest.json');
+
+    expect(pageLifecycleMocks.flushPageLifecycleHandlers).not.toHaveBeenCalled();
+    expect(persistenceMocks.kvApplyMutations).not.toHaveBeenCalled();
+    expect(assetStoreMocks.upsertAssetEntries).not.toHaveBeenCalled();
+  });
+
+  it('rejects a package with a missing declared store before mutating installed data', async () => {
+    const zip = await JSZip.loadAsync(await (await buildMinimalImportBlob()).arrayBuffer());
+    zip.remove('stores/chat.json');
+
+    await expect(importStructuredExportPackage(await zip.generateAsync({ type: 'blob' })))
+      .rejects
+      .toThrow('导出包缺少 stores/chat.json');
+
+    expect(pageLifecycleMocks.flushPageLifecycleHandlers).not.toHaveBeenCalled();
+    expect(persistenceMocks.kvApplyMutations).not.toHaveBeenCalled();
+    expect(assetStoreMocks.upsertAssetEntries).not.toHaveBeenCalled();
+  });
+
+  it('rejects an asset size mismatch before mutating installed data', async () => {
+    const zip = await JSZip.loadAsync(await (await buildMinimalImportBlob({
+      assetFiles: [{ id: 'asset-size-mismatch', content: 'original' }]
+    })).arrayBuffer());
+    zip.file('assets/asset-size-mismatch.txt', 'changed-after-index');
+
+    await expect(importStructuredExportPackage(await zip.generateAsync({ type: 'blob' })))
+      .rejects
+      .toThrow('大小与资产索引不一致');
+
+    expect(pageLifecycleMocks.flushPageLifecycleHandlers).not.toHaveBeenCalled();
+    expect(persistenceMocks.kvApplyMutations).not.toHaveBeenCalled();
+    expect(assetStoreMocks.upsertAssetEntries).not.toHaveBeenCalled();
+  });
+
   it('imports split persona memory document content when the backup contains it', async () => {
     pageLifecycleMocks.flushPageLifecycleHandlers.mockResolvedValue(undefined);
     persistenceMocks.kvReplaceAll.mockResolvedValue(undefined);
@@ -555,7 +633,7 @@ describe('importStructuredExportPackage', () => {
 
     await importStructuredExportPackage(await zip.generateAsync({ type: 'blob' }));
 
-    expect(persistenceMocks.kvReplaceAll).toHaveBeenCalledWith([]);
+    expect(persistenceMocks.kvReplaceAll).not.toHaveBeenCalled();
     const importedKeys = currentKvKeys();
     expect(importedKeys).toContain('local-data-v1:pointer:chat');
     expect(importedKeys).toContain('local-data-v1:active-data-source');
@@ -574,13 +652,13 @@ describe('importStructuredExportPackage', () => {
     });
   });
 
-  it('replaces KV so keys absent from the imported backup cannot survive', async () => {
+  it('keeps unrelated and inactive legacy KV evidence while replacing current LocalData rows', async () => {
     pageLifecycleMocks.flushPageLifecycleHandlers.mockResolvedValue(undefined);
-    persistenceMocks.kvEntries.mockResolvedValue([
+    kvValues = new Map([
       { key: 'chat-catalog-v1', value: { old: true } },
       { key: 'stale-shadow-key', value: true },
       { key: 'local-data-v1:row:chat:domainMeta:chat', value: { oldRepository: true } }
-    ]);
+    ].map((entry) => [entry.key, entry.value]));
     assetStoreMocks.replaceAssetEntries.mockResolvedValue(undefined);
     vi.stubGlobal('window', { localStorage: createLocalStorageMock() });
 
@@ -589,8 +667,8 @@ describe('importStructuredExportPackage', () => {
     const importedKeys = currentKvKeys();
     expect(importedKeys).toContain('local-data-v1:pointer:chat');
     expect(importedKeys).toContain('local-data-v1:active-data-source');
-    expect(importedKeys).not.toContain('stale-shadow-key');
-    expect(importedKeys).not.toContain('chat-catalog-v1');
+    expect(importedKeys).toContain('stale-shadow-key');
+    expect(importedKeys).toContain('chat-catalog-v1');
     expect(importedKeys.some((key) => key.startsWith('local-data-v1:row:chat:'))).toBe(true);
     expect(persistenceMocks.kvApplyMutations).toHaveBeenCalled();
   });
@@ -631,12 +709,11 @@ describe('importStructuredExportPackage', () => {
     expect(currentKvKeys().filter((key) => key.startsWith('local-data-v1:'))).toEqual([]);
     expect(installed.values.has('local-data-v1:active-data-source')).toBe(true);
     expect(installed.values.has('local-data-v1:row:chat:conversationCatalog:conversation-installed-backend')).toBe(true);
-    expect(installed.values.has('local-data-v1:row:chat:conversationCatalog:old-conversation')).toBe(false);
-    expect(installed.values.get('local-data-v1:row:chat:domainMeta:chat')).not.toMatchObject({ stale: true });
-    expect(installed.commits[0]).toMatchObject({
-      commitId: expect.stringMatching(/^structured-import-reset-/),
-      domain: 'runtime'
+    expect(installed.values.get('local-data-v1:row:chat:conversationCatalog:old-conversation')).toMatchObject({
+      state: 'deleted'
     });
+    expect(installed.values.get('local-data-v1:row:chat:domainMeta:chat')).not.toMatchObject({ stale: true });
+    expect(installed.commits[0]).toMatchObject({ domain: 'chat' });
     expect(installed.commits.map((commit) => commit.domain)).toContain('chat');
   });
 
@@ -655,7 +732,7 @@ describe('importStructuredExportPackage', () => {
       applyKvMutationsToMemory(mutations);
     });
 
-    await expect(importStructuredExportPackage(await buildMinimalImportBlob({
+    const result = await importStructuredExportPackage(await buildMinimalImportBlob({
       chatState: {
         conversations: [{
           id: 'conversation-survives-partial',
@@ -679,7 +756,12 @@ describe('importStructuredExportPackage', () => {
           updatedAt: 1
         }]
       }
-    }))).rejects.toThrow(/collection: .*collection commit failed/);
+    }));
+
+    expect(result).toMatchObject({
+      status: 'partial',
+      retainedDomains: [expect.objectContaining({ domain: 'collection', stage: 'domain-commit' })]
+    });
 
     const activeDataSource = currentKvValue<{ domains: Record<string, unknown> }>('local-data-v1:active-data-source');
     expect(activeDataSource?.domains.chat).toBeDefined();
@@ -687,8 +769,8 @@ describe('importStructuredExportPackage', () => {
     expect(activeDataSource?.domains.persona).toBeDefined();
     expect(currentKvKeys()).toContain('local-data-v1:row:chat:conversationCatalog:conversation-survives-partial');
     expect(currentKvKeys()).not.toContain('local-data-v1:row:collection:card:collection-will-fail');
-    expect(importApplyMocks.applyImportedPersistedStores).not.toHaveBeenCalled();
-    expect(rollbackFileMocks.clearImportRollbackFile).not.toHaveBeenCalled();
+    expect(importApplyMocks.applyImportedPersistedStores).toHaveBeenCalled();
+    expect(rollbackFileMocks.clearImportRollbackFile).toHaveBeenCalled();
   });
 
   it('imports legacy project cards as project files while keeping workspace docs bound to the project', async () => {
@@ -773,8 +855,9 @@ describe('importStructuredExportPackage', () => {
     pageLifecycleMocks.flushPageLifecycleHandlers.mockImplementation(async () => {
       events.push('flush');
     });
-    persistenceMocks.kvReplaceAll.mockImplementation(async () => {
+    persistenceMocks.kvApplyMutations.mockImplementation(async (mutations) => {
       events.push('write-kv');
+      applyKvMutationsToMemory(mutations);
     });
     assetStoreMocks.replaceAssetEntries.mockResolvedValue(undefined);
     vi.stubGlobal('window', { localStorage: createLocalStorageMock() });
@@ -818,11 +901,12 @@ describe('importStructuredExportPackage', () => {
 
     await importStructuredExportPackage(await zip.generateAsync({ type: 'blob' }));
 
-    expect(events).toEqual(['flush', 'write-kv']);
+    expect(events[0]).toBe('flush');
+    expect(events.slice(1).every((event) => event === 'write-kv')).toBe(true);
     expect(persistenceMocks.kvApplyMutations).toHaveBeenCalled();
   });
 
-  it('leaves localStorage untouched when structured KV import fails', async () => {
+  it('does not route structured imports through destructive whole-KV replacement', async () => {
     pageLifecycleMocks.flushPageLifecycleHandlers.mockResolvedValue(undefined);
     persistenceMocks.kvReplaceAll
       .mockRejectedValueOnce(new Error('kv failed'))
@@ -870,14 +954,14 @@ describe('importStructuredExportPackage', () => {
     zip.file('stores/runtime.json', JSON.stringify({ providers: [] }));
     zip.file(ASSET_INDEX_PATH, JSON.stringify([]));
 
-    await expect(importStructuredExportPackage(await zip.generateAsync({ type: 'blob' }))).rejects.toThrow('kv failed');
+    await expect(importStructuredExportPackage(await zip.generateAsync({ type: 'blob' })))
+      .resolves.toMatchObject({ status: 'complete' });
 
-    expect(localStorage.removeItem).not.toHaveBeenCalled();
-    expect(localStorage.setItem).not.toHaveBeenCalled();
-    expect(assetStoreMocks.replaceAssetEntries).not.toHaveBeenCalled();
+    expect(persistenceMocks.kvReplaceAll).not.toHaveBeenCalled();
+    expect(assetStoreMocks.upsertAssetEntries).toHaveBeenCalled();
   });
 
-  it('does not create a rollback file before destructive replacement', async () => {
+  it('imports without whole-store clearing or a file-level rollback snapshot', async () => {
     pageLifecycleMocks.flushPageLifecycleHandlers.mockResolvedValue(undefined);
     rollbackFileMocks.writeImportRollbackFile.mockResolvedValue(false);
     persistenceMocks.kvReplaceAll.mockResolvedValue(undefined);
@@ -889,15 +973,15 @@ describe('importStructuredExportPackage', () => {
 
     await expect(importStructuredExportPackage(await buildMinimalImportBlob({
       spaceState: { activeCardId: 'new-card' }
-    }))).resolves.toBeUndefined();
+    }))).resolves.toMatchObject({ status: 'complete' });
 
     expect(rollbackFileMocks.writeImportRollbackFile).not.toHaveBeenCalled();
-    expect(persistenceMocks.kvReplaceAll).toHaveBeenCalledTimes(1);
+    expect(persistenceMocks.kvReplaceAll).not.toHaveBeenCalled();
     expect(readSpaceLocalStorageState(localStorage)).toMatchObject({
       state: { activeCardId: 'new-card' },
       version: SPACE_STORE_VERSION
     });
-    expect(assetStoreMocks.replaceAssetEntries).toHaveBeenCalledWith([], expect.any(Object));
+    expect(assetStoreMocks.upsertAssetEntries).toHaveBeenCalledWith([], expect.any(Object));
   });
 
   it('stops before destructive replacement when export asset files cannot be read', async () => {
@@ -960,13 +1044,14 @@ describe('importStructuredExportPackage', () => {
     expect(pageLifecycleMocks.flushPageLifecycleHandlers).not.toHaveBeenCalled();
     expect(rollbackFileMocks.writeImportRollbackFile).not.toHaveBeenCalled();
     expect(persistenceMocks.kvReplaceAll).not.toHaveBeenCalled();
-    expect(localStorage.entries()).toEqual([
-      ['polaris-space-store-v1', '{"state":{"activeCardId":"old-card"},"version":1}']
-    ]);
+    expect(readSpaceLocalStorageState(localStorage)).toMatchObject({
+      state: { activeCardId: 'old-card' },
+      version: 1
+    });
     expect(assetStoreMocks.replaceAssetEntries).not.toHaveBeenCalled();
   });
 
-  it('surfaces localStorage replacement failures without rebuilding a rollback point', async () => {
+  it('restores previous localStorage values and retains the space domain when replacement throws', async () => {
     pageLifecycleMocks.flushPageLifecycleHandlers.mockResolvedValue(undefined);
     persistenceMocks.kvReplaceAll.mockResolvedValue(undefined);
     assetStoreMocks.replaceAssetEntries.mockResolvedValue(undefined);
@@ -983,20 +1068,25 @@ describe('importStructuredExportPackage', () => {
 
     await expect(importStructuredExportPackage(await buildMinimalImportBlob({
       spaceState: { activeCardId: 'new-card' }
-    }))).rejects.toThrow('localStorage failed');
+    }))).resolves.toMatchObject({
+      status: 'partial',
+      retainedDomains: [expect.objectContaining({ domain: 'space', stage: 'local-storage' })]
+    });
 
     expect(rollbackFileMocks.writeImportRollbackFile).not.toHaveBeenCalled();
-    expect(currentKvKeys()).toEqual([]);
-    expect(persistenceMocks.kvReplaceAll).toHaveBeenCalledTimes(1);
-    expect(persistenceMocks.kvApplyMutations).not.toHaveBeenCalled();
-    expect(assetStoreMocks.replaceAssetEntries).not.toHaveBeenCalled();
-    expect(localStorage.entries()).toEqual([]);
+    expect(persistenceMocks.kvReplaceAll).not.toHaveBeenCalled();
+    expect(persistenceMocks.kvApplyMutations).toHaveBeenCalled();
+    expect(assetStoreMocks.upsertAssetEntries).toHaveBeenCalled();
+    expect(readSpaceLocalStorageState(localStorage)).toMatchObject({
+      state: { activeCardId: 'old-card' },
+      version: 1
+    });
   });
 
-  it('surfaces asset replacement failures without reading old assets for rollback', async () => {
+  it('retains the asset domain when staged asset upsert fails', async () => {
     pageLifecycleMocks.flushPageLifecycleHandlers.mockResolvedValue(undefined);
     persistenceMocks.kvReplaceAll.mockResolvedValue(undefined);
-    assetStoreMocks.replaceAssetEntries.mockRejectedValueOnce(new Error('asset failed'));
+    assetStoreMocks.upsertAssetEntries.mockRejectedValueOnce(new Error('asset failed'));
     const localStorage = createLocalStorageMock({
       'polaris-space-store-v1': '{"state":{"activeCardId":"old-card"},"version":1}'
     });
@@ -1005,12 +1095,15 @@ describe('importStructuredExportPackage', () => {
     await expect(importStructuredExportPackage(await buildMinimalImportBlob({
       spaceState: { activeCardId: 'new-card' },
       assetFiles: [{ id: 'asset-new', content: 'new' }]
-    }))).rejects.toThrow('asset failed');
+    }))).resolves.toMatchObject({
+      status: 'partial',
+      retainedDomains: [expect.objectContaining({ domain: 'asset', stage: 'asset-staging' })]
+    });
 
     expect(rollbackFileMocks.writeImportRollbackFile).not.toHaveBeenCalled();
     expect(assetStoreMocks.exportAssetEntries).not.toHaveBeenCalled();
-    expect(persistenceMocks.kvReplaceAll).toHaveBeenCalledTimes(1);
-    expect(assetStoreMocks.replaceAssetEntries).toHaveBeenCalledTimes(1);
+    expect(persistenceMocks.kvReplaceAll).not.toHaveBeenCalled();
+    expect(assetStoreMocks.upsertAssetEntries).toHaveBeenCalledTimes(1);
     expect(readSpaceLocalStorageState(localStorage)).toMatchObject({
       state: { activeCardId: 'new-card' },
       version: SPACE_STORE_VERSION
@@ -1030,12 +1123,12 @@ describe('importStructuredExportPackage', () => {
     await expect(importStructuredExportPackage(await buildMinimalImportBlob({
       spaceState: { activeCardId: 'new-card' },
       assetFiles: [{ id: 'asset-new', content: 'new' }]
-    }))).resolves.toBeUndefined();
+    }))).resolves.toMatchObject({ status: 'partial' });
 
     expect(rollbackFileMocks.writeImportRollbackFile).not.toHaveBeenCalled();
     expect(assetStoreMocks.exportAssetEntries).not.toHaveBeenCalled();
-    expect(persistenceMocks.kvReplaceAll).toHaveBeenCalledTimes(1);
-    expect(assetStoreMocks.replaceAssetEntries).toHaveBeenCalledTimes(1);
+    expect(persistenceMocks.kvReplaceAll).not.toHaveBeenCalled();
+    expect(assetStoreMocks.upsertAssetEntries).toHaveBeenCalledTimes(1);
     expect(importApplyMocks.applyImportedPersistedStores).toHaveBeenCalledTimes(1);
     expect(rollbackFileMocks.clearImportRollbackFile).toHaveBeenCalledTimes(1);
     expect(readSpaceLocalStorageState(localStorage)).toMatchObject({
@@ -1393,8 +1486,8 @@ describe('importStructuredExportPackage', () => {
       'local-data-v1:row:document:persona-memory-doc:persona-stress-8:doc-1',
       `local-data-v1:row:asset:asset:stress-asset-${assetEntries.length - 1}`
     ]));
-    expect(currentKvKeys()).not.toContain('chat-catalog-v1');
-    expect(currentKvKeys()).not.toContain('stale-shadow-key');
+    expect(currentKvKeys()).toContain('chat-catalog-v1');
+    expect(currentKvKeys()).toContain('stale-shadow-key');
     expect(currentKvValue('local-data-v1:row:chat:domainMeta:chat')).not.toMatchObject({ staleRepository: true });
     const expectedRepositoryRowsByDomain = {
       asset: 1 + assetEntries.length,
@@ -1413,14 +1506,14 @@ describe('importStructuredExportPackage', () => {
       repositoryPointerCount: 7,
       repositoryRowsByDomain: expectedRepositoryRowsByDomain,
       repositoryRowCount: Object.values(expectedRepositoryRowsByDomain).reduce((sum, count) => sum + count, 0),
-      nonRepositoryKvKeyCount: 0
+      nonRepositoryKvKeyCount: 2
     });
     expect(readSpaceLocalStorageState(localStorage)).toMatchObject({
       state: { activeCardId: 'card-stress-3' },
       version: SPACE_STORE_VERSION
     });
     expect(localStorage.entries()).toContainEqual(['outside-polaris-key', 'keep me']);
-    expect(localStorage.entries().some(([key]) => key === 'polaris-stale-panel-state')).toBe(false);
+    expect(localStorage.entries()).toContainEqual(['polaris-stale-panel-state', 'remove me']);
 
     const lastAssetEntry = assetEntries[assetEntries.length - 1]!;
     const assetRow = currentKvValue<Record<string, unknown>>(`local-data-v1:row:asset:asset:${lastAssetEntry.meta.id}`);
@@ -1448,42 +1541,5 @@ describe('importStructuredExportPackage', () => {
     ]));
     expect(importApplyMocks.applyImportedPersistedStores).toHaveBeenCalledTimes(1);
     expect(rollbackFileMocks.clearImportRollbackFile).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('importPersistedDataDirectly', () => {
-  it('does not build an automatic rollback point for legacy imports', async () => {
-    pageLifecycleMocks.flushPageLifecycleHandlers.mockResolvedValue(undefined);
-    persistenceMocks.kvReplaceAll.mockResolvedValue(undefined);
-    assetStoreMocks.replaceAssetEntries.mockRejectedValueOnce(new Error('asset failed'));
-    const localStorage = createLocalStorageMock({
-      'polaris-space-store-v1': '{"state":{"activeCardId":"old-card"},"version":1}'
-    });
-    vi.stubGlobal('window', { localStorage });
-
-    await expect(importPersistedDataDirectly({
-      kvEntries: [{ key: 'runtime-providers-v2', value: { providers: [{ id: 'new' }] } }],
-      localStorageEntries: [{ key: 'polaris-space-store-v1', value: '{"state":{"activeCardId":"new-card"},"version":1}' }],
-      assetEntries: [{
-        meta: {
-          id: 'asset-new',
-          kind: 'file',
-          name: 'new.txt',
-          mimeType: 'text/plain',
-          size: 3,
-          createdAt: 2
-        },
-        blob: new Blob(['new']),
-        previewBlob: null
-      }]
-    })).rejects.toThrow('asset failed');
-
-    expect(rollbackFileMocks.writeImportRollbackFile).not.toHaveBeenCalled();
-    expect(assetStoreMocks.exportAssetEntries).not.toHaveBeenCalled();
-    expect(persistenceMocks.kvReplaceAll).toHaveBeenCalledTimes(1);
-    expect(assetStoreMocks.replaceAssetEntries).toHaveBeenCalledTimes(1);
-    expect(localStorage.entries()).toEqual([
-      ['polaris-space-store-v1', '{"state":{"activeCardId":"new-card"},"version":1}']
-    ]);
   });
 });

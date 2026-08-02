@@ -24,7 +24,9 @@ import {
   createStoreLocalDataRepository,
   discoverLocalDataDomainRefs,
   isLocalDataRepositoryDomainActive,
-  localDataPayloadsMatch
+  localDataPayloadsMatch,
+  readLocalDataDomainRows,
+  type LocalDataReadIntegrity
 } from '../localDataStorePersistence';
 import { runExclusiveRuntimePersistenceCommit } from '../runtimePersistenceCommitQueue';
 
@@ -43,10 +45,12 @@ export type RuntimeRepositoryReadResult = {
   legacyLifecycleByObjectId: RuntimeLegacyLifecycleMap;
 };
 
-export async function readRuntimePayloadFromLocalDataRepositoryIfActive(): Promise<RuntimeRepositoryReadResult | null> {
+export async function readRuntimePayloadFromLocalDataRepositoryIfActive(options: {
+  integrity?: LocalDataReadIntegrity;
+} = {}): Promise<RuntimeRepositoryReadResult | null> {
   if (!(await isLocalDataRepositoryDomainActive('runtime'))) return null;
 
-  const rows = await readActiveRuntimeRows();
+  const rows = await readActiveRuntimeRows(options.integrity ?? 'recover');
   // Partition sealed legacy lifecycle object rows out of the live hydration: only live rows feed
   // the preview that reconstructs the product runtime payload, while archive / recovering /
   // quarantine / missing-body rows are surfaced as a separate lifecycle map.
@@ -83,21 +87,12 @@ export async function readRuntimePayloadFromLocalDataRepositoryIfActive(): Promi
   return { payload: preview.state satisfies RuntimePayload, legacyLifecycleByObjectId };
 }
 
-async function readActiveRuntimeRows() {
-  const repository = createStoreLocalDataRepository();
-  const rows: LocalDataStoredRow[] = [];
-  for (const ref of await discoverLocalDataDomainRefs('runtime')) {
-    const result = await repository.read<RuntimeRowValue>(ref);
-    if (result.status === 'deleted') {
-      rows.push(result.row);
-      continue;
-    }
-    if (result.status !== 'complete') {
-      throw new Error(`Active runtime LocalData row ${ref.kind}:${ref.id} is ${result.status}.`);
-    }
-    rows.push(result.row);
-  }
-  return rows;
+async function readActiveRuntimeRows(integrity: LocalDataReadIntegrity) {
+  return (await readLocalDataDomainRows({
+    domain: 'runtime',
+    integrity,
+    isRequiredRef: (ref) => ref.kind === 'domainMeta' || ref.kind === 'settings'
+  })).rows;
 }
 
 type RuntimeRowValue =

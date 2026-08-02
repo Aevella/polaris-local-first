@@ -85,6 +85,16 @@ Package data should enter through named boundaries:
 
 After validation, data should be represented as current LocalData rows.
 
+Import replacement is domain-scoped. Each domain writes its new rows and tombstones absent old rows in
+one repository transaction. A failed domain keeps its previous facts; successful domains may commit, but
+the result is explicitly reported as partial. Blob payloads are staged/upserted before the asset row commit,
+and Polaris localStorage is restored if replacement throws. Import never begins by clearing the whole KV,
+LocalData, localStorage, or blob stores.
+
+Complete backup export uses strict reads and stops on incomplete current facts. Ordinary startup uses
+recoverable reads: optional damaged rows are isolated, healthy rows continue loading, and failed chat or
+document bodies remain failed/incomplete rather than becoming empty writable content.
+
 The practical rule is: imported data becomes current data through a visible process, not through hidden parallel sources. Export reads current facts back out; it does not resurrect retired stores.
 
 Ordinary startup should not run automatic import or catalog-conversion passes. It should read the current repository path. Existing data conversion belongs to an explicit user-visible import or migration flow.

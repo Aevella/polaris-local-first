@@ -7,8 +7,10 @@ import {
   type LocalDataActiveDataSourceRow,
   type LocalDataRepositoryOptions,
   type LocalDataDomain,
+  type LocalDataReadStatus,
   type LocalDataRef,
   type LocalDataStoredRow,
+  type LocalDataUnitMutation,
   type LocalDataUnitOfWork
 } from '../engines/localData';
 import { LOCAL_DATA_NAMESPACE } from '../engines/localData/types';
@@ -17,8 +19,19 @@ import {
   listStoreLocalDataKeysWithPrefix,
   readStoreLocalDataValue
 } from './storeLocalDataBackendHost';
+import {
+  fingerprintDiagnosticId,
+  reportPersistenceError
+} from '../infrastructure/persistenceDiagnostics';
 
 type StoreLocalDataRepositoryOptions = Omit<LocalDataRepositoryOptions, 'backend'>;
+
+export type LocalDataReadIntegrity = 'strict' | 'recover';
+
+export type IsolatedLocalDataRow = {
+  ref: LocalDataRef;
+  status: Exclude<LocalDataReadStatus, 'complete' | 'deleted'>;
+};
 
 export function createStoreLocalDataRepository(options: StoreLocalDataRepositoryOptions = {}) {
   return createLocalDataRepository({
@@ -54,6 +67,42 @@ export async function discoverLocalDataDomainRefs(domain: LocalDataDomain) {
   return Array.from(refs.values()).sort(compareLocalDataRefs);
 }
 
+export async function readLocalDataDomainRows(args: {
+  domain: LocalDataDomain;
+  integrity: LocalDataReadIntegrity;
+  isRequiredRef: (ref: LocalDataRef) => boolean;
+}) {
+  const repository = createStoreLocalDataRepository();
+  const rows: LocalDataStoredRow[] = [];
+  const isolatedRows: IsolatedLocalDataRow[] = [];
+
+  for (const ref of await discoverLocalDataDomainRefs(args.domain)) {
+    const result = await repository.read(ref);
+    if (result.status === 'complete' || result.status === 'deleted') {
+      rows.push(result.row);
+      continue;
+    }
+
+    if (args.integrity === 'strict' || args.isRequiredRef(ref)) {
+      throw new Error(`${args.isRequiredRef(ref) ? 'Required' : 'Active'} ${args.domain} LocalData row ${ref.kind}:${ref.id} is ${result.status}.`);
+    }
+
+    isolatedRows.push({ ref, status: result.status });
+    reportPersistenceError({
+      label: '[store:persist:isolation]',
+      store: args.domain,
+      operation: 'read-isolated-row',
+      domain: args.domain,
+      stage: 'hydrate-row',
+      integrity: 'degraded',
+      rowCount: 1,
+      fingerprint: fingerprintDiagnosticId(`${ref.kind}:${ref.id}`)
+    }, new Error(`Optional ${args.domain} LocalData row was isolated after a ${result.status} read.`));
+  }
+
+  return { rows, isolatedRows };
+}
+
 export function pruneLocalDataUnitOfWorkToChangedRows(args: {
   unitOfWork: LocalDataUnitOfWork;
   currentRows: LocalDataStoredRow[];
@@ -67,11 +116,20 @@ export function pruneLocalDataUnitOfWorkToChangedRows(args: {
   }));
   const currentRowsByKey = new Map(args.currentRows.map((row) => [row.key, row]));
 
-  args.unitOfWork.mutations = args.unitOfWork.mutations.filter((mutation) => {
-    if (mutation.type !== 'put' && mutation.type !== 'restore') return true;
+  const nextMutations: LocalDataUnitMutation[] = [];
+  for (const mutation of args.unitOfWork.mutations) {
+    if (mutation.type !== 'put' && mutation.type !== 'restore') {
+      nextMutations.push(mutation);
+      continue;
+    }
     const currentRow = currentRowsByKey.get(mutation.row.key);
-    return !currentRow || !localDataPayloadsMatch(currentRow, mutation.row);
-  });
+    if (currentRow?.state === 'deleted' && mutation.type === 'put' && mutation.row.state === 'complete') {
+      nextMutations.push({ type: 'restore', row: mutation.row });
+      continue;
+    }
+    if (!currentRow || !localDataPayloadsMatch(currentRow, mutation.row)) nextMutations.push(mutation);
+  }
+  args.unitOfWork.mutations = nextMutations;
 
   for (const row of args.currentRows) {
     const ref = row.ref;

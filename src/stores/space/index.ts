@@ -225,8 +225,10 @@ export type PersistedSpaceThemeReadResult = {
   themeState: MigratedPersistedSpaceThemeState;
 };
 
-export async function readPersistedSpaceThemeState(): Promise<PersistedSpaceThemeReadResult | null> {
-  const repositoryRead = await readSpaceStateFromLocalDataRepositoryIfActive();
+export async function readPersistedSpaceThemeState(options: {
+  integrity?: 'strict' | 'recover';
+} = {}): Promise<PersistedSpaceThemeReadResult | null> {
+  const repositoryRead = await readSpaceStateFromLocalDataRepositoryIfActive(options);
   if (repositoryRead) {
     return {
       themeState: migratePersistedSpaceState(repositoryRead.state)

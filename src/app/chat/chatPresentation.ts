@@ -1,5 +1,6 @@
 import { normalizeForMatch } from '../../engines/stringMatch';
 import type { ChatMessage, Conversation, Persona, RoomProject } from '../../types/domain';
+import type { ChatConversationBodyStatus } from '../../stores/chatConversationBodyStatus';
 
 function resolveConversationTitle(activeConversationTitle: string | null | undefined, messages: ChatMessage[]) {
   const latestUserSummary = [...messages]
@@ -36,6 +37,7 @@ export function buildChatPresentation(args: {
   personas: Persona[];
   startupReady: boolean;
   hasUnsupportedPendingImages: boolean;
+  activeConversationBodyStatus: ChatConversationBodyStatus | null;
 }) {
   const {
     activeConversation,
@@ -47,7 +49,8 @@ export function buildChatPresentation(args: {
     showChatAvatars,
     personas,
     startupReady,
-    hasUnsupportedPendingImages
+    hasUnsupportedPendingImages,
+    activeConversationBodyStatus
   } = args;
   const timelineDensity: 'light' | 'dense' | 'heavy' =
     messages.length >= 42 ? 'heavy' : messages.length >= 22 ? 'dense' : 'light';
@@ -64,7 +67,8 @@ export function buildChatPresentation(args: {
     showChatAvatars,
     personas,
     startupReady,
-    interactionLocked: !startupReady,
+    interactionLocked: !startupReady || activeConversationBodyStatus?.state === 'failed' || activeConversationBodyStatus?.state === 'missing',
+    activeConversationBodyStatus,
     hasUnsupportedPendingImages,
     timelineDensity
   };

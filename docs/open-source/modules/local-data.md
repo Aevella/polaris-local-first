@@ -48,6 +48,8 @@ LocalData is the durable facts contract for app data.
 - Deleted row overwrite without explicit restore.
 - Backend verification/readback failure.
 - Split current data path, where one reader bypasses the installed backend host.
+- Strict backup reads reject any incomplete active row. Ordinary hydration isolates an optional damaged
+  row, loads healthy rows, and records a degraded integrity event without projecting a failed body as empty.
 
 ## Tests And Verification
 

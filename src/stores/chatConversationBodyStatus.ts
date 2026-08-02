@@ -119,13 +119,25 @@ export function withoutConversationBodyStatus(
 
 export function hydrateConversationBodyStatuses(
   conversations: Conversation[],
-  loadedConversationIds: string[]
+  loadedConversationIds: string[],
+  failedConversationIds: string[] = []
 ): Record<string, ChatConversationBodyStatus> {
   const loadedConversationIdSet = new Set(loadedConversationIds);
+  const failedConversationIdSet = new Set(failedConversationIds);
   const updatedAt = Date.now();
   return Object.fromEntries(conversations.map((conversation) => [
     conversation.id,
-    createBodyStatus(loadedConversationIdSet.has(conversation.id) ? 'loaded' : 'notLoaded', { updatedAt })
+    createBodyStatus(
+      failedConversationIdSet.has(conversation.id)
+        ? 'failed'
+        : loadedConversationIdSet.has(conversation.id) ? 'loaded' : 'notLoaded',
+      {
+        updatedAt,
+        reason: failedConversationIdSet.has(conversation.id)
+          ? 'Conversation body was isolated because its stored row is incomplete.'
+          : undefined
+      }
+    )
   ]));
 }
 

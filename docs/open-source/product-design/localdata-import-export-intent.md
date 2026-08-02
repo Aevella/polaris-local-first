@@ -29,6 +29,11 @@ Implementation evidence:
 Import reads package evidence, stages rows, validates bodies and owners, and
 promotes data only when a domain can become current visible state.
 
+Package preflight completes before current facts change. Blobs are staged by asset id, while each
+structured domain replaces rows atomically on the installed LocalData backend and tombstones rows absent
+from the package in that same commit. A failed domain retains its previous facts. Other domains may commit,
+but the user receives an explicit partial-import result naming what changed and what was retained.
+
 Implementation evidence:
 
 - `src/stores/storeImportPackage.ts`
@@ -41,6 +46,10 @@ Implementation evidence:
 
 Export packages are produced from current LocalData facts, with staging readback
 and rehearsal checks available for validation.
+
+Complete backup reads are strict: incomplete current rows or bodies stop export. Ordinary startup uses a
+separate recoverable read policy that isolates optional damaged rows, continues with healthy data, and keeps
+failed bodies out of empty-state writeback.
 
 Implementation evidence:
 

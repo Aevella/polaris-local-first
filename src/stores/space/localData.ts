@@ -24,7 +24,9 @@ import {
   createStoreLocalDataRepository,
   discoverLocalDataDomainRefs,
   isLocalDataRepositoryDomainActive,
-  localDataPayloadsMatch
+  localDataPayloadsMatch,
+  readLocalDataDomainRows,
+  type LocalDataReadIntegrity
 } from '../localDataStorePersistence';
 import { runExclusiveSpacePersistenceCommit } from '../spacePersistenceCommitQueue';
 
@@ -43,10 +45,12 @@ export type SpaceRepositoryReadResult = {
   legacyLifecycleByObjectId: SpaceLegacyLifecycleMap;
 };
 
-export async function readSpaceStateFromLocalDataRepositoryIfActive(): Promise<SpaceRepositoryReadResult | null> {
+export async function readSpaceStateFromLocalDataRepositoryIfActive(options: {
+  integrity?: LocalDataReadIntegrity;
+} = {}): Promise<SpaceRepositoryReadResult | null> {
   if (!(await isLocalDataRepositoryDomainActive('space'))) return null;
 
-  const rows = await readActiveSpaceRows();
+  const rows = await readActiveSpaceRows(options.integrity ?? 'recover');
   // Partition sealed legacy lifecycle object rows (collaborator-theme / skin) out of the live
   // hydration: only live rows feed the preview that reconstructs the product space state, while
   // archive / recovering / quarantine / missing-body rows are surfaced as a separate lifecycle map.
@@ -83,21 +87,17 @@ export async function readSpaceStateFromLocalDataRepositoryIfActive(): Promise<S
   return { state: preview.state, legacyLifecycleByObjectId };
 }
 
-async function readActiveSpaceRows() {
-  const repository = createStoreLocalDataRepository();
-  const rows: LocalDataStoredRow[] = [];
-  for (const ref of await discoverLocalDataDomainRefs('space')) {
-    const result = await repository.read<SpaceRowValue>(ref);
-    if (result.status === 'deleted') {
-      rows.push(result.row);
-      continue;
-    }
-    if (result.status !== 'complete') {
-      throw new Error(`Active space LocalData row ${ref.kind}:${ref.id} is ${result.status}.`);
-    }
-    rows.push(result.row);
-  }
-  return rows;
+async function readActiveSpaceRows(integrity: LocalDataReadIntegrity) {
+  return (await readLocalDataDomainRows({
+    domain: 'space',
+    integrity,
+    isRequiredRef: (ref) => (
+      ref.kind === 'domainMeta'
+      || ref.kind === 'frontstage'
+      || ref.kind === 'theme'
+      || ref.kind === 'customization'
+    )
+  })).rows;
 }
 
 type SpaceRowValue =

@@ -25,10 +25,21 @@ import {
   type ClientDiagnosticsLocalDataDomainSourceSummary,
   type ClientDiagnosticsLocalDataUsageSummary,
   type ClientDiagnosticsPayload,
+  type ClientDiagnosticsPersistenceSummary,
   type ClientDiagnosticsPlatform,
   type ClientDiagnosticsStorageSummary
 } from '../../engines/clientDiagnostics';
 import type { LocalDataCollaboratorOrphanDiagnostic, LocalDataHealthSnapshot } from '../../infrastructure/localDataHealth';
+import {
+  subscribeLatestPersistenceError,
+  fingerprintDiagnosticId,
+  type PersistenceDiagnosticEntry
+} from '../../infrastructure/persistenceDiagnostics';
+import {
+  getStoreLocalDataBackend,
+  listStoreLocalDataKeysWithPrefix,
+  readStoreLocalDataValue
+} from '../../stores/storeLocalDataBackendHost';
 
 const CLIENT_DIAGNOSTICS_DISABLED_KEY = 'polaris-client-diagnostics-disabled';
 const CLIENT_DIAGNOSTICS_DEV_ENABLED_KEY = 'polaris-client-diagnostics-dev-enabled';
@@ -270,8 +281,8 @@ async function collectCollaboratorOrphanDiagnostics(
     )).length;
     const chunkedMemory = countChunkedMemoryBodies(kvKeyList, collaboratorId);
     return {
-      collaboratorId,
-      rowKey,
+      collaboratorFingerprint: fingerprintDiagnosticId(collaboratorId),
+      rowFingerprint: fingerprintDiagnosticId(rowKey),
       rowState: readRowState(row),
       rowUpdatedAt: readRowNumber(row, 'updatedAt'),
       rowDeletedAt: readRowNumber(row, 'deletedAt'),
@@ -292,9 +303,10 @@ async function collectLocalDataUsageSummary(kvKeyList: string[]): Promise<Client
   const repositoryKeyPrefix = `${LOCAL_DATA_NAMESPACE}:`;
   const repositoryRowPrefix = `${LOCAL_DATA_NAMESPACE}:row:`;
   const repositoryPointerPrefix = `${LOCAL_DATA_NAMESPACE}:pointer:`;
-  const repositoryKeyCount = kvKeyList.filter((key) => key.startsWith(repositoryKeyPrefix)).length;
-  const repositoryRowKeys = kvKeyList.filter((key) => key.startsWith(repositoryRowPrefix));
-  const repositoryPointerCount = kvKeyList.filter((key) => key.startsWith(repositoryPointerPrefix)).length;
+  const repositoryKeys = await listStoreLocalDataKeysWithPrefix(repositoryKeyPrefix);
+  const repositoryKeyCount = repositoryKeys.length;
+  const repositoryRowKeys = repositoryKeys.filter((key) => key.startsWith(repositoryRowPrefix));
+  const repositoryPointerCount = repositoryKeys.filter((key) => key.startsWith(repositoryPointerPrefix)).length;
 
   for (const key of repositoryRowKeys) {
     for (const domain of LOCAL_DATA_DOMAINS) {
@@ -309,7 +321,7 @@ async function collectLocalDataUsageSummary(kvKeyList: string[]): Promise<Client
   let activeDomains: string[] = [];
   let activeDataSourceRowPresent = false;
   try {
-    const activeRow = await kvGet<unknown>(getLocalDataActiveDataSourceKey());
+    const activeRow = await readStoreLocalDataValue<unknown>(getLocalDataActiveDataSourceKey());
     activeDataSourceRowPresent = Boolean(activeRow);
     if (isLocalDataActiveDataSourceRow(activeRow)) {
       activeDataSource = activeRow.activeDataSource;
@@ -330,7 +342,7 @@ async function collectLocalDataUsageSummary(kvKeyList: string[]): Promise<Client
     repositoryRowCount: repositoryRowKeys.length,
     repositoryPointerCount,
     repositoryRowsByDomain,
-    nonRepositoryKvKeyCount: Math.max(0, kvKeyList.length - repositoryKeyCount),
+    nonRepositoryKvKeyCount: kvKeyList.filter((key) => !key.startsWith(repositoryKeyPrefix)).length,
     ...(collaboratorOrphans ? { collaboratorOrphans } : {})
   };
 }
@@ -345,8 +357,7 @@ function summarizeHealthSnapshotDomainSources(
     objectCount: source.objectCount,
     repositoryRowCount: source.repositoryRowCount,
     legacySourceCount: source.legacySourceCount,
-    issueCount: source.issueCount,
-    issues: source.issues
+    issueCount: source.issueCount
   }));
 }
 
@@ -355,8 +366,8 @@ function summarizeHealthSnapshotCollaboratorOrphans(
 ): ClientDiagnosticsCollaboratorOrphanSummary[] | undefined {
   return snapshot.collaboratorOrphans.length > 0
     ? snapshot.collaboratorOrphans.map((orphan: LocalDataCollaboratorOrphanDiagnostic) => ({
-        collaboratorId: orphan.collaboratorId,
-        rowKey: orphan.rowKey,
+        collaboratorFingerprint: fingerprintDiagnosticId(orphan.collaboratorId),
+        rowFingerprint: fingerprintDiagnosticId(orphan.rowKey),
         rowState: orphan.rowState,
         rowUpdatedAt: orphan.rowUpdatedAt,
         rowDeletedAt: orphan.rowDeletedAt,
@@ -524,6 +535,34 @@ function reportClientError(error: unknown, source: 'window-error' | 'unhandled-r
   });
 }
 
+async function reportPersistenceDiagnostic(entry: PersistenceDiagnosticEntry) {
+  try {
+    const storage = await getPersistenceStorageDiagnostic();
+    const summary: ClientDiagnosticsPersistenceSummary = {
+      backend: entry.backend ?? `${storage.mode}-${getStoreLocalDataBackend().mode}`,
+      store: entry.store,
+      domain: entry.domain,
+      operation: entry.operation,
+      stage: entry.stage ?? 'unknown',
+      integrity: entry.integrity ?? 'failed',
+      rowCount: entry.rowCount ?? 0,
+      fingerprint: entry.fingerprint
+    };
+    await sendDiagnosticsPayload({
+      ...basePayload('persistence-error'),
+      persistence: summary,
+      error: {
+        source: 'persistence',
+        name: 'PersistenceIntegrityEvent',
+        message: 'Local persistence integrity event.',
+        context: `${summary.store}:${summary.operation}:${summary.stage}`
+      }
+    });
+  } catch {
+    // Diagnostics never change the persistence path they observe.
+  }
+}
+
 export function installClientDiagnosticsReporter() {
   if (installed || typeof window === 'undefined') return;
   installed = true;
@@ -542,5 +581,8 @@ export function installClientDiagnosticsReporter() {
   });
   window.addEventListener('unhandledrejection', (event) => {
     reportClientError(event.reason, 'unhandled-rejection');
+  });
+  subscribeLatestPersistenceError((entry) => {
+    if (entry) void reportPersistenceDiagnostic(entry);
   });
 }

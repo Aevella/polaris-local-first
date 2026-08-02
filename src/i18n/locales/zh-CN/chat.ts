@@ -76,6 +76,8 @@ export const chat = {
   'chat.messageRow.streamingHint': '继续生成中',
   'chat.timeline.emptyPurposeFallback': '等待你定义',
   'chat.timeline.loadingConversation': '正在载入对话',
+  'chat.timeline.bodyUnavailableTitle': '这条对话正文暂时不可用',
+  'chat.timeline.bodyUnavailableHint': '损坏记录已经隔离，其他对话仍可正常使用；导入完整备份或重新检查存储后再恢复它。',
   'chat.timeline.thinkingLive': '思考中',
   'chat.timeline.jumpToLatest': '回到最新',
   'chat.timeline.jumpToTop': '回到顶部',

@@ -105,10 +105,11 @@ describe('startup fact source boundary', () => {
 
   it('keeps the snapshot prune helper out of ordinary product write paths', () => {
     // pruneLocalDataUnitOfWorkToChangedRows is a maintenance helper only: after the row-first
-    // routing, no store persist path prunes a whole-domain snapshot, so the sole production
-    // file that mentions it is its own definition module.
+    // routing, no ordinary store persist path prunes a whole-domain snapshot. The only caller
+    // is the explicit backup-import replacement boundary, where absent rows become tombstones.
     expect(sourceFilesContaining(/pruneLocalDataUnitOfWorkToChangedRows/)).toEqual([
-      'src/stores/localDataStorePersistence.ts'
+      'src/stores/localDataStorePersistence.ts',
+      'src/stores/storeImportLocalDataRestore.ts'
     ]);
   });
 

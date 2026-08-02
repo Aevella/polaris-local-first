@@ -205,6 +205,8 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
     presentation.fallbackAssistantName,
     t('chat.timeline.emptyPurposeFallback')
   );
+  const bodyUnavailable = presentation.activeConversationBodyStatus?.state === 'failed'
+    || presentation.activeConversationBodyStatus?.state === 'missing';
   const codeCardsById = useMemo(
     () => Object.fromEntries(composer.availableCards.map((card) => [card.id, card])) as Record<string, CodeCard>,
     [composer.availableCards]
@@ -466,7 +468,14 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
             <p className="empty-state-title">{t('chat.timeline.loadingConversation')}</p>
           </div>
         ) : null}
-        {ui.showEmptyState ? (
+        {bodyUnavailable ? (
+          <div className="chat-empty-state empty-state-floating" role="status">
+            <span className="empty-state-icon" aria-hidden="true">!</span>
+            <p className="empty-state-title">{t('chat.timeline.bodyUnavailableTitle')}</p>
+            <p className="empty-state-hint">{t('chat.timeline.bodyUnavailableHint')}</p>
+          </div>
+        ) : null}
+        {ui.showEmptyState && !bodyUnavailable ? (
           <div className="chat-empty-state empty-state-floating">
             <span className="empty-state-icon chat-empty-state-polaris" aria-hidden="true">
               <Icon name="polaris" size={20} />

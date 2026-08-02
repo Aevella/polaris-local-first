@@ -78,6 +78,8 @@ export const chat = {
   'chat.messageRow.streamingHint': 'Still generating',
   'chat.timeline.emptyPurposeFallback': 'Waiting for your definition',
   'chat.timeline.loadingConversation': 'Loading conversation',
+  'chat.timeline.bodyUnavailableTitle': 'This conversation body is unavailable',
+  'chat.timeline.bodyUnavailableHint': 'The damaged record was isolated. Other conversations remain available; restore it from a complete backup or check storage again.',
   'chat.timeline.thinkingLive': 'Thinking',
   'chat.timeline.jumpToLatest': 'Jump to latest',
   'chat.timeline.jumpToTop': 'Jump to top',

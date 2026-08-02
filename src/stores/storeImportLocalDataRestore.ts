@@ -9,6 +9,7 @@ import {
   buildRuntimeMigrationPlan,
   buildSpaceMigrationPlan,
   commitChatMigrationRehearsalAndBuildValidationReport,
+  getLocalDataRowKey,
   LOCAL_DATA_SCHEMA_VERSION,
   LOCAL_DATA_NAMESPACE,
   buildLocalDataStoreHydrationValidationReports,
@@ -33,6 +34,10 @@ import type { MigratedPersistedSpaceState } from './spaceStorePersistence';
 import type { PersistedChatState } from './chatCurrentPersistence';
 import type { Persona } from '../types/domain';
 import { createStoreLocalDataRepository } from './localDataStorePersistence';
+import {
+  discoverLocalDataDomainRefs,
+  pruneLocalDataUnitOfWorkToChangedRows
+} from './localDataStorePersistence';
 import { readStoreLocalDataEntriesWithPrefix } from './storeLocalDataBackendHost';
 
 export type StructuredImportLocalDataRestorePayload = {
@@ -60,6 +65,10 @@ export type StructuredImportLocalDataRestoreResult = {
   skippedDomains: StructuredImportLocalDataRestoreSkippedDomain[];
   promotionSkippedDomains: LocalDataLiveSourcePromotionSkippedDomain[];
   promotionFailure: string | null;
+};
+
+export type StructuredImportLocalDataRestoreOptions = {
+  skipDomains?: LocalDataDomain[];
 };
 
 const STRUCTURED_IMPORT_DOMAINS = [
@@ -103,7 +112,8 @@ function restoreFailureReason(error: unknown) {
 }
 
 export async function restoreStructuredImportToLocalDataRepository(
-  payload: StructuredImportLocalDataRestorePayload
+  payload: StructuredImportLocalDataRestorePayload,
+  options: StructuredImportLocalDataRestoreOptions = {}
 ): Promise<StructuredImportLocalDataRestoreResult> {
   const committedAt = Date.now();
   const validatedAt = committedAt;
@@ -117,8 +127,39 @@ export async function restoreStructuredImportToLocalDataRepository(
   const commitMetas: Partial<Record<LocalDataDomain, LocalDataCommitMeta>> = {};
   const restoredDomains: LocalDataDomain[] = [];
   const skippedDomains: StructuredImportLocalDataRestoreSkippedDomain[] = [];
+  const skippedDomainSet = new Set(options.skipDomains ?? []);
+
+  async function prepareReplacement(unitOfWork: Parameters<typeof repository.commit>[0]) {
+    const currentRows = [];
+    const projectedKeys = new Set(unitOfWork.mutations.flatMap((mutation) => (
+      mutation.type === 'put' || mutation.type === 'restore' ? [mutation.row.key] : []
+    )));
+    for (const ref of await discoverLocalDataDomainRefs(unitOfWork.domain)) {
+      const current = await repository.read(ref);
+      if (current.status === 'complete' || current.status === 'deleted') {
+        currentRows.push(current.row);
+      } else if (ref.kind !== 'domainMeta' && !projectedKeys.has(getLocalDataRowKey(ref))) {
+        unitOfWork.mutations.push({
+          type: 'tombstone',
+          ref,
+          version: unitOfWork.version,
+          deletedAt: committedAt
+        });
+      }
+    }
+    pruneLocalDataUnitOfWorkToChangedRows({
+      unitOfWork,
+      currentRows,
+      deletedAt: committedAt
+    });
+    return unitOfWork;
+  }
 
   async function restoreDomain(domain: LocalDataDomain, operation: () => Promise<LocalDataCommitMeta>) {
+    if (skippedDomainSet.has(domain)) {
+      skippedDomains.push({ domain, reason: 'precondition-failed' });
+      return;
+    }
     try {
       commitMetas[domain] = await operation();
       restoredDomains.push(domain);
@@ -138,6 +179,7 @@ export async function restoreStructuredImportToLocalDataRepository(
       unitId: `import-chat-${committedAt}`,
       knownCollaboratorIds: personasWithDocContent.map((persona) => persona.id)
     });
+    await prepareReplacement(chatRehearsal.unitOfWork);
     const chatReadback = await commitChatMigrationRehearsalAndBuildValidationReport({
       repository,
       rehearsal: chatRehearsal,
@@ -155,7 +197,7 @@ export async function restoreStructuredImportToLocalDataRepository(
       version,
       updatedAt: committedAt
     });
-    return await repository.commit(collectionPlan.unitOfWork);
+    return await repository.commit(await prepareReplacement(collectionPlan.unitOfWork));
   });
 
   await restoreDomain('persona', async () => {
@@ -169,7 +211,7 @@ export async function restoreStructuredImportToLocalDataRepository(
       version,
       updatedAt: committedAt
     });
-    return await repository.commit(personaPlan.unitOfWork);
+    return await repository.commit(await prepareReplacement(personaPlan.unitOfWork));
   });
 
   await restoreDomain('runtime', async () => {
@@ -179,7 +221,7 @@ export async function restoreStructuredImportToLocalDataRepository(
       version,
       updatedAt: committedAt
     });
-    return await repository.commit(runtimePlan.unitOfWork);
+    return await repository.commit(await prepareReplacement(runtimePlan.unitOfWork));
   });
 
   await restoreDomain('space', async () => {
@@ -189,7 +231,7 @@ export async function restoreStructuredImportToLocalDataRepository(
       version,
       updatedAt: committedAt
     });
-    return await repository.commit(spacePlan.unitOfWork);
+    return await repository.commit(await prepareReplacement(spacePlan.unitOfWork));
   });
 
   await restoreDomain('document', async () => {
@@ -204,7 +246,7 @@ export async function restoreStructuredImportToLocalDataRepository(
       version,
       updatedAt: committedAt
     });
-    return await repository.commit(documentPlan.unitOfWork);
+    return await repository.commit(await prepareReplacement(documentPlan.unitOfWork));
   });
 
   await restoreDomain('asset', async () => {
@@ -231,7 +273,7 @@ export async function restoreStructuredImportToLocalDataRepository(
       version,
       updatedAt: committedAt
     });
-    return await repository.commit(assetPlan.unitOfWork);
+    return await repository.commit(await prepareReplacement(assetPlan.unitOfWork));
   });
 
   let promotedDomains: LocalDataDomain[] = [];

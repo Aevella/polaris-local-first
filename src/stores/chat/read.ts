@@ -15,6 +15,10 @@ import { rebuildConversationToolLedger } from '../../engines/toolLedger';
 import { isRetiredGroupConversation } from '../../engines/conversationOwnership';
 import { normalizeConversationTitle } from '../chatStoreTitles';
 import {
+  fingerprintDiagnosticId,
+  reportPersistenceError
+} from '../../infrastructure/persistenceDiagnostics';
+import {
   createStoreLocalDataRepository,
   readActiveLocalDataSourceForDomain
 } from '../localDataStorePersistence';
@@ -23,6 +27,7 @@ import {
   readStoreLocalDataValue
 } from '../storeLocalDataBackendHost';
 import type { ChatConversationLifecycleEntry, ChatReadMode, PersistedChatState } from './index';
+import type { LocalDataReadIntegrity } from '../localDataStorePersistence';
 
 export type ChatLocalDataMessageReadResult =
   | { status: 'inactive' }
@@ -45,6 +50,7 @@ export async function hasChatLocalDataRepositoryRows() {
 
 export async function readChatStateFromLocalDataRepository(options: {
   readMode?: ChatReadMode;
+  integrity?: LocalDataReadIntegrity;
 } = {}): Promise<PersistedChatState | null> {
   const activeSource = await readActiveChatLocalDataSource();
   if (!activeSource) return null;
@@ -54,6 +60,7 @@ export async function readChatStateFromLocalDataRepository(options: {
 
 export async function readChatStateFromLocalDataLive(options: {
   readMode?: ChatReadMode;
+  integrity?: LocalDataReadIntegrity;
 } = {}): Promise<PersistedChatState | null> {
   if (!(await hasChatLocalDataRepositoryRows())) return null;
   return await readChatStateFromLocalDataRows(options, 'active');
@@ -61,6 +68,7 @@ export async function readChatStateFromLocalDataLive(options: {
 
 export async function readChatStateFromLocalDataOverlay(options: {
   readMode?: ChatReadMode;
+  integrity?: LocalDataReadIntegrity;
 } = {}): Promise<PersistedChatState | null> {
   if (await isChatLocalDataRepositoryActive()) return null;
   if (!(await hasChatLocalDataRepositoryRows())) return null;
@@ -68,9 +76,10 @@ export async function readChatStateFromLocalDataOverlay(options: {
 }
 
 async function readChatStateFromLocalDataRows(
-  options: { readMode?: ChatReadMode },
+  options: { readMode?: ChatReadMode; integrity?: LocalDataReadIntegrity },
   mode: 'active' | 'overlay'
 ): Promise<PersistedChatState | null> {
+  const recover = options.integrity !== 'strict';
   const repository = createStoreLocalDataRepository();
   const domainMeta = await repository.read<ChatDomainMetaRow>(getChatDomainMetaLocalDataRef());
   if (domainMeta.status === 'deleted') return null;
@@ -84,6 +93,7 @@ async function readChatStateFromLocalDataRows(
   const lifecycleCatalogs: ConversationCatalogRow[] = [];
   const deletedConversationIds: string[] = [];
   const retiredGroupConversationIds: string[] = [];
+  const quarantinedConversationIds: string[] = [];
 
   for (const catalogKey of catalogKeys) {
     const conversationId = catalogKey.slice(CHAT_CATALOG_ROW_KEY_PREFIX.length);
@@ -95,6 +105,11 @@ async function readChatStateFromLocalDataRows(
       continue;
     }
     if (catalog.status !== 'complete') {
+      if (recover) {
+        quarantinedConversationIds.push(conversationId);
+        reportIsolatedChatRow('conversationCatalog', conversationId, catalog.status);
+        continue;
+      }
       throw new Error(`Active chat LocalData catalog ${conversationId} is ${catalog.status}.`);
     }
     if (isRetiredGroupConversation(catalog.value)) {
@@ -111,7 +126,7 @@ async function readChatStateFromLocalDataRows(
 
   const sortedActive = sortCatalogs(activeCatalogs);
   if (sortedActive.length === 0 && lifecycleCatalogs.length === 0) {
-    if (deletedConversationIds.length === 0) return null;
+    if (deletedConversationIds.length === 0 && quarantinedConversationIds.length === 0) return null;
     return {
       conversations: [],
       activeConversationId: null,
@@ -119,19 +134,29 @@ async function readChatStateFromLocalDataRows(
       groupRooms: [],
       loadedConversationIds: [],
       deletedConversationIds,
+      quarantinedConversationIds: uniqueConversationIds(quarantinedConversationIds),
       legacyLifecycleByConversationId: {}
     };
+  }
+
+  if (
+    domainMeta.value.activeConversationId
+    && lifecycleCatalogs.some((catalog) => catalog.id === domainMeta.value.activeConversationId)
+  ) {
+    throw new Error(`Active chat LocalData metadata points at a missing conversation: ${domainMeta.value.activeConversationId}`);
   }
 
   const activeConversationId = resolveActiveConversationId(
     domainMeta.value.activeConversationId,
     sortedActive,
-    new Set(retiredGroupConversationIds)
+    new Set(retiredGroupConversationIds),
+    recover
   );
   const activeIdSet = new Set(sortedActive.map((catalog) => catalog.id));
   const directoryCatalogs = sortCatalogs([...activeCatalogs, ...lifecycleCatalogs]);
   const loadedConversationIds: string[] = [];
   const conversations: Conversation[] = [];
+  const failedConversationIds: string[] = [];
   const legacyLifecycleByConversationId: Record<string, ChatConversationLifecycleEntry> = {};
 
   for (const catalog of directoryCatalogs) {
@@ -154,6 +179,13 @@ async function readChatStateFromLocalDataRows(
       getConversationRecordLocalDataRef(catalog.id)
     );
     if (record.status !== 'complete') {
+      if (recover) {
+        conversations.push(toUnloadedConversation(catalog));
+        failedConversationIds.push(catalog.id);
+        quarantinedConversationIds.push(catalog.id);
+        reportIsolatedChatRow('conversationRecord', catalog.id, record.status);
+        continue;
+      }
       throw new Error(`Active chat LocalData record ${catalog.id} is ${record.status}.`);
     }
 
@@ -167,7 +199,9 @@ async function readChatStateFromLocalDataRows(
     activeGroupRoomId: null,
     groupRooms: [],
     loadedConversationIds,
+    failedConversationIds,
     deletedConversationIds,
+    quarantinedConversationIds: uniqueConversationIds(quarantinedConversationIds),
     legacyLifecycleByConversationId
   };
 }
@@ -282,12 +316,32 @@ function toUnloadedConversation(catalog: ConversationCatalogRow): Conversation {
 function resolveActiveConversationId(
   activeConversationId: string | null,
   catalogs: ConversationCatalogRow[],
-  retiredGroupConversationIds: ReadonlySet<string>
+  retiredGroupConversationIds: ReadonlySet<string>,
+  allowMissingActiveConversation: boolean
 ) {
   if (activeConversationId === null) return null;
   if (catalogs.some((catalog) => catalog.id === activeConversationId)) return activeConversationId;
-  if (retiredGroupConversationIds.has(activeConversationId)) return catalogs[0]?.id ?? null;
+  if (retiredGroupConversationIds.has(activeConversationId) || allowMissingActiveConversation) {
+    return catalogs[0]?.id ?? null;
+  }
   throw new Error(`Active chat LocalData metadata points at a missing conversation: ${activeConversationId}`);
+}
+
+function uniqueConversationIds(conversationIds: string[]) {
+  return Array.from(new Set(conversationIds.filter((id) => id.trim().length > 0)));
+}
+
+function reportIsolatedChatRow(kind: string, conversationId: string, status: string) {
+  reportPersistenceError({
+    label: '[store:persist:isolation]',
+    store: 'chat',
+    operation: 'read-isolated-row',
+    domain: 'chat',
+    stage: 'hydrate-row',
+    integrity: 'degraded',
+    rowCount: 1,
+    fingerprint: fingerprintDiagnosticId(`${kind}:${conversationId}`)
+  }, new Error(`Optional chat LocalData row was isolated after a ${status} read.`));
 }
 
 function sortCatalogs(catalogs: ConversationCatalogRow[]) {

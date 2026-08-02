@@ -15,7 +15,7 @@ and ordinary saves use the current LocalData model.
 - Package export from current LocalData facts.
 - Complete-backup hydration of referenced document bodies before the snapshot is serialized.
 - Census, health, and dry-run reporting for importability.
-- Rollback and failed-import safety.
+- Per-domain atomic replacement and failed-import safety.
 
 ## Does Not Own
 
@@ -38,13 +38,14 @@ and ordinary saves use the current LocalData model.
 - Imported package contents.
 - Existing-format package data as external evidence.
 - LocalData staging rows.
-- Rollback files and validation reports.
+- Validation reports and any legacy rollback artifact presented at the explicit recovery boundary.
 
 ## Data It Writes
 
-- Reconstructed LocalData rows after validation.
+- Reconstructed LocalData rows after validation, including tombstones for rows absent from the package.
+- Staged/upserted blobs; old blobs are not cleared before the matching asset domain is committed.
 - Export package contents generated from current LocalData facts.
-- Import diagnostics and rollback evidence.
+- Content-free import diagnostics: backend, domain/row counts, stage, integrity state, and anonymous fingerprints.
 - Promoted active-source rows only after the domain is coherent.
 
 ## Important Failure States
@@ -53,7 +54,12 @@ and ordinary saves use the current LocalData model.
 - A complete backup cannot load a referenced document body; export stops instead of emitting a partial archive.
 - Package evidence is unreadable or malformed.
 - Import refuses to promote a domain that cannot become coherent current rows.
-- Import rollback must restore the previous visible state.
+- A failed domain commit leaves that domain's prior rows intact. Other domains may commit independently,
+  and the import result must name both updated and retained domains instead of reporting silent success.
+- A localStorage replacement failure restores the previous Polaris values. Asset staging failure restores
+  every touched blob and leaves the prior asset index active.
+- Package structure, required files, row shapes, asset indexes, and blob sizes must be validated before
+  any current fact is mutated.
 
 ## Tests And Verification
 

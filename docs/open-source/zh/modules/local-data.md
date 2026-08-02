@@ -34,6 +34,9 @@ Native iOS/Android 当前通过 startup composition root 安装 SQLite LocalData
 
 普通启动只读当前 repository path。旧 store、legacy source、recovery worker 只能在明确 import/migration/recovery/diagnostics 边界里存在，不能继续参与 normal startup、ordinary save 或 current export truth。
 
+完整备份读取使用 strict 语义，任何 active incomplete row 都会阻止导出。普通启动使用 recover 语义：
+可选坏行会被隔离，健康行继续加载；坏对话或文档正文保持 failed/incomplete，不能投影成空正文后写回。
+
 ## Verification
 
 - `npm run test:data-boundary`

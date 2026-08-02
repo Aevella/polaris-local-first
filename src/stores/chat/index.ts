@@ -35,6 +35,7 @@ export type PersistedChatState = {
   recoveredConversationIds?: string[];
   prunedConversationIds?: string[];
   quarantinedConversationIds?: string[];
+  failedConversationIds?: string[];
   deletedConversationIds?: string[];
   shouldCommitSnapshot?: boolean;
   // Per-conversation legacy lifecycle for sealed archive directory rows surfaced from the
@@ -153,10 +154,12 @@ export function sortConversations(conversations: Conversation[]): Conversation[]
 export async function readLiveChatStateWithOptions(options: {
   readMode?: ChatReadMode;
   throwOnReadFailure?: boolean;
+  integrity?: 'strict' | 'recover';
 } = {}): Promise<PersistedChatState | null> {
   try {
     return await readChatStateFromLocalDataLive({
-      readMode: options.readMode ?? 'complete'
+      readMode: options.readMode ?? 'complete',
+      integrity: options.integrity ?? (options.throwOnReadFailure ? 'strict' : 'recover')
     });
   } catch (error) {
     reportPersistenceError({ label: '[store:persist]', store: 'chat', operation: 'read-live-local-data' }, error);
@@ -166,7 +169,7 @@ export async function readLiveChatStateWithOptions(options: {
 }
 
 export async function readCompleteLiveChatState(
-  options: { throwOnReadFailure?: boolean } = {}
+  options: { throwOnReadFailure?: boolean; integrity?: 'strict' | 'recover' } = {}
 ): Promise<PersistedChatState | null> {
   return await readLiveChatStateWithOptions({ readMode: 'complete', ...options });
 }

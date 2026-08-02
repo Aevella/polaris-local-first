@@ -79,7 +79,10 @@ export function useChatProviderController({
     showChatAvatars: store.space.customization.showChatAvatars,
     personas: collaborators,
     startupReady,
-    hasUnsupportedPendingImages: derived.hasUnsupportedPendingImages
+    hasUnsupportedPendingImages: derived.hasUnsupportedPendingImages,
+    activeConversationBodyStatus: derived.activeConversation
+      ? store.chat.conversationBodyStatuses[derived.activeConversation.id] ?? null
+      : null
   });
 
   const actionStore = createChatActionStoreBindings(store);
