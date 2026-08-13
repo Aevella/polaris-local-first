@@ -36,7 +36,7 @@
 
 .thinking-summary-topbar {
   display: grid;
-  grid-template-columns: 40px 1fr 40px;
+  grid-template-columns: 72px minmax(0, 1fr) 72px;
   align-items: center;
   gap: 12px;
 }
@@ -45,6 +45,35 @@
 .thinking-summary-spacer {
   width: 40px;
   height: 40px;
+}
+
+.thinking-summary-translate {
+  min-width: 72px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--border-hover) 48%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 68%, transparent);
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.thinking-summary-translate:hover,
+.thinking-summary-translate:focus-visible,
+.thinking-summary-translate.translated {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border-hover));
+  background: color-mix(in srgb, var(--accent-soft) 18%, var(--surface));
+  color: var(--text);
+  outline: none;
+}
+
+.thinking-summary-translate:disabled {
+  cursor: progress;
+  opacity: 0.62;
 }
 
 .thinking-summary-close {
@@ -74,6 +103,51 @@
   margin-top: 3px;
   font-size: var(--type-caption);
   color: var(--text-muted);
+}
+
+.thinking-summary-translation-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 9px 11px;
+  border: 1px solid rgba(220, 101, 101, 0.2);
+  border-radius: 14px;
+  background: rgba(220, 101, 101, 0.07);
+  color: #a94b4b;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.thinking-summary-translation-error span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.thinking-summary-translation-error button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(220, 101, 101, 0.12);
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+@media (max-width: 390px) {
+  .thinking-summary-topbar {
+    grid-template-columns: 62px minmax(0, 1fr) 62px;
+    gap: 8px;
+  }
+
+  .thinking-summary-translate {
+    min-width: 62px;
+    padding-inline: 7px;
+  }
 }
 
 .thinking-summary-list {
@@ -225,6 +299,15 @@
   font-size: var(--type-caption);
   line-height: 1.65;
   color: var(--text);
+}
+
+.app-shell .thinking-summary-phase-copy p,
+.app-shell .thinking-summary-step-preview,
+.app-shell .thinking-summary-tool-detail,
+.app-shell .thinking-summary-raw-body {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 .thinking-summary-tool-head {

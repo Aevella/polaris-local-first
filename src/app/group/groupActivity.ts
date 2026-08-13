@@ -1,4 +1,5 @@
 import type { Conversation } from '../../types/domain';
+import { isPlayableAudioAttachment } from '../../engines/attachmentMedia';
 
 // 私域里干什么，群面上就显示什么——不让一切都伪装成「正在输入」
 const TOOL_ACTIVITY_KEYS = {
@@ -67,5 +68,14 @@ export function messageGeneratedImageAttachments(message: Conversation['messages
   if (!invocation || invocation.status === 'failed' || invocation.status === 'running') return [];
   return (message.attachments ?? []).filter(
     (attachment) => attachment.kind === 'image' && attachment.assetId && !attachment.clearedAt
+  );
+}
+
+export function messageGeneratedAudioAttachments(message: Conversation['messages'][number]) {
+  if (message.origin !== 'tool-runtime') return [];
+  const invocation = message.toolInvocation;
+  if (!invocation || invocation.status === 'failed' || invocation.status === 'running') return [];
+  return (message.attachments ?? []).filter(
+    (attachment) => attachment.assetId && !attachment.clearedAt && isPlayableAudioAttachment(attachment)
   );
 }

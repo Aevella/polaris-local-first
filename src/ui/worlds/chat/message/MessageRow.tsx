@@ -19,6 +19,8 @@ import { MessageContent } from './MessageContent';
 import { MessageEditInline } from './MessageEditInline';
 import { MessageMeta } from './MessageMeta';
 import { MessageGeneratedImages } from './MessageGeneratedImages';
+import { MessageAudioAttachments } from '../../../media/MessageAudioAttachments';
+import { isPlayableAudioAttachment } from '../../../../engines/attachmentMedia';
 import { MessageToolEvent } from './MessageToolEvent';
 import { isProjectedCodeToolName } from './projectedCodeTools';
 import { buildAssistantSpeechText } from './messageSpeechText';
@@ -57,6 +59,7 @@ export type MessageRowActions = {
   codeCardAction: (message: ChatMessage) => void;
   retry: (message: ChatMessage) => Promise<void>;
   editMessage: (message: ChatMessage) => void;
+  deleteUserMessage: (message: ChatMessage) => void;
   editAssistantMessage: (message: ChatMessage, content: string) => void;
   cacheAssistantSpeech: (message: ChatMessage, voiceCache: ChatMessageVoiceCache) => void;
   forkFromMessage: (message: ChatMessage) => void;
@@ -192,11 +195,17 @@ function MessageRowComponent({
     const generatedImages = tool && tool.status !== 'failed' && tool.status !== 'running'
       ? (toolMessage.attachments ?? []).filter((attachment) => attachment.kind === 'image')
       : [];
+    const generatedAudio = tool && tool.status !== 'failed' && tool.status !== 'running'
+      ? (toolMessage.attachments ?? []).filter(isPlayableAudioAttachment)
+      : [];
     const imagesNode = generatedImages.length > 0 ? (
       <MessageGeneratedImages
         attachments={generatedImages}
         onSave={(attachment) => actions.saveImageAttachment(toolMessage, attachment)}
       />
+    ) : null;
+    const audioNode = generatedAudio.length > 0 ? (
+      <MessageAudioAttachments attachments={generatedAudio} />
     ) : null;
 
     const cardNode = (() => {
@@ -217,10 +226,11 @@ function MessageRowComponent({
       );
     })();
 
-    if (!imagesNode && !cardNode) return null;
+    if (!imagesNode && !audioNode && !cardNode) return null;
     return (
       <>
         {imagesNode}
+        {audioNode}
         {cardNode}
       </>
     );
@@ -293,6 +303,13 @@ function MessageRowComponent({
     runSelectionAction(() => {
       setUserActionMenuOpen(false);
       actions.editMessage(message);
+    }, { settle: 'none' });
+  };
+
+  const deleteUserMessage = () => {
+    runSelectionAction(() => {
+      setUserActionMenuOpen(false);
+      actions.deleteUserMessage(message);
     }, { settle: 'none' });
   };
 
@@ -390,6 +407,10 @@ function MessageRowComponent({
           <button type="button" className="user-bubble-action-btn" role="menuitem" onClick={editUserMessage}>
             <Icon name="edit" size={14} />
             <span>{t('chat.messageActions.editAndRetry')}</span>
+          </button>
+          <button type="button" className="user-bubble-action-btn danger" role="menuitem" onClick={deleteUserMessage}>
+            <Icon name="trash" size={14} />
+            <span>{t('chat.messageActions.delete')}</span>
           </button>
         </div>
       ) : null}

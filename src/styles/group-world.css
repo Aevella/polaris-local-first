@@ -918,6 +918,43 @@
   font-size: 11.5px;
 }
 
+.group-msg-audio-result {
+  width: min(calc(100% - 41px), 420px);
+  margin-left: 41px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.group-msg-audio-source {
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.group-msg-audio-source span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-msg-audio-source:hover,
+.group-msg-audio-source:focus-visible {
+  outline: none;
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent-soft) 20%, var(--surface));
+}
+
 .group-msg-failed {
   display: flex;
   align-items: center;

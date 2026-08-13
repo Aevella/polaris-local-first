@@ -35,7 +35,10 @@ export function AppShell() {
   return (
     <>
       <AppShellView {...appShellView} />
-      {shouldShowWorldSwitchVeil(controller.activeWorld) ? (
+      {shouldShowWorldSwitchVeil(
+        controller.activeWorld,
+        controller.customization.showWorldSwitchHandle
+      ) ? (
         <WorldSwitchVeil
           activeWorld={controller.activeWorld}
           canReviveTheme={controller.canReviveTheme}

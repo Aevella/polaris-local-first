@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePersistedFollowMode, resolveReplyStageScrollTop } from './TimelineScroll';
+import {
+  normalizePersistedFollowMode,
+  resolveReplyStageScrollTop,
+  resolveTimelineJumpBehavior
+} from './TimelineScroll';
 
 describe('normalizePersistedFollowMode', () => {
   it('keeps reply-stage while generation is still active', () => {
@@ -29,5 +33,23 @@ describe('resolveReplyStageScrollTop', () => {
       rowOffsetTop: 420,
       maxScrollTop: 260
     })).toBe(260);
+  });
+});
+
+describe('resolveTimelineJumpBehavior', () => {
+  it('keeps nearby jumps smooth', () => {
+    expect(resolveTimelineJumpBehavior({
+      currentTop: 1_000,
+      targetTop: 2_100,
+      viewportHeight: 600
+    })).toBe('smooth');
+  });
+
+  it('makes multi-screen jumps instant', () => {
+    expect(resolveTimelineJumpBehavior({
+      currentTop: 0,
+      targetTop: 120_000,
+      viewportHeight: 600
+    })).toBe('auto');
   });
 });

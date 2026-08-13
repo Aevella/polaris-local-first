@@ -53,6 +53,7 @@ This module is about native capability. Tablet adaptation is documented separate
 - A chunked JSON read reports a different length or checksum from the stored value.
 - Native SQLite rejects a statement because the allowlist drifted.
 - File import or backup file handling fails.
+- A user-configured cleartext HTTP MCP endpoint is blocked by the native WebView transport; the editor identifies that weaker transport before the configuration is saved.
 - A platform check is mistaken for a release-channel claim.
 - A tablet layout issue is patched as an iOS or Android bridge issue without proving it crosses a native capability boundary.
 

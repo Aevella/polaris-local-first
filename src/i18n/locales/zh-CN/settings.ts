@@ -252,6 +252,8 @@ export const settings = {
   'settings.mcp.descriptionPlaceholder': '给这条服务留一句用途说明',
   'settings.mcp.transportLabel': '传输类型',
   'settings.mcp.urlLabel': '服务器地址',
+  'settings.mcp.cleartextWarningTitle': '这条服务使用明文 HTTP',
+  'settings.mcp.cleartextWarningDetail': 'Polaris 会允许连接，但请求内容和自定义请求头可能被沿途读取或篡改。能用 HTTPS 时优先换成 HTTPS。',
   'settings.mcp.testNameFallback': 'MCP 测试服务',
   'settings.mcp.testMissingUrl': '先填写服务器地址。',
   'settings.mcp.testNoTools': '连接成功，但 tools/list 没有返回工具。',

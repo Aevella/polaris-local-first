@@ -1,6 +1,7 @@
 import type { CanonicalProviderStreamEvent } from '../provider-runtime';
 import type { ReplyAccumulator } from '../provider-runtime/providerRuntimeReplyAccumulator';
 import { mergeToolCallArgumentsText } from '../provider-runtime/providerRuntimeToolArguments';
+import { mergeProviderReasoningState } from '../provider-runtime/providerRuntimeReasoningState';
 
 type UsageStreamEvent = Extract<CanonicalProviderStreamEvent, { type: 'usage' }>;
 
@@ -76,6 +77,11 @@ export function applyProviderRuntimeStreamEvents(
     }
     if (event.type === 'reasoning.snapshot') {
       target.thinkingText = event.text;
+      changed = true;
+      return;
+    }
+    if (event.type === 'reasoning.state') {
+      target.providerReasoning = mergeProviderReasoningState(target.providerReasoning, event.state);
       changed = true;
       return;
     }

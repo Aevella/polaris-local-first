@@ -1,4 +1,4 @@
-import type { ChatTokenUsage } from '../../types/domain';
+import type { ChatProviderReasoningState, ChatTokenUsage } from '../../types/domain';
 import type { AssistantReply } from './providerRuntimeTypes';
 
 export type OpenAiToolCallAccumulator = {
@@ -17,6 +17,7 @@ export type OpenAiToolCallAccumulator = {
 export type ReplyAccumulator = {
   content: string;
   thinkingText: string;
+  providerReasoning?: ChatProviderReasoningState;
   model?: string;
   tokenCount?: number;
   tokenUsage?: ChatTokenUsage;
@@ -55,6 +56,7 @@ export function toAssistantReply(
     tokenCount: target.tokenCount,
     tokenUsage: target.tokenUsage,
     thinkingText: normalizedThinkingText,
+    providerReasoning: target.providerReasoning,
     nativeToolCalls,
     usedNativeToolCalls: nativeToolCalls.length > 0,
     nativeToolCallCount: nativeToolCalls.length,

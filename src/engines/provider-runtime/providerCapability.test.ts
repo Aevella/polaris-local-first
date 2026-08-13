@@ -76,7 +76,8 @@ describe('resolveProviderCapability', () => {
     expect(capability.tools.choiceControl).toBe('none');
     expect(capability.thinking).toEqual({
       sendBudget: false,
-      effortMapping: 'none'
+      effortMapping: 'none',
+      requestTransport: 'none'
     });
     expect(capability.output.reasoning).toEqual({
       mode: 'text',

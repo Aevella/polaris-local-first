@@ -12,7 +12,19 @@
 .active-preview-actions { display: flex; flex-direction: column; gap: 6px; min-width: 108px; }
 
 .attachment-strip { display: flex; flex-wrap: wrap; gap: 8px; }
-.attachment-strip.pending { margin-bottom: 2px; }
+.attachment-strip.pending {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 2px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.attachment-strip.pending::-webkit-scrollbar { display: none; }
 .attachment-strip.message { margin-bottom: 8px; }
 .composer-card-reference-strip { display: flex; }
 .composer-card-reference-chip {
@@ -60,6 +72,11 @@
   flex: 0 0 auto;
 }
 .attachment-chip { display: flex; align-items: center; gap: 8px; max-width: 100%; padding: 6px 8px; border-radius: 14px; border: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 78%, transparent); }
+.attachment-strip.pending .attachment-chip {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: min(280px, 82%);
+}
 .attachment-chip.cleared { opacity: 0.72; }
 .attachment-chip.cleared .attachment-file-icon { background: color-mix(in srgb, var(--surface) 72%, transparent); color: var(--text-muted); }
 .attachment-preview-link { min-width: 0; display: flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; border: 0; padding: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }

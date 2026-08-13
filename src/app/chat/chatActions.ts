@@ -16,6 +16,12 @@ import {
 } from './chatSendPerformanceTrace';
 import { selectChatConversations } from './liveConversationCatalog';
 import { reportPersistenceError } from '../../infrastructure/persistenceDiagnostics';
+import type { I18nTranslator } from '../../i18n';
+import {
+  collectRemovedPendingProposalIds,
+  reconcileConversationTaskAfterMessageRemoval,
+  removeUserMessageTurn
+} from '../../engines/chatMessageTurnRemoval';
 
 type CreateChatActionHandlersArgs = {
   startupReady: boolean;
@@ -29,6 +35,7 @@ type CreateChatActionHandlersArgs = {
   }) => Promise<unknown>;
   submitToolCommand: (rawInput: string) => Promise<boolean>;
   activeSubmitFingerprintRef: MutableRefObject<string | null>;
+  t?: I18nTranslator['t'];
 };
 
 export function createChatActionHandlers({
@@ -38,8 +45,13 @@ export function createChatActionHandlers({
   derived,
   runReply,
   submitToolCommand,
-  activeSubmitFingerprintRef
+  activeSubmitFingerprintRef,
+  t
 }: CreateChatActionHandlersArgs) {
+  const localize = (
+    key: Parameters<I18nTranslator['t']>[0],
+    fallback: string
+  ) => t ? t(key) : fallback;
   const readLatestSubmitState = () => {
     const chatState = store.chat.readLatestState();
     const personaState = store.persona.readLatestState();
@@ -207,6 +219,54 @@ export function createChatActionHandlers({
       collaboratorId: derived.activeCollaboratorSourceId ?? activeConversation.collaboratorId,
       messages: nextMessages
     });
+  };
+
+  const deleteUserMessage = async (message: ChatMessage) => {
+    if (ui.sending || message.role !== 'user' || message.toolInvocation) return;
+    const latestState = store.chat.readLatestState();
+    const activeConversation = latestState.activeConversationId
+      ? latestState.conversations.find((conversation) => conversation.id === latestState.activeConversationId) ?? null
+      : null;
+    if (!activeConversation) return;
+
+    const writableConversation = await store.chat.ensureConversationWritable(activeConversation.id);
+    if (!writableConversation) {
+      ui.setCommandStatus('读取当前对话历史失败，先别删除，避免误删不完整的整轮消息。', true);
+      return;
+    }
+    const removal = removeUserMessageTurn(writableConversation.messages, message.id);
+    if (!removal) return;
+    if (!ui.confirm(localize(
+      'chat.messageActions.deleteTurnConfirm',
+      '删除这条消息及它引出的整轮回答？之后的对话会保留。'
+    ))) return;
+
+    const pendingProposalIds = new Set(collectRemovedPendingProposalIds(
+      writableConversation.conversation.task,
+      removal.removedMessageIds
+    ));
+    const targetIndex = writableConversation.messages.findIndex((candidate) => candidate.id === message.id);
+    const hasLaterUserTurn = writableConversation.messages
+      .slice(targetIndex + 1)
+      .some((candidate) => candidate.role === 'user' && !candidate.toolInvocation);
+    if (!hasLaterUserTurn) {
+      latestState.pendingWorkspaceProposals
+        .filter((proposal) => proposal.conversationId === activeConversation.id)
+        .forEach((proposal) => pendingProposalIds.add(proposal.id));
+    }
+    latestState.pendingWorkspaceProposals
+      .filter((proposal) => pendingProposalIds.has(proposal.id))
+      .forEach((proposal) => store.chat.removePendingWorkspaceProposal(proposal.id));
+    store.chat.replaceConversationMessages(writableConversation, removal.messages);
+    store.chat.setConversationTask(
+      activeConversation.id,
+      reconcileConversationTaskAfterMessageRemoval(
+        writableConversation.conversation.task,
+        removal.removedMessageIds
+      )
+    );
+    if (ui.editing?.messageId === message.id) ui.cancelEditingMessage();
+    ui.setCommandStatus(localize('chat.command.messageTurnDeleted', '已删除这轮消息。'));
   };
 
   const updateAssistantMessage = async (message: ChatMessage, content: string) => {
@@ -402,6 +462,7 @@ export function createChatActionHandlers({
     handleSubmit,
     commitMessageEdit,
     retryLatestAssistant,
+    deleteUserMessage,
     updateAssistantMessage,
     cacheAssistantSpeech,
     forkConversationFromMessage,

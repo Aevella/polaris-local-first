@@ -346,6 +346,68 @@ describe('chatApiStreamingCollector', () => {
     }]);
   });
 
+  it('collects structured OpenRouter reasoning and native Anthropic signatures for replay', () => {
+    const openRouterCollector = createStreamingReplyCollector('anthropic/claude-sonnet-4.6');
+    openRouterCollector.pushTextChunk(JSON.stringify({
+      choices: [{
+        delta: {
+          reasoning_details: [{
+            type: 'reasoning.text',
+            text: '先检查',
+            signature: 'sig-openrouter-a',
+            index: 0
+          }]
+        }
+      }]
+    }) + '\n', false);
+    openRouterCollector.pushTextChunk(JSON.stringify({
+      choices: [{
+        delta: {
+          reasoning_details: [{
+            type: 'reasoning.text',
+            text: '约束。',
+            index: 0
+          }],
+          content: '结论。'
+        }
+      }]
+    }) + '\n', false);
+
+    const openRouterReply = openRouterCollector.finish();
+    expect(openRouterReply.thinkingText).toBe('先检查约束。');
+    expect(openRouterReply.providerReasoning).toEqual({
+      protocol: 'openai-completions',
+      items: [{
+        type: 'reasoning.text',
+        text: '先检查约束。',
+        signature: 'sig-openrouter-a',
+        index: 0
+      }]
+    });
+
+    const anthropicCollector = createStreamingReplyCollector('claude-sonnet-4-6');
+    anthropicCollector.pushTextChunk(JSON.stringify({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'thinking_delta', thinking: '先检查。' }
+    }) + '\n', false);
+    anthropicCollector.pushTextChunk(JSON.stringify({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'signature_delta', signature: 'sig-anthropic-a' }
+    }) + '\n', false);
+
+    expect(anthropicCollector.finish().providerReasoning).toEqual({
+      protocol: 'anthropic-messages',
+      items: [{
+        type: 'thinking',
+        thinking: '先检查。',
+        signature: 'sig-anthropic-a',
+        index: 0
+      }]
+    });
+  });
+
   it('treats repeated OpenAI-compatible argument snapshots as replacements instead of concatenating JSON objects', () => {
     const collector = createStreamingReplyCollector('test-model');
 

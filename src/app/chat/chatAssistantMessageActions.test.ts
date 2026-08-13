@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ChatActionStoreBindings, ChatDerivedStatePort, ChatUiActionState } from './chatPorts';
 import { createChatActionHandlers } from './chatActions';
 import type { ChatMessage, Conversation } from '../../types/domain';
+import type { PendingWorkspaceProposalRecord } from '../../engines/workspaceBinding';
 
 function message(id: string, role: ChatMessage['role'], content: string, timestamp: number): ChatMessage {
   return { id, role, content, timestamp };
@@ -44,6 +45,7 @@ function createHandlersForConversation(params: {
     deleteConversation: vi.fn(),
     setInputDraft: vi.fn(),
     replaceConversationMessages: vi.fn(),
+    setConversationTask: vi.fn(),
     setConversationActiveProject: vi.fn(),
     upsertPendingWorkspaceProposal: vi.fn(),
     removePendingWorkspaceProposal: vi.fn(),
@@ -53,7 +55,8 @@ function createHandlersForConversation(params: {
     readLatestState: () => ({
       inputDraft: '',
       conversations: [params.conversation],
-      activeConversationId: params.conversation.id
+      activeConversationId: params.conversation.id,
+      pendingWorkspaceProposals: []
     }),
     ...params.chat
   };
@@ -170,5 +173,94 @@ describe('assistant message actions', () => {
     expect(space.clearPendingAttachments).toHaveBeenCalled();
     expect(space.clearPendingCardReference).toHaveBeenCalled();
     expect(chat.setActiveConversation).toHaveBeenCalledWith('conv-branch');
+  });
+});
+
+describe('user message actions', () => {
+  it('deletes the selected user turn and keeps later turns intact', async () => {
+    const userMessage = message('user-1', 'user', '第一问', 1000);
+    const assistantMessage = message('assistant-1', 'assistant', '第一答', 1001);
+    const laterUserMessage = message('user-2', 'user', '第二问', 1002);
+    const laterAssistantMessage = message('assistant-2', 'assistant', '第二答', 1003);
+    const conversation: Conversation = {
+      id: 'conv-delete-turn',
+      title: '删除一轮',
+      collaboratorId: 'pharos',
+      activeProjectId: null,
+      messages: [userMessage, assistantMessage, laterUserMessage, laterAssistantMessage],
+      task: null,
+      pinnedAt: null,
+      updatedAt: 1003
+    };
+    const { chat, handlers, ui } = createHandlersForConversation({ conversation });
+
+    await handlers.deleteUserMessage(userMessage);
+
+    expect(ui.confirm).toHaveBeenCalledWith('删除这条消息及它引出的整轮回答？之后的对话会保留。');
+    expect(chat.replaceConversationMessages).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: 'conv-delete-turn' }),
+      [laterUserMessage, laterAssistantMessage]
+    );
+    expect(chat.setConversationTask).toHaveBeenCalledWith('conv-delete-turn', null);
+    expect(ui.setCommandStatus).toHaveBeenCalledWith('已删除这轮消息。');
+  });
+
+  it('does not mutate messages when deletion is cancelled', async () => {
+    const userMessage = message('user-1', 'user', '不要删', 1000);
+    const conversation: Conversation = {
+      id: 'conv-keep-turn',
+      title: '保留一轮',
+      collaboratorId: 'pharos',
+      messages: [userMessage],
+      pinnedAt: null,
+      updatedAt: 1000
+    };
+    const { chat, handlers } = createHandlersForConversation({
+      conversation,
+      ui: { confirm: vi.fn(() => false) }
+    });
+
+    await handlers.deleteUserMessage(userMessage);
+
+    expect(chat.replaceConversationMessages).not.toHaveBeenCalled();
+    expect(chat.setConversationTask).not.toHaveBeenCalled();
+  });
+
+  it('clears a pending workspace proposal when its latest turn is deleted', async () => {
+    const userMessage = message('user-1', 'user', '创建工作区', 1000);
+    const assistantMessage = message('assistant-1', 'assistant', '等待确认', 1001);
+    const conversation: Conversation = {
+      id: 'conv-delete-proposal',
+      title: '待确认工作区',
+      collaboratorId: 'pharos',
+      messages: [userMessage, assistantMessage],
+      pinnedAt: null,
+      updatedAt: 1001
+    };
+    const proposal = {
+      id: 'proposal-1',
+      conversationId: conversation.id,
+      source: 'model-proposed',
+      requestedActionKinds: ['createRoomProject'],
+      status: 'pending',
+      createdAt: 1001,
+      requestedActions: []
+    } satisfies PendingWorkspaceProposalRecord;
+    const { chat, handlers } = createHandlersForConversation({
+      conversation,
+      chat: {
+        pendingWorkspaceProposals: [proposal],
+        readLatestState: () => ({
+          inputDraft: '',
+          conversations: [conversation],
+          activeConversationId: conversation.id,
+          pendingWorkspaceProposals: [proposal]
+        })
+      }
+    });
+
+    await handlers.deleteUserMessage(userMessage);
+
+    expect(chat.removePendingWorkspaceProposal).toHaveBeenCalledWith('proposal-1');
   });
 });

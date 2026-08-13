@@ -3,6 +3,23 @@ import type { ChatCardReference } from './collection';
 import type { ToolInvocation, ToolLedgerEntry } from './tools';
 import type { VoiceGenerationFormat, VoiceGenerationProviderType } from './persona';
 
+export type ChatProviderReasoningItem = {
+  type: string;
+  index?: number;
+  id?: string;
+  format?: string;
+  text?: string;
+  thinking?: string;
+  summary?: string;
+  data?: string;
+  signature?: string;
+};
+
+export type ChatProviderReasoningState = {
+  protocol: 'anthropic-messages' | 'openai-completions';
+  items: ChatProviderReasoningItem[];
+};
+
 export type ChatMessageVoiceCache = {
   assetId: string;
   name: string;
@@ -35,6 +52,7 @@ export interface ChatMessage {
   assistantName?: string;
   speakerCollaboratorId?: string;
   thinkingText?: string;
+  providerReasoning?: ChatProviderReasoningState;
   voiceCache?: ChatMessageVoiceCache;
   nativeToolCalls?: ChatNativeToolCall[];
   toolInvocation?: ToolInvocation;
@@ -235,4 +253,3 @@ export interface ChatAttachment {
   textContent?: string;
   clearedAt?: number;
 }
-

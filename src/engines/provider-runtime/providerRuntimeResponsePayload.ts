@@ -9,6 +9,12 @@ import { appendAnthropicToolCall, appendOpenAiToolCalls } from './providerRuntim
 import { extractStructuredText, extractTextPayload, extractThinkingPayload } from './providerRuntimeResponseText';
 import { mergeToolCallArgumentsText } from './providerRuntimeToolArguments';
 import { parseOpenAiCompatibleUsage } from './providerRuntimeUsage';
+import {
+  extractProviderReasoningText,
+  mergeProviderReasoningState,
+  normalizeProviderReasoningItem,
+  normalizeProviderReasoningItems
+} from './providerRuntimeReasoningState';
 
 function readNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
@@ -119,6 +125,8 @@ function appendAnthropicContentBlock(target: ReplyAccumulator, block: unknown) {
     type?: unknown;
     text?: unknown;
     thinking?: unknown;
+    signature?: unknown;
+    data?: unknown;
     id?: unknown;
     name?: unknown;
     input?: unknown;
@@ -136,6 +144,23 @@ function appendAnthropicContentBlock(target: ReplyAccumulator, block: unknown) {
           ? parsed.text
           : '';
     if (thinking) target.thinkingText += thinking;
+    const item = normalizeProviderReasoningItem(parsed);
+    if (item) {
+      target.providerReasoning = mergeProviderReasoningState(target.providerReasoning, {
+        protocol: 'anthropic-messages',
+        items: [item]
+      });
+    }
+    return;
+  }
+  if (parsed.type === 'redacted_thinking') {
+    const item = normalizeProviderReasoningItem(parsed);
+    if (item) {
+      target.providerReasoning = mergeProviderReasoningState(target.providerReasoning, {
+        protocol: 'anthropic-messages',
+        items: [item]
+      });
+    }
     return;
   }
   if (parsed.type === 'tool_use') {
@@ -370,6 +395,7 @@ export function appendChunk(target: ReplyAccumulator, payload: unknown) {
         reasoning_content?: unknown;
         reasoning?: unknown;
         thinking?: unknown;
+        reasoning_details?: unknown;
         tool_calls?: unknown;
       };
       message?: {
@@ -377,6 +403,7 @@ export function appendChunk(target: ReplyAccumulator, payload: unknown) {
         reasoning_content?: unknown;
         reasoning?: unknown;
         thinking?: unknown;
+        reasoning_details?: unknown;
         tool_calls?: unknown;
       };
     }>;
@@ -397,10 +424,18 @@ export function appendChunk(target: ReplyAccumulator, payload: unknown) {
   appendOpenAiToolCalls(target, message.tool_calls);
 
   const content = extractTextPayload(message.content);
+  const reasoningDetails = normalizeProviderReasoningItems(message.reasoning_details);
+  if (reasoningDetails.length) {
+    target.providerReasoning = mergeProviderReasoningState(target.providerReasoning, {
+      protocol: 'openai-completions',
+      items: reasoningDetails
+    });
+  }
   const thinking =
     extractThinkingPayload(message.reasoning_content) ||
     extractThinkingPayload(message.reasoning) ||
-    extractThinkingPayload(message.thinking);
+    extractThinkingPayload(message.thinking) ||
+    extractProviderReasoningText(reasoningDetails);
 
   if (content) target.content += content;
   if (thinking) target.thinkingText += thinking;

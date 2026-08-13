@@ -302,4 +302,40 @@ describe('anthropicMessagesAdapter', () => {
 
     expect(request.body.session_id).toBe('conversation-anthropic-1');
   });
+
+  it('uses adaptive thinking and replays signed native reasoning before tool calls', () => {
+    const context = createProviderRuntimeTestContext({ withTools: true, withToolHistory: true });
+    const assistantMessage = context.segments[0]?.messages.find((message) => message.role === 'assistant');
+    if (assistantMessage?.role === 'assistant') {
+      assistantMessage.providerReasoning = {
+        protocol: 'anthropic-messages',
+        items: [{
+          type: 'thinking',
+          thinking: '先检查工具参数。',
+          signature: 'sig-anthropic-a'
+        }]
+      };
+    }
+
+    const request = buildAnthropicRequest({
+      api: createProviderRuntimeTestProvider({
+        protocol: 'anthropic-messages',
+        baseUrl: 'https://api.anthropic.com/v1',
+        path: '/messages',
+        model: 'claude-sonnet-4-6',
+        capabilities: { images: true, streaming: true, thinking: true }
+      }),
+      context,
+      advanced: createProviderRuntimeAdvanced({ maxTokens: '8192', thinkingBudget: '4096' })
+    });
+
+    expect(request.body.thinking).toEqual({ type: 'adaptive' });
+    expect(request.body.output_config).toEqual({ effort: 'medium' });
+    const replayedAssistant = readObject(readArray(request.body.messages)[1]);
+    expect(readArray(replayedAssistant.content)[0]).toEqual({
+      type: 'thinking',
+      thinking: '先检查工具参数。',
+      signature: 'sig-anthropic-a'
+    });
+  });
 });

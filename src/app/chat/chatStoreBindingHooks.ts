@@ -18,6 +18,8 @@ export function useChatConversationStoreBindings() {
     conversations: useChatStore((state) => state.conversations),
     activeConversationId: useChatStore((state) => state.activeConversationId),
     conversationBodyStatuses: useChatStore((state) => state.conversationBodyStatuses),
+    loadedMessageConversationIds: useChatStore((state) => state.loadedMessageConversationIds),
+    loadingMessageConversationIds: useChatStore((state) => state.loadingMessageConversationIds),
     hydrated: useChatStore((state) => state.hydrated),
     setActiveConversation: useChatStore((state) => state.setActiveConversation),
     createConversation: useChatStore((state) => state.createConversation),

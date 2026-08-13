@@ -10,6 +10,11 @@ describe('normalizeAppCustomization', () => {
     expect(normalizeAppCustomization()).toEqual(DEFAULT_APP_CUSTOMIZATION);
   });
 
+  it('keeps an explicit disabled side switch while defaulting legacy state to enabled', () => {
+    expect(normalizeAppCustomization({ showWorldSwitchHandle: false }).showWorldSwitchHandle).toBe(false);
+    expect(normalizeAppCustomization({}).showWorldSwitchHandle).toBe(true);
+  });
+
   it('clamps background controls into the supported range', () => {
     expect(normalizeAppCustomization({
       backgroundOpacity: 9,
@@ -54,6 +59,7 @@ describe('mergeAppCustomizationPatch', () => {
   it('keeps existing cosmetic state while applying a focused patch', () => {
     expect(mergeAppCustomizationPatch(DEFAULT_APP_CUSTOMIZATION, {
       showChatAvatars: true,
+      showWorldSwitchHandle: false,
       starColor: '#d6a4ff',
       starOpacity: 0.62,
       starGlow: 0.8,
@@ -64,6 +70,7 @@ describe('mergeAppCustomizationPatch', () => {
     })).toEqual({
       ...DEFAULT_APP_CUSTOMIZATION,
       showChatAvatars: true,
+      showWorldSwitchHandle: false,
       starColor: '#d6a4ff',
       starOpacity: 0.62,
       starGlow: 0.8,

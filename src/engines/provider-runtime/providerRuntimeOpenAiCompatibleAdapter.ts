@@ -34,6 +34,8 @@ import {
   parseProviderHost
 } from './internal/providerMatching';
 import { resolveOpenRouterSessionId } from './providerRuntimeOpenRouterSession';
+import { buildProviderThinkingRequest } from './providerRuntimeThinking';
+import { reasoningItemsForReplay } from './providerRuntimeReasoningState';
 
 const OPENAI_COMPATIBLE_CHAT_ADAPTER_ID = 'openai-compatible-chat';
 type OpenAiCompatibleCacheControl = { type: 'ephemeral'; ttl?: '1h' };
@@ -61,6 +63,14 @@ function buildOpenAiReasoningContent(
   message: ProviderRuntimeRequestInput['context']['segments'][number]['messages'][number],
   capability: ProviderCapability
 ) {
+  if (
+    capability.output.reasoning.transport === 'openai-reasoning-details'
+    && message.role === 'assistant'
+    && message.providerReasoning?.protocol === 'openai-completions'
+  ) {
+    const reasoningDetails = reasoningItemsForReplay(message.providerReasoning);
+    return reasoningDetails.length ? { reasoning_details: reasoningDetails } : {};
+  }
   if (capability.output.reasoning.replay === 'omit') {
     return {};
   }
@@ -500,9 +510,7 @@ export function buildOpenAiCompatibleRequest(input: ProviderRuntimeRequestInput)
     }
   }
 
-  if (thinkingBudget !== undefined && providerCapability.thinking.sendBudget) {
-    body.thinking = { budget_tokens: thinkingBudget };
-  }
+  Object.assign(body, buildProviderThinkingRequest(providerCapability, thinkingBudget));
   if (
     providerCapability.streaming.text &&
     !(providerCapability.streaming.disableWhenToolsPresent && (context.tools?.length ?? 0) > 0)

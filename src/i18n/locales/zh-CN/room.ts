@@ -7,6 +7,8 @@ export const room = {
   'room.settings.userAvatarLabel': '你',
   'room.settings.chatAvatarLayout': '对话式布局',
   'room.settings.chatAvatarLayoutDetail': '像聊天软件一样：显示头像和名字，回复拆成多条短气泡逐条出现，只影响这个协作者的房间',
+  'room.settings.worldSwitchHandle': '侧边快捷切换',
+  'room.settings.worldSwitchHandleDetail': '右侧半按钮：点按切换对话和房间，长按恢复主题；关闭后不再显示，也不会留下点击区域',
   'room.settings.background.imageOnly': '这里只收图片，先挑一张背景图。',
   'room.settings.background.saveFailed': '保存背景图失败',
   'room.settings.background.toggle': '使用自定义背景',

@@ -64,6 +64,10 @@ function buildSafeSliceOffsets(value: string) {
   return offsets;
 }
 
+export function buildSmoothStreamingSliceOffsets(value: string, enabled: boolean) {
+  return enabled ? buildSafeSliceOffsets(value) : null;
+}
+
 function sliceBySafeOffset(value: string, offsets: number[], end: number) {
   return value.slice(0, offsets[end] ?? value.length);
 }
@@ -74,21 +78,21 @@ export function shouldSmoothStreamingMessageContent(content: string, enabled: bo
 
 function useSmoothStreamingText(messageId: string, content: string, enabled: boolean) {
   const [displayContent, setDisplayContent] = useState(content);
-  const displayedLengthRef = useRef(buildSafeSliceOffsets(content).length - 1);
+  const displayedLengthRef = useRef<number | null>(null);
   const activeMessageIdRef = useRef(messageId);
 
   useEffect(() => {
-    const safeOffsets = buildSafeSliceOffsets(content);
-    const contentLength = safeOffsets.length - 1;
-
-    if (activeMessageIdRef.current !== messageId) {
+    const safeOffsets = buildSmoothStreamingSliceOffsets(content, enabled);
+    if (!safeOffsets) {
       activeMessageIdRef.current = messageId;
-      displayedLengthRef.current = contentLength;
+      displayedLengthRef.current = null;
       setDisplayContent(content);
       return;
     }
 
-    if (!enabled) {
+    const contentLength = safeOffsets.length - 1;
+    if (activeMessageIdRef.current !== messageId || displayedLengthRef.current === null) {
+      activeMessageIdRef.current = messageId;
       displayedLengthRef.current = contentLength;
       setDisplayContent(content);
       return;
@@ -102,17 +106,19 @@ function useSmoothStreamingText(messageId: string, content: string, enabled: boo
 
     let frameId = 0;
     const tick = () => {
-      const backlog = contentLength - displayedLengthRef.current;
+      const displayedLength = displayedLengthRef.current ?? contentLength;
+      const backlog = contentLength - displayedLength;
       if (backlog <= 0) {
         setDisplayContent(content);
         return;
       }
 
       const step = backlog > 96 ? 10 : backlog > 48 ? 6 : backlog > 16 ? 3 : 1;
-      displayedLengthRef.current = Math.min(contentLength, displayedLengthRef.current + step);
-      setDisplayContent(sliceBySafeOffset(content, safeOffsets, displayedLengthRef.current));
+      const nextDisplayedLength = Math.min(contentLength, displayedLength + step);
+      displayedLengthRef.current = nextDisplayedLength;
+      setDisplayContent(sliceBySafeOffset(content, safeOffsets, nextDisplayedLength));
 
-      if (displayedLengthRef.current < contentLength) {
+      if (nextDisplayedLength < contentLength) {
         frameId = window.setTimeout(tick, backlog > 48 ? 18 : 28);
       }
     };

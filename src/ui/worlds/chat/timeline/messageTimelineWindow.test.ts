@@ -25,7 +25,7 @@ function buildItem(index: number, role: ChatMessage['role'] = 'assistant'): Time
 
 describe('resolveTimelineWindow', () => {
   it('keeps short timelines whole', () => {
-    const items = Array.from({ length: 32 }, (_, index) => buildItem(index));
+    const items = Array.from({ length: 8 }, (_, index) => buildItem(index));
     const window = resolveTimelineWindow(items, 'manual', null, {
       scrollTop: 0,
       viewportHeight: 520,
@@ -33,7 +33,7 @@ describe('resolveTimelineWindow', () => {
     });
 
     expect(window.isWindowed).toBe(false);
-    expect(window.visibleItems).toHaveLength(32);
+    expect(window.visibleItems).toHaveLength(8);
     expect(window.topSpacerHeight).toBe(0);
     expect(window.bottomSpacerHeight).toBe(0);
   });
@@ -65,6 +65,7 @@ describe('resolveTimelineWindow', () => {
     expect(window.isWindowed).toBe(true);
     expect(window.end).toBe(96);
     expect(window.visibleItems[window.visibleItems.length - 1]?.message.id).toBe('message-95');
+    expect(window.visibleItems.length).toBeLessThan(20);
     expect(window.topSpacerHeight).toBeGreaterThan(0);
     expect(window.bottomSpacerHeight).toBe(0);
   });
@@ -83,5 +84,23 @@ describe('resolveTimelineWindow', () => {
     expect(window.start).toBeLessThanOrEqual(12);
     expect(window.end).toBeGreaterThan(12);
     expect(window.bottomSpacerHeight).toBeGreaterThan(0);
+  });
+
+  it('does not let one tall measured reply inflate every unmeasured spacer row', () => {
+    const items = Array.from({ length: 96 }, (_, index) => buildItem(index));
+    const baseline = resolveTimelineWindow(items, 'reply-stage', 'message-72', {
+      scrollTop: 12_000,
+      viewportHeight: 640,
+      rowHeights: {}
+    });
+    const withTallReply = resolveTimelineWindow(items, 'reply-stage', 'message-72', {
+      scrollTop: 12_000,
+      viewportHeight: 640,
+      rowHeights: {
+        'message-72': 3_600
+      }
+    });
+
+    expect(withTallReply.topSpacerHeight).toBe(baseline.topSpacerHeight);
   });
 });

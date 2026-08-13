@@ -454,6 +454,7 @@ describe('migratePersistedSpaceState', () => {
       customization: {
         ...DEFAULT_APP_CUSTOMIZATION,
         showChatAvatars: false,
+        showWorldSwitchHandle: false,
         backgroundAssetId: 'asset-current',
         customFontAssetIds: [],
         customFontScopeAssignments: {
@@ -476,6 +477,8 @@ describe('migratePersistedSpaceState', () => {
     expect(result.collaboratorThemes?.pharos?.theme?.savedSkins).toEqual([]);
     expect(result.collaboratorThemes?.pharos?.theme?.customCSS).toContain('hotpink');
     expect(result.collaboratorThemes?.pharos?.customization?.backgroundAssetId).toBe('asset-current');
+    expect(result.customization?.showWorldSwitchHandle).toBe(false);
+    expect(result.collaboratorThemes?.pharos?.customization?.showWorldSwitchHandle).toBe(false);
   });
 
   it('serializes the committed theme while a preview is active', () => {

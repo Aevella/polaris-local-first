@@ -29,6 +29,14 @@ function createEmptyHeader(): McpServerHeader {
   };
 }
 
+function usesCleartextHttp(value: string) {
+  try {
+    return new URL(value.trim()).protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
 function mergeDiscoveredTools(
   currentTools: McpServerToolConfig[],
   discoveredTools: McpResolvedToolDefinition[]
@@ -62,6 +70,7 @@ export function McpServerEditorSheet({
   const [tools, setTools] = useState<McpServerToolConfig[]>([]);
   const [isActive, setIsActive] = useState(true);
   const [testState, setTestState] = useState<McpConnectionTestState>({ status: 'idle' });
+  const cleartextHttpActive = usesCleartextHttp(url);
 
   useEffect(() => {
     if (!open) return;
@@ -241,6 +250,13 @@ export function McpServerEditorSheet({
               placeholder="http://localhost:3000"
             />
           </label>
+
+          {cleartextHttpActive ? (
+            <div className="mcp-cleartext-warning" role="status">
+              <strong>{t('settings.mcp.cleartextWarningTitle')}</strong>
+              <span>{t('settings.mcp.cleartextWarningDetail')}</span>
+            </div>
+          ) : null}
 
           <div className={`mcp-test-panel ${testState.status !== 'idle' ? `mcp-test-panel--${testState.status}` : ''}`}>
             <button

@@ -108,10 +108,11 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
   const [codeCardPreview, setCodeCardPreview] = useState<ChatCodeCardPreview>(null);
   const rowHeightsRef = useRef<Record<string, number>>({});
   const viewportRafRef = useRef<number | null>(null);
+  const rowMetricsRafRef = useRef<number | null>(null);
   const [rowMetricsVersion, setRowMetricsVersion] = useState(0);
   const [timelineViewport, setTimelineViewport] = useState<TimelineViewport>({
     scrollTop: 0,
-    viewportHeight: 0
+    viewportHeight: typeof window === 'undefined' ? 0 : window.innerHeight
   });
   const assistantAvatarUrl = useAssetObjectUrl(stablePayload.persona?.assistantAvatarAssetId ?? undefined, true);
   const userAvatarUrl = useAssetObjectUrl(stablePayload.persona?.userAvatarAssetId ?? undefined, true);
@@ -173,11 +174,12 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
     if (!Number.isFinite(height) || height <= 0) return;
     const previousHeight = rowHeightsRef.current[messageId];
     if (previousHeight !== undefined && Math.abs(previousHeight - height) < 1) return;
-    rowHeightsRef.current = {
-      ...rowHeightsRef.current,
-      [messageId]: height
-    };
-    setRowMetricsVersion((version) => version + 1);
+    rowHeightsRef.current[messageId] = height;
+    if (rowMetricsRafRef.current !== null) return;
+    rowMetricsRafRef.current = window.requestAnimationFrame(() => {
+      rowMetricsRafRef.current = null;
+      setRowMetricsVersion((version) => version + 1);
+    });
   }, []);
   const latestMessageId = messages[messages.length - 1]?.id ?? null;
   const latestUserMessageId = getLatestUserMessageId(messages);
@@ -262,6 +264,10 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
     if (viewportRafRef.current !== null) {
       window.cancelAnimationFrame(viewportRafRef.current);
       viewportRafRef.current = null;
+    }
+    if (rowMetricsRafRef.current !== null) {
+      window.cancelAnimationFrame(rowMetricsRafRef.current);
+      rowMetricsRafRef.current = null;
     }
     if (taskCompletionTimeoutRef.current !== null) {
       window.clearTimeout(taskCompletionTimeoutRef.current);
@@ -420,6 +426,7 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
     codeCardAction: actions.codeCardAction,
     retry: actions.retry,
     editMessage: actions.editMessage,
+    deleteUserMessage: actions.deleteUserMessage,
     editAssistantMessage: actions.editAssistantMessage,
     cacheAssistantSpeech: actions.cacheAssistantSpeech,
     forkFromMessage: actions.forkFromMessage,
@@ -439,6 +446,7 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
     actions.cacheAssistantSpeech,
     actions.editAssistantMessage,
     actions.editMessage,
+    actions.deleteUserMessage,
     actions.forkFromMessage,
     actions.openCodeCard,
     actions.openToolbox,

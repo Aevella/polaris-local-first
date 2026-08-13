@@ -2,7 +2,8 @@ import { formatAttachmentSize } from '../../../../engines/attachmentFormat';
 import type { ChatAttachment } from '../../../../types/domain';
 import { useAssetObjectUrl } from '../../../useAssetObjectUrl';
 import { useI18n } from '../../../../i18n';
-import { canOpenImagePreviewLink, useNearViewportAssetLoading } from '../ChatAttachmentStrip';
+import { canOpenImagePreviewLink } from '../ChatAttachmentStrip';
+import { useNearViewportAssetLoading } from '../../../media/chatAttachmentMedia';
 
 type MessageGeneratedImagesProps = {
   attachments: ChatAttachment[];

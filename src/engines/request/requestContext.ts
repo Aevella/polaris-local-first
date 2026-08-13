@@ -1,5 +1,6 @@
 import type {
   ChatNativeToolCall,
+  ChatProviderReasoningState,
   PersonaMemoryReferenceDoc,
   ToolLedgerEntry,
   ToolInvocationStatus,
@@ -59,6 +60,7 @@ export type AssistantContextMessage = {
   content: AssistantMessageContent;
   cachePrefixEligible?: boolean;
   thinkingText?: string;
+  providerReasoning?: ChatProviderReasoningState;
   toolCalls?: AssistantContextToolCall[];
   toolResult?: AssistantContextToolResult;
   promptPartName?: AssistantPromptPartName;
@@ -362,6 +364,9 @@ export function assembleAssistantContext(params: AssembleAssistantContextParams)
             thinkingText: message.role === 'assistant' && message.thinkingText?.trim()
               ? message.thinkingText
               : undefined,
+            ...(message.role === 'assistant' && message.providerReasoning
+              ? { providerReasoning: message.providerReasoning }
+              : {}),
             toolCalls: message.role === 'assistant' ? resolvedToolCalls : undefined
           };
           return message.id === latestUserMessageId && latestUserContextMessages.length

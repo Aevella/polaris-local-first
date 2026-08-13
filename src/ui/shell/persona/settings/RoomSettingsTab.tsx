@@ -57,6 +57,7 @@ export function RoomSettingsTab({
   });
   const roomName = activePersona?.name.trim() || t('room.settings.fallbackName');
   const showChatAvatars = themeBindings.customization.showChatAvatars;
+  const showWorldSwitchHandle = themeBindings.customization.showWorldSwitchHandle;
   const canEditAvatars = Boolean(activePersona && onSelectPersonaAvatar && onSetPersonaAvatarIcon && onSetPersonaAvatarShape && onSetPersonaAvatarSize);
 
   return (
@@ -121,6 +122,13 @@ export function RoomSettingsTab({
                 </div>
               </div>
             ) : null}
+
+            <PersonaToggle
+              label={t('room.settings.worldSwitchHandle')}
+              description={t('room.settings.worldSwitchHandleDetail')}
+              checked={showWorldSwitchHandle}
+              onToggle={() => themeBindings.setCustomization({ showWorldSwitchHandle: !showWorldSwitchHandle })}
+            />
           </section>
 
           <RoomBackgroundSettingsSection

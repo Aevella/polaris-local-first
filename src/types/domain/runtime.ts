@@ -30,6 +30,7 @@ export interface AppDisplayPreferences {
 
 export interface AppCustomization {
   showChatAvatars: boolean;
+  showWorldSwitchHandle: boolean;
   starColor: string | null;
   starOpacity: number;
   starGlow: number;

@@ -6,7 +6,7 @@ Chat runs conversation workflows with collaborators, model providers, context, a
 
 ## Owns
 
-- Conversation submit, stop, retry, edit, fork, and continuation flows.
+- Conversation submit, stop, retry, edit, full-turn deletion, fork, and continuation flows.
 - Message timeline projection and body loading status.
 - Request lifecycle coordination, streaming state, tool invocation lifecycle, and task settlement.
 - Writable conversation-body intent before mutating messages.
@@ -41,6 +41,8 @@ Chat runs conversation workflows with collaborators, model providers, context, a
 - Chat catalog rows, conversation body rows, active pointer state, and task projections.
 - Tool call records and tool result evidence.
 - Message edits and replacement slices through writable conversation bodies.
+- Provider reasoning state retained with assistant messages, including on-demand translation presented as a separate derived view.
+- Generated image and audio attachments projected from message and tool-result evidence.
 
 ## Important Failure States
 
@@ -49,6 +51,7 @@ Chat runs conversation workflows with collaborators, model providers, context, a
 - Tool execution returns an explicit error or needs confirmation.
 - A settled tool exchange is replayed twice or a pending invocation is projected as completed evidence.
 - A historical lifecycle row stays out of live hydration instead of becoming an empty live conversation.
+- A turn deletion removes only part of a user turn, or leaves pending proposals and task state pointing at removed messages.
 
 ## Tests And Verification
 

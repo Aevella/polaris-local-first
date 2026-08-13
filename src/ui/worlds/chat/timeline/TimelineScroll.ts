@@ -8,6 +8,7 @@ const TOP_JUMP_THRESHOLD = 300;
 const USER_REPLY_STAGE_TOP_OFFSET = 18;
 const PROGRAMMATIC_SCROLL_GUARD_MS = 160;
 const PROGRAMMATIC_SMOOTH_SCROLL_GUARD_MS = 420;
+const MAX_SMOOTH_JUMP_VIEWPORTS = 2;
 
 export type FollowMode = 'bottom' | 'reply-stage' | 'manual';
 
@@ -43,6 +44,17 @@ export function resolveReplyStageScrollTop(args: {
     Math.max(0, args.rowOffsetTop - USER_REPLY_STAGE_TOP_OFFSET),
     args.maxScrollTop
   );
+}
+
+export function resolveTimelineJumpBehavior(args: {
+  currentTop: number;
+  targetTop: number;
+  viewportHeight: number;
+}): ScrollBehavior {
+  if (args.viewportHeight <= 0) return 'auto';
+  return Math.abs(args.targetTop - args.currentTop) <= args.viewportHeight * MAX_SMOOTH_JUMP_VIEWPORTS
+    ? 'smooth'
+    : 'auto';
 }
 
 function getLatestMessageId(messages: ChatMessage[]) {
@@ -399,7 +411,11 @@ export function useTimelineScroll({
       setFollowMode('manual');
       setShowJumpToLatest(getMaxScrollTop(container) > JUMP_THRESHOLD);
       setShowJumpToTop(false);
-      scrollToTop('smooth');
+      scrollToTop(resolveTimelineJumpBehavior({
+        currentTop: container.scrollTop,
+        targetTop: 0,
+        viewportHeight: container.clientHeight
+      }));
     },
     jumpToLatest: () => {
       const latestUserMessageId = getLatestUserMessageId(messages);
@@ -411,7 +427,14 @@ export function useTimelineScroll({
       }
       setFollowMode('bottom');
       setShowJumpToLatest(false);
-      scrollToBottom('smooth');
+      const container = containerRef.current;
+      scrollToBottom(container
+        ? resolveTimelineJumpBehavior({
+            currentTop: container.scrollTop,
+            targetTop: getMaxScrollTop(container),
+            viewportHeight: container.clientHeight
+          })
+        : 'auto');
     },
     showJumpToLatest,
     showJumpToTop

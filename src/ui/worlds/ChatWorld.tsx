@@ -69,7 +69,7 @@ function ChatWorldLayout({ shell }: ChatWorldProps) {
 
   return (
     <section
-      className={`world world-chat timeline-${presentation.timelineDensity} ${composer.dragActive ? 'drag-active' : ''}`}
+      className={`world world-chat timeline-${presentation.timelineDensity} ${composer.dragActive ? 'drag-active' : ''} ${thinkingSummaryMessage ? 'thinking-summary-open' : ''}`}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -87,6 +87,7 @@ function ChatWorldLayout({ shell }: ChatWorldProps) {
             message={thinkingSummaryMessage}
             messages={stablePayload.messages}
             assistantName={presentation.fallbackAssistantName}
+            onTranslate={actions.translateThinking}
             onClose={actions.closeThinkingSummary}
           />
         </Suspense>

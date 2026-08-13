@@ -254,6 +254,8 @@ export const settings = {
   'settings.mcp.descriptionPlaceholder': 'Leave a short purpose note for this server',
   'settings.mcp.transportLabel': 'Transport',
   'settings.mcp.urlLabel': 'Server URL',
+  'settings.mcp.cleartextWarningTitle': 'This server uses cleartext HTTP',
+  'settings.mcp.cleartextWarningDetail': 'Polaris will allow the connection, but network intermediaries may read or alter request content and custom headers. Prefer HTTPS when available.',
   'settings.mcp.testNameFallback': 'MCP test server',
   'settings.mcp.testMissingUrl': 'Fill in the server URL first.',
   'settings.mcp.testNoTools': 'Connected, but tools/list did not return any tools.',

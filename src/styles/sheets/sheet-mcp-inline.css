@@ -177,6 +177,24 @@
   border-color: color-mix(in srgb, #d9b45f 40%, transparent);
   background: color-mix(in srgb, #f1d383 14%, rgba(255,255,255,0.82));
 }
+.mcp-cleartext-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, #d9b45f 42%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, #f1d383 14%, rgba(255,255,255,0.82));
+}
+.mcp-cleartext-warning strong {
+  color: var(--sheet-readable-text);
+  font-size: var(--type-small);
+}
+.mcp-cleartext-warning span {
+  color: var(--sheet-readable-muted);
+  font-size: var(--type-caption);
+  line-height: 1.45;
+}
 .mcp-test-panel--error {
   border-color: color-mix(in srgb, #d98a8a 42%, transparent);
   background: color-mix(in srgb, #f4d9d9 18%, rgba(255,255,255,0.82));

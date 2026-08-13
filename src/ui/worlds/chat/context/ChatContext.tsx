@@ -5,6 +5,7 @@ import type { ChatAttachment, ChatCardReference, ChatMessage, ChatMessageVoiceCa
 import type { PolarisToolPromptGroup } from '../../../../engines/tool-protocol/assistantToolProtocolTypes';
 import type { ChatCommandStatus, ChatEditingState, ChatStreamingState, ChatSubmitFlightState } from './ChatUiState';
 import type { ChatConversationBodyStatus } from '../../../../stores/chatConversationBodyStatus';
+import type { ThinkingTranslationResult, ThinkingTranslationSection } from '../../../../engines/thinkingTranslation';
 
 // Split map lives in CHAT_CONTEXT_SPLIT.md so future拆分 has a stable field-level boundary.
 export type ChatContextPresentationValue = {
@@ -69,6 +70,7 @@ export type ChatContextActionsValue = {
   stopGeneration: () => void;
   retry: (message: ChatMessage) => Promise<void>;
   editMessage: (message: ChatMessage) => void;
+  deleteUserMessage: (message: ChatMessage) => void;
   editAssistantMessage: (message: ChatMessage, content: string) => void;
   cacheAssistantSpeech: (message: ChatMessage, voiceCache: ChatMessageVoiceCache) => void;
   forkFromMessage: (message: ChatMessage) => void;
@@ -78,6 +80,11 @@ export type ChatContextActionsValue = {
   cancelEdit: () => void;
   toggleThinkingCollapsed: (messageId: string) => void;
   openThinkingSummary: (message: ChatMessage) => void;
+  translateThinking: (
+    sections: ThinkingTranslationSection[],
+    targetLanguage: string,
+    signal?: AbortSignal
+  ) => Promise<ThinkingTranslationResult>;
   toggleCodeExpanded: (messageId: string) => void;
   applyToolPreview: (message: ChatMessage) => void;
   saveToolPreview: (message: ChatMessage) => void;

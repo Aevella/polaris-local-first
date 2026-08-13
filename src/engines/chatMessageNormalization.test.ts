@@ -98,4 +98,30 @@ describe('chatMessageNormalization', () => {
       ]
     });
   });
+
+  it('keeps only replayable provider reasoning fields in persisted messages', () => {
+    expect(normalizeChatMessage({
+      id: 'assistant-reasoning',
+      role: 'assistant',
+      content: 'done',
+      timestamp: 1,
+      providerReasoning: {
+        protocol: 'openai-completions',
+        items: [{
+          type: 'reasoning.text',
+          index: 0,
+          text: '先检查。',
+          signature: 'sig-a'
+        }]
+      }
+    }).providerReasoning).toEqual({
+      protocol: 'openai-completions',
+      items: [{
+        type: 'reasoning.text',
+        index: 0,
+        text: '先检查。',
+        signature: 'sig-a'
+      }]
+    });
+  });
 });

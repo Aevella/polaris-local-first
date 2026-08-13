@@ -180,6 +180,7 @@ export type ChatActionStoreBindings = {
     deleteConversation: (conversationId: string) => void;
     setInputDraft: (value: string) => void;
     replaceConversationMessages: (target: WritableConversationBody, messages: ChatMessage[]) => void;
+    setConversationTask: (conversationId: string, task: ConversationTaskState | null) => void;
     setConversationActiveProject: (conversationId: string, projectId: string | null) => void;
     upsertPendingWorkspaceProposal: (proposal: PendingWorkspaceProposalRecord) => void;
     removePendingWorkspaceProposal: (proposalId: string) => void;
@@ -190,6 +191,7 @@ export type ChatActionStoreBindings = {
       inputDraft: string;
       conversations: Conversation[];
       activeConversationId: string | null;
+      pendingWorkspaceProposals: PendingWorkspaceProposalRecord[];
     };
   };
   persona: {

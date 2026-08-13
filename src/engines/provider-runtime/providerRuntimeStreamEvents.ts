@@ -6,6 +6,11 @@ import type {
 import { extractStructuredText } from './providerRuntimeResponseText';
 import { mergeToolCallArgumentsText } from './providerRuntimeToolArguments';
 import { parseOpenAiCompatibleUsage } from './providerRuntimeUsage';
+import {
+  extractProviderReasoningText,
+  normalizeProviderReasoningItem,
+  normalizeProviderReasoningItems
+} from './providerRuntimeReasoningState';
 
 function readObject(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -208,6 +213,22 @@ function parseAnthropicStreamEvent(payload: Record<string, unknown>): CanonicalP
       if (text) {
         events.push({ type: 'reasoning.delta', text, mode: 'text' });
       }
+      const item = normalizeProviderReasoningItem(block, blockIndex);
+      if (item) {
+        events.push({
+          type: 'reasoning.state',
+          state: { protocol: 'anthropic-messages', items: [item] }
+        });
+      }
+    }
+    if (block?.type === 'redacted_thinking') {
+      const item = normalizeProviderReasoningItem(block, blockIndex);
+      if (item) {
+        events.push({
+          type: 'reasoning.state',
+          state: { protocol: 'anthropic-messages', items: [item] }
+        });
+      }
     }
   }
   if (type === 'content_block_delta') {
@@ -216,6 +237,22 @@ function parseAnthropicStreamEvent(payload: Record<string, unknown>): CanonicalP
     }
     if (delta?.type === 'thinking_delta' && typeof delta.thinking === 'string') {
       events.push({ type: 'reasoning.delta', text: delta.thinking, mode: 'text' });
+      events.push({
+        type: 'reasoning.state',
+        state: {
+          protocol: 'anthropic-messages',
+          items: [{ type: 'thinking', index: blockIndex, thinking: delta.thinking }]
+        }
+      });
+    }
+    if (delta?.type === 'signature_delta' && typeof delta.signature === 'string') {
+      events.push({
+        type: 'reasoning.state',
+        state: {
+          protocol: 'anthropic-messages',
+          items: [{ type: 'thinking', index: blockIndex, signature: delta.signature }]
+        }
+      });
     }
     if (delta?.type === 'input_json_delta' && typeof delta.partial_json === 'string') {
       events.push({ type: 'tool_call.delta', id: '', argumentsDelta: delta.partial_json, index: blockIndex });
@@ -248,9 +285,19 @@ function parseOpenAiCompatibleStreamEvent(payload: Record<string, unknown>): Can
     if (typeof content === 'string' && content) {
       events.push({ type: 'text.delta', text: content });
     }
+    const reasoningDetails = normalizeProviderReasoningItems(message.reasoning_details);
+    if (reasoningDetails.length) {
+      events.push({
+        type: 'reasoning.state',
+        state: { protocol: 'openai-completions', items: reasoningDetails }
+      });
+    }
     const reasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
-    if (typeof reasoning === 'string' && reasoning) {
-      events.push({ type: 'reasoning.delta', text: reasoning, mode: 'text' });
+    const reasoningText = typeof reasoning === 'string'
+      ? reasoning
+      : extractProviderReasoningText(reasoningDetails);
+    if (reasoningText) {
+      events.push({ type: 'reasoning.delta', text: reasoningText, mode: 'text' });
     }
     if (Array.isArray(message.tool_calls)) {
       message.tool_calls.forEach((toolCall) => {

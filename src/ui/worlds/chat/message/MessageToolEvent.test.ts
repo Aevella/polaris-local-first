@@ -238,6 +238,40 @@ describe('MessageToolEvent', () => {
     expect(html).not.toContain('已复制详情');
   });
 
+  it('keeps audio results out of the expanded receipt while retaining ordinary files', () => {
+    const html = renderToolEvent(createToolMessage({
+      toolInvocation: {
+        id: 'tool-mcp-audio',
+        kind: 'invokeMcpTool',
+        status: 'failed',
+        title: '调用语音工具',
+        summary: '调用失败',
+        detailText: ''
+      },
+      attachments: [
+        {
+          id: 'audio-1',
+          assetId: 'asset-audio-1',
+          kind: 'file',
+          name: 'reply.mp3',
+          mimeType: 'audio/mpeg',
+          size: 2048
+        },
+        {
+          id: 'file-1',
+          assetId: 'asset-file-1',
+          kind: 'file',
+          name: 'notes.txt',
+          mimeType: 'text/plain',
+          size: 128
+        }
+      ]
+    }));
+
+    expect(html).not.toContain('reply.mp3');
+    expect(html).toContain('notes.txt');
+  });
+
   it('builds a short preview from the beginning of raw theme CSS', () => {
     expect(buildThemeCssDetailPreview('a\nb\nc', 2)).toEqual({
       preview: 'a\nb\n...',

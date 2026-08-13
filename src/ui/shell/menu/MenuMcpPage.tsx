@@ -42,10 +42,11 @@ export function MenuMcpPage({
     [language, mcpServers]
   );
   const editingServer = mcpServers.find((server) => server.id === editingServerId) ?? null;
+  const inlineSheetOpen = creatingOpen || Boolean(editingServer) || jsonEditorOpen || timeoutSheetOpen;
   const enabledCount = mcpServers.filter((server) => server.isActive).length;
 
   return (
-    <div className="menu-sheet-page">
+    <div className={`menu-sheet-page mcp-menu-page ${inlineSheetOpen ? 'mcp-inline-sheet-open' : ''}`}>
       <div className="menu-sheet-header">
         <button type="button" className="menu-sheet-back" aria-label={t('settings.pageBack')} onClick={onBack}>
           <span className="menu-sheet-back-icon"><Icon name="chevron" size={26} /></span>

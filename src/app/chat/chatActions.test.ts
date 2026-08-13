@@ -106,6 +106,7 @@ describe('createChatActionHandlers', () => {
           deleteConversation: vi.fn(),
           setInputDraft: vi.fn(),
           replaceConversationMessages: vi.fn(),
+          setConversationTask: vi.fn(),
           updateMessage: vi.fn(),
           setConversationActiveProject: vi.fn(),
           upsertPendingWorkspaceProposal: vi.fn(),
@@ -116,7 +117,8 @@ describe('createChatActionHandlers', () => {
           readLatestState: () => ({
             inputDraft: mocks.chatState.inputDraft,
             conversations: mocks.chatState.conversations as never[],
-            activeConversationId: mocks.chatState.activeConversationId
+            activeConversationId: mocks.chatState.activeConversationId,
+            pendingWorkspaceProposals: []
           })
         },
         persona: {
@@ -216,6 +218,7 @@ describe('createChatActionHandlers', () => {
           deleteConversation: vi.fn(),
           setInputDraft: vi.fn(),
           replaceConversationMessages: vi.fn(),
+          setConversationTask: vi.fn(),
           updateMessage: vi.fn(),
           setConversationActiveProject: vi.fn(),
           upsertPendingWorkspaceProposal: vi.fn(),
@@ -226,7 +229,8 @@ describe('createChatActionHandlers', () => {
           readLatestState: () => ({
             inputDraft: mocks.chatState.inputDraft,
             conversations: mocks.chatState.conversations as never[],
-            activeConversationId: mocks.chatState.activeConversationId
+            activeConversationId: mocks.chatState.activeConversationId,
+            pendingWorkspaceProposals: []
           })
         },
         persona: {
@@ -332,6 +336,7 @@ describe('createChatActionHandlers', () => {
           deleteConversation: vi.fn(),
           setInputDraft: vi.fn(),
           replaceConversationMessages: vi.fn(),
+          setConversationTask: vi.fn(),
           updateMessage: vi.fn(),
           setConversationActiveProject: vi.fn(),
           upsertPendingWorkspaceProposal: vi.fn(),
@@ -342,7 +347,8 @@ describe('createChatActionHandlers', () => {
           readLatestState: () => ({
             inputDraft: mocks.chatState.inputDraft,
             conversations: mocks.chatState.conversations as never[],
-            activeConversationId: mocks.chatState.activeConversationId
+            activeConversationId: mocks.chatState.activeConversationId,
+            pendingWorkspaceProposals: []
           })
         },
         persona: {
@@ -426,6 +432,7 @@ describe('createChatActionHandlers', () => {
           deleteConversation: vi.fn(),
           setInputDraft: vi.fn(),
           replaceConversationMessages: vi.fn(),
+          setConversationTask: vi.fn(),
           updateMessage: vi.fn(),
           setConversationActiveProject: vi.fn(),
           upsertPendingWorkspaceProposal: vi.fn(),
@@ -436,7 +443,8 @@ describe('createChatActionHandlers', () => {
           readLatestState: () => ({
             inputDraft: mocks.chatState.inputDraft,
             conversations: mocks.chatState.conversations as never[],
-            activeConversationId: mocks.chatState.activeConversationId
+            activeConversationId: mocks.chatState.activeConversationId,
+            pendingWorkspaceProposals: []
           })
         },
         persona: {
@@ -531,6 +539,7 @@ describe('createChatActionHandlers', () => {
           deleteConversation: vi.fn(),
           setInputDraft: vi.fn(),
           replaceConversationMessages,
+          setConversationTask: vi.fn(),
           updateMessage: vi.fn(),
           setConversationActiveProject: vi.fn(),
           upsertPendingWorkspaceProposal: vi.fn(),
@@ -541,7 +550,8 @@ describe('createChatActionHandlers', () => {
           readLatestState: () => ({
             inputDraft: '',
             conversations: [],
-            activeConversationId: null
+            activeConversationId: null,
+            pendingWorkspaceProposals: []
           })
         },
         persona: {

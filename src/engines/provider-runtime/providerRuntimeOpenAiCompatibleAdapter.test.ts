@@ -581,4 +581,57 @@ describe('openAiCompatibleChatAdapter', () => {
       }
     ]);
   });
+
+  it('uses OpenRouter reasoning and replays structured reasoning details automatically', () => {
+    const context = createProviderRuntimeTestContext({ withTools: true, withToolHistory: true });
+    const assistantMessage = context.segments[0]?.messages.find((message) => message.role === 'assistant');
+    if (assistantMessage?.role === 'assistant') {
+      assistantMessage.providerReasoning = {
+        protocol: 'openai-completions',
+        items: [{
+          type: 'reasoning.text',
+          index: 0,
+          text: '先检查工具参数。',
+          signature: 'sig-openrouter-a'
+        }]
+      };
+    }
+
+    const request = buildOpenAiCompatibleRequest({
+      api: createProviderRuntimeTestProvider({
+        baseUrl: 'https://openrouter.ai/api/v1',
+        path: '/chat/completions',
+        model: 'anthropic/claude-sonnet-4.6',
+        capabilities: { images: true, streaming: true, thinking: true }
+      }),
+      context,
+      advanced: createProviderRuntimeAdvanced({ thinkingBudget: '4096' })
+    });
+
+    expect(request.body.reasoning).toEqual({ max_tokens: 4096, exclude: false });
+    expect(request.body.thinking).toBeUndefined();
+    expect(firstAssistantMessage(request)).toEqual(expect.objectContaining({
+      reasoning_details: [{
+        type: 'reasoning.text',
+        text: '先检查工具参数。',
+        signature: 'sig-openrouter-a'
+      }]
+    }));
+  });
+
+  it('uses Anthropic-compatible adaptive thinking for Claude 4.6 relays', () => {
+    const request = buildOpenAiCompatibleRequest({
+      api: createProviderRuntimeTestProvider({
+        baseUrl: 'https://relay.example.com/v1',
+        path: '/chat/completions',
+        model: 'claude-opus-4-6',
+        capabilities: { images: true, streaming: true, thinking: true }
+      }),
+      context: createProviderRuntimeTestContext(),
+      advanced: createProviderRuntimeAdvanced({ thinkingBudget: '8192' })
+    });
+
+    expect(request.body.thinking).toEqual({ type: 'adaptive' });
+    expect(request.body.output_config).toEqual({ effort: 'high' });
+  });
 });

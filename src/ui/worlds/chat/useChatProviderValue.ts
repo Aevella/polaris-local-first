@@ -36,6 +36,8 @@ import { useChatStore } from '../../../stores/chatStore';
 import { createChatSlashCommandHandler } from '../../../app/chat/chatSlashCommands';
 import { setTaskModeEnabledForConversations } from '../../../app/chat/taskModeToggle';
 import { useI18n, type I18nTranslator } from '../../../i18n';
+import { resolvePersonaProviderBinding } from '../../../engines/personaProviderBinding';
+import { requestThinkingTranslation } from '../../../engines/thinkingTranslation';
 
 type UseChatProviderValueArgs = {
   ui: ChatUiState;
@@ -150,6 +152,7 @@ function buildActionsSection(args: {
   }) => Promise<ChatReplyRunResult>;
   openToolbox: () => void;
   themeSession: ReturnType<typeof useThemeSessionActions>;
+  persona: ChatDerivedState['persona'];
   t: Translate;
 }): ChatContextActionsValue {
   return {
@@ -161,6 +164,7 @@ function buildActionsSection(args: {
     },
     retry: args.chatActions.retryLatestAssistant,
     editMessage: args.ui.startEditingMessage,
+    deleteUserMessage: args.chatActions.deleteUserMessage,
     editAssistantMessage: args.chatActions.updateAssistantMessage,
     cacheAssistantSpeech: args.chatActions.cacheAssistantSpeech,
     forkFromMessage: args.chatActions.forkConversationFromMessage,
@@ -178,6 +182,20 @@ function buildActionsSection(args: {
     openThinkingSummary: (message: ChatMessage) => {
       args.ui.setCollapsedThinkingMessageIds((current) => current.includes(message.id) ? current : [...current, message.id]);
       args.ui.setThinkingSummaryMessageId(message.id);
+    },
+    translateThinking: (sections, targetLanguage, signal) => {
+      const binding = resolvePersonaProviderBinding({
+        globalApi: args.store.runtime.api,
+        providers: args.store.runtime.providers,
+        persona: args.persona
+      });
+      return requestThinkingTranslation({
+        api: binding.api,
+        advanced: args.persona?.advanced,
+        sections,
+        targetLanguage,
+        signal
+      });
     },
     toggleCodeExpanded: (messageId: string) =>
       args.ui.setExpandedCodeMessageIds((current) =>
@@ -419,7 +437,8 @@ export function useChatProviderValue({
     derived,
     runReply,
     submitToolCommand: submitSlashCommand,
-    activeSubmitFingerprintRef
+    activeSubmitFingerprintRef,
+    t
   });
   return useMemo(() => {
     const activeConversation = derived.activeConversation;
@@ -439,6 +458,7 @@ export function useChatProviderValue({
       runReply,
       openToolbox,
       themeSession,
+      persona: derived.persona,
       t
     });
 

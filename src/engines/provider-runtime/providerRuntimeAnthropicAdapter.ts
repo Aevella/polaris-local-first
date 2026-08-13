@@ -19,6 +19,7 @@ import {
   canonicalProviderCapabilitiesFromContract,
   resolveProviderCapability
 } from './providerCapability';
+import { buildProviderThinkingRequest } from './providerRuntimeThinking';
 
 const ANTHROPIC_MESSAGES_ADAPTER_ID = 'anthropic-messages';
 const DEFAULT_ANTHROPIC_MAX_TOKENS = 65_536;
@@ -44,7 +45,9 @@ type AnthropicContentBlock =
       tool_use_id: string;
       content: string;
       is_error?: boolean;
-    };
+    }
+  | { type: 'thinking'; thinking: string; signature: string }
+  | { type: 'redacted_thinking'; data: string };
 
 type AnthropicSystemMessage = AssistantContextMessage & { content: string };
 type AnthropicCacheControl = { type: 'ephemeral'; ttl?: AssistantRequestCacheTtl };
@@ -135,6 +138,21 @@ function appendAnthropicMessage(
   });
 }
 
+function buildAnthropicReasoningBlocks(
+  message: ProviderRuntimeRequestInput['context']['segments'][number]['messages'][number]
+): AnthropicContentBlock[] {
+  if (message.providerReasoning?.protocol !== 'anthropic-messages') return [];
+  return message.providerReasoning.items.flatMap((item): AnthropicContentBlock[] => {
+    if (item.type === 'thinking' && item.thinking && item.signature) {
+      return [{ type: 'thinking', thinking: item.thinking, signature: item.signature }];
+    }
+    if (item.type === 'redacted_thinking' && item.data) {
+      return [{ type: 'redacted_thinking', data: item.data }];
+    }
+    return [];
+  });
+}
+
 function buildAnthropicMessages(context: ProviderRuntimeRequestInput['context']) {
   const orderedMessages = context.segments
     .flatMap((segment) => segment.messages)
@@ -145,6 +163,7 @@ function buildAnthropicMessages(context: ProviderRuntimeRequestInput['context'])
   for (const message of orderedMessages) {
     if (message.role === 'assistant') {
       const blocks = [
+        ...buildAnthropicReasoningBlocks(message),
         ...toAnthropicContentBlocks(message.content),
         ...(message.toolCalls ?? []).map((toolCall) => ({
           type: 'tool_use' as const,
@@ -308,12 +327,7 @@ export function buildAnthropicRequest(input: ProviderRuntimeRequestInput) {
   if (shouldSendTopP(providerCapability, topP)) {
     body.top_p = topP;
   }
-  if (thinkingBudget !== undefined && providerCapability.thinking.sendBudget) {
-    body.thinking = {
-      type: 'enabled',
-      budget_tokens: thinkingBudget
-    };
-  }
+  Object.assign(body, buildProviderThinkingRequest(providerCapability, thinkingBudget));
   if (providerCapability.streaming.text) {
     body.stream = true;
   }

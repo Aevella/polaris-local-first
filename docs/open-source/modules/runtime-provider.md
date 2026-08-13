@@ -10,6 +10,7 @@ Runtime and provider code decides how model requests are configured, which capab
 - Request capability decisions.
 - Direct provider calls, relay routing, and native HTTP transport choices.
 - Provider-specific cache controls, stable request-session identifiers, and normalized usage evidence.
+- Provider-specific reasoning/thinking request controls and normalized reasoning state returned with replies.
 - Runtime settings that affect model/tool availability.
 
 ## Does Not Own
@@ -50,6 +51,7 @@ Runtime and provider code decides how model requests are configured, which capab
 - A browser network failure may retry through the configured relay; native provider calls do not cross that relay boundary.
 - A provider omits cache usage fields, which is distinct from reporting a zero cache read.
 - Streamed tool-call provider indexes are retained as source evidence, while the local accumulator keeps a dense list and resolves fragments by tool-call id before provider index.
+- Signed Anthropic thinking blocks and OpenAI-compatible reasoning details lose their provider-native shape before a follow-up request replays them.
 
 ## Tests And Verification
 
