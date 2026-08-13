@@ -19,7 +19,8 @@ function buildItem(index: number, role: ChatMessage['role'] = 'assistant'): Time
     messageCycleIndex: index,
     userBubbleIndex: role === 'user' ? index : undefined,
     isAssistantContinuation: false,
-    isTerminalAssistantInUserTurn: true
+    isTerminalAssistantInUserTurn: true,
+    assistantReplyContent: `message ${index}`
   };
 }
 

@@ -94,6 +94,7 @@ type MessageRowProps = {
   userBubbleIndex?: number;
   isAssistantContinuation?: boolean;
   isTerminalAssistantInUserTurn?: boolean;
+  assistantReplyContent?: string;
   taskReceiptAction?: MessageTaskReceiptAction | null;
 };
 
@@ -119,6 +120,7 @@ function MessageRowComponent({
   userBubbleIndex,
   isAssistantContinuation = false,
   isTerminalAssistantInUserTurn = true,
+  assistantReplyContent = message.content,
   taskReceiptAction = null
 }: MessageRowProps) {
   const { t } = useI18n();
@@ -168,8 +170,8 @@ function MessageRowComponent({
     [toolMessages]
   );
   const speechContent = useMemo(
-    () => (isAssistantReply ? buildAssistantSpeechText(message.content) : ''),
-    [isAssistantReply, message.content]
+    () => (isAssistantReply ? buildAssistantSpeechText(assistantReplyContent) : ''),
+    [assistantReplyContent, isAssistantReply]
   );
   const currentInteractionTimeMs = () => (
     typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -235,7 +237,9 @@ function MessageRowComponent({
       </>
     );
   };
-  const messageActions = isAssistantReply && !state.editing ? (
+  const messageActions = isAssistantReply
+    && !state.editing
+    && (!message.assistantReplyId || isTerminalAssistantInUserTurn) ? (
     <MessageActions
       canCopyAssistant={message.role === 'assistant' && !message.toolInvocation && !isStreamingLike && isTerminalAssistantInUserTurn && Boolean(message.content.trim())}
       canOpenThinkingSummary={showThinking && showChatAvatars && Boolean(message.thinkingText)}
@@ -248,7 +252,7 @@ function MessageRowComponent({
       codeCardActionMode={state.codeCardActionMode}
       codeCardProgressLabel={codeCardProgressLabel}
       isThinkingActive={isStreamingLike}
-      messageContent={message.content}
+      messageContent={assistantReplyContent}
       speechContent={speechContent}
       speechCache={message.voiceCache ?? null}
       role={message.role === 'assistant' ? 'assistant' : 'user'}
@@ -552,6 +556,7 @@ function areMessageRowPropsEqual(previous: MessageRowProps, next: MessageRowProp
     && previous.userBubbleIndex === next.userBubbleIndex
     && previous.isAssistantContinuation === next.isAssistantContinuation
     && previous.isTerminalAssistantInUserTurn === next.isTerminalAssistantInUserTurn
+    && previous.assistantReplyContent === next.assistantReplyContent
     && previous.taskReceiptAction === next.taskReceiptAction
     && previous.message.memoryEvidence === next.message.memoryEvidence
     && previous.state.editing === next.state.editing

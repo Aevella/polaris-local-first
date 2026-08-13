@@ -10,6 +10,29 @@ function buildMessage(overrides: Partial<ChatMessage> & Pick<ChatMessage, 'id' |
 }
 
 describe('buildTimelineRenderItems', () => {
+  it('gives the terminal bubble complete reply text for copy, speech, and edit actions', () => {
+    const first = buildMessage({
+      id: 'assistant-prefix',
+      role: 'assistant',
+      content: '第一条。',
+      assistantReplyId: 'assistant-anchor',
+      assistantReplySegmentIndex: 0
+    });
+    const terminal = buildMessage({
+      id: 'assistant-anchor',
+      role: 'assistant',
+      content: '第二条。',
+      assistantReplyId: 'assistant-anchor',
+      assistantReplySegmentIndex: 1
+    });
+
+    const items = buildTimelineRenderItems([first, terminal]);
+
+    expect(items[0]?.isTerminalAssistantInUserTurn).toBe(false);
+    expect(items[1]?.isTerminalAssistantInUserTurn).toBe(true);
+    expect(items[1]?.assistantReplyContent).toBe('第一条。\n\n第二条。');
+  });
+
   it('keeps trigger runtime messages out of the visible timeline', () => {
     const previousAssistant = buildMessage({
       id: 'assistant-0',

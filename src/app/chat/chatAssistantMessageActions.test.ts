@@ -79,10 +79,12 @@ function createHandlersForConversation(params: {
     ...params.space
   };
 
+  const runReply = vi.fn(() => Promise.resolve());
   return {
     chat,
     space,
     ui,
+    runReply,
     handlers: createChatActionHandlers({
       startupReady: true,
       ui,
@@ -112,7 +114,7 @@ function createHandlersForConversation(params: {
         codeCardActionModeByMessageId: {},
         ...params.derived
       },
-      runReply: vi.fn(() => Promise.resolve()),
+      runReply,
       submitToolCommand: vi.fn(() => Promise.resolve(false)),
       activeSubmitFingerprintRef: { current: null }
     })
@@ -120,6 +122,34 @@ function createHandlersForConversation(params: {
 }
 
 describe('assistant message actions', () => {
+  function segmentedConversation() {
+    const userMessage = message('user-1', 'user', '问题', 1000);
+    const firstSegment: ChatMessage = {
+      ...message('assistant-prefix', 'assistant', '第一条。', 1001),
+      assistantReplyId: 'assistant-anchor',
+      assistantReplySegmentIndex: 0
+    };
+    const terminalSegment: ChatMessage = {
+      ...message('assistant-anchor', 'assistant', '第二条。', 1002),
+      assistantReplyId: 'assistant-anchor',
+      assistantReplySegmentIndex: 1
+    };
+    return {
+      userMessage,
+      firstSegment,
+      terminalSegment,
+      conversation: {
+        id: 'conv-segmented',
+        title: '分段回答',
+        collaboratorId: 'pharos',
+        activeProjectId: null,
+        messages: [userMessage, firstSegment, terminalSegment],
+        pinnedAt: null,
+        updatedAt: 1002
+      } satisfies Conversation
+    };
+  }
+
   it('edits an assistant message in place', async () => {
     const assistantMessage = message('assistant-1', 'assistant', '旧回答', 1000);
     const conversation: Conversation = {
@@ -173,6 +203,53 @@ describe('assistant message actions', () => {
     expect(space.clearPendingAttachments).toHaveBeenCalled();
     expect(space.clearPendingCardReference).toHaveBeenCalled();
     expect(chat.setActiveConversation).toHaveBeenCalledWith('conv-branch');
+  });
+
+  it('retries a segmented reply from before its first persisted bubble', async () => {
+    const { conversation, terminalSegment, userMessage } = segmentedConversation();
+    const { chat, handlers, runReply } = createHandlersForConversation({ conversation });
+
+    await handlers.retryLatestAssistant(terminalSegment);
+
+    expect(chat.replaceConversationMessages).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: 'conv-segmented' }),
+      [userMessage]
+    );
+    expect(runReply).toHaveBeenCalledWith(expect.objectContaining({ messages: [userMessage] }));
+  });
+
+  it('edits a segmented reply as one complete answer instead of leaving sibling fragments behind', async () => {
+    const { conversation, terminalSegment, userMessage } = segmentedConversation();
+    const { chat, handlers } = createHandlersForConversation({ conversation });
+
+    await handlers.updateAssistantMessage(terminalSegment, '合并后的新回答。');
+
+    expect(chat.replaceConversationMessages).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: 'conv-segmented' }),
+      [
+        userMessage,
+        expect.objectContaining({
+          id: 'assistant-anchor',
+          content: '合并后的新回答。',
+          assistantReplyId: undefined,
+          assistantReplySegmentIndex: undefined
+        })
+      ]
+    );
+  });
+
+  it('remaps segmented reply ownership when forking the complete reply', async () => {
+    const { conversation, terminalSegment } = segmentedConversation();
+    const { chat, handlers } = createHandlersForConversation({ conversation });
+
+    await handlers.forkConversationFromMessage(terminalSegment);
+
+    const cloned = vi.mocked(chat.replaceConversationMessages).mock.calls[0]?.[1] ?? [];
+    const clonedPrefix = cloned[1];
+    const clonedAnchor = cloned[2];
+    expect(clonedPrefix?.assistantReplyId).toBe(clonedAnchor?.id);
+    expect(clonedAnchor?.assistantReplyId).toBe(clonedAnchor?.id);
+    expect(clonedAnchor?.id).not.toBe('assistant-anchor');
   });
 });
 

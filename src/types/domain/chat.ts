@@ -51,6 +51,8 @@ export interface ChatMessage {
   memoryEvidence?: ChatMemoryEvidence;
   assistantName?: string;
   speakerCollaboratorId?: string;
+  assistantReplyId?: string;
+  assistantReplySegmentIndex?: number;
   thinkingText?: string;
   providerReasoning?: ChatProviderReasoningState;
   voiceCache?: ChatMessageVoiceCache;

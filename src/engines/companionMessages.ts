@@ -27,6 +27,8 @@ function serializeCompanionMessage(message: ChatMessage) {
     tokenCount: message.tokenCount,
     tokenUsage: message.tokenUsage,
     assistantName: message.assistantName,
+    assistantReplyId: message.assistantReplyId,
+    assistantReplySegmentIndex: message.assistantReplySegmentIndex,
     thinkingText: message.thinkingText,
     nativeToolCalls: message.nativeToolCalls,
     toolInvocation: message.toolInvocation

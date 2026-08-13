@@ -172,8 +172,9 @@ describe('buildCapabilityEntries', () => {
     });
     const uiContext = entries.find((entry) => entry.name === 'ui_context_capability')?.content;
     expect(uiContext).toContain('当前界面：对话区');
-    expect(uiContext).toContain('对话式头像布局');
-    expect(uiContext).toContain('回复正文仍然渲染在同一个助手气泡里');
+    expect(uiContext).toContain('对话式聊天软件布局');
+    expect(uiContext).toContain('普通文字每次换行');
+    expect(uiContext).toContain('工具只调用一次');
     expect(entries.find((entry) => entry.name === 'attachment_context_capability')?.content).toContain('最近一条用户附件：');
     expect(entries.find((entry) => entry.name === 'desktop_local_context_capability')?.content).toContain('本机环境：');
     expect(entries.find((entry) => entry.name === 'room_context_capability')?.content).toContain('当前活动工作区：Mini Phone');

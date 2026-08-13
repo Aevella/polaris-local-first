@@ -42,9 +42,23 @@ export function normalizeChatNativeToolCalls(
 
 export function normalizeChatMessage(message: ChatMessage): ChatMessage {
   const providerReasoning = normalizeProviderReasoningState(message.providerReasoning);
+  const assistantReplyId =
+    message.role === 'assistant'
+    && typeof message.assistantReplyId === 'string'
+    && message.assistantReplyId.trim()
+      ? message.assistantReplyId.trim()
+      : undefined;
+  const assistantReplySegmentIndex =
+    assistantReplyId
+    && Number.isInteger(message.assistantReplySegmentIndex)
+    && (message.assistantReplySegmentIndex ?? -1) >= 0
+      ? message.assistantReplySegmentIndex
+      : undefined;
   return {
     ...message,
     thinkingText: normalizeOptionalText(message.thinkingText),
+    assistantReplyId: assistantReplySegmentIndex === undefined ? undefined : assistantReplyId,
+    assistantReplySegmentIndex,
     ...(providerReasoning ? { providerReasoning } : {}),
     nativeToolCalls: normalizeChatNativeToolCalls(message.id, message.nativeToolCalls)
   };

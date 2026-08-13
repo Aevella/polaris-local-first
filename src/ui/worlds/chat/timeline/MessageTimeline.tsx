@@ -495,7 +495,7 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
         {timelineWindow.topSpacerHeight > 0 ? (
           <div className="chat-flow-spacer" aria-hidden="true" style={{ height: `${timelineWindow.topSpacerHeight}px` }} />
         ) : null}
-        {timelineWindow.visibleItems.map(({ message, toolMessages, messageCycleIndex, userBubbleIndex, isAssistantContinuation, isTerminalAssistantInUserTurn }) => {
+        {timelineWindow.visibleItems.map(({ message, toolMessages, messageCycleIndex, userBubbleIndex, isAssistantContinuation, isTerminalAssistantInUserTurn, assistantReplyContent }) => {
           const taskReceipt = taskReceiptsByMessageId.get(message.id) ?? null;
           const lifecycle: ChatMessageLifecycle = resolveChatMessageLifecycle({
             messageId: message.id,
@@ -547,6 +547,7 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
                 userBubbleIndex={userBubbleIndex}
                 isAssistantContinuation={isAssistantContinuation}
                 isTerminalAssistantInUserTurn={isTerminalAssistantInUserTurn}
+                assistantReplyContent={assistantReplyContent}
                 taskReceiptAction={taskReceipt ? {
                   status: taskReceipt.task.status,
                   expanded: expandedTaskReceiptMessageId === message.id,

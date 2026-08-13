@@ -48,6 +48,8 @@ describe('chatMessageNormalization', () => {
       content: 'pong',
       timestamp: 1,
       thinkingText: undefined,
+      assistantReplyId: undefined,
+      assistantReplySegmentIndex: undefined,
       nativeToolCalls: [
         {
           id: 'assistant-2:tool-call:1',
@@ -123,5 +125,31 @@ describe('chatMessageNormalization', () => {
         signature: 'sig-a'
       }]
     });
+  });
+
+  it('keeps valid assistant reply segment ownership and drops invalid partial metadata', () => {
+    expect(normalizeChatMessage({
+      id: 'assistant-segment',
+      role: 'assistant',
+      content: '第二条。',
+      timestamp: 2,
+      assistantReplyId: ' assistant-anchor ',
+      assistantReplySegmentIndex: 1
+    })).toEqual(expect.objectContaining({
+      assistantReplyId: 'assistant-anchor',
+      assistantReplySegmentIndex: 1
+    }));
+
+    expect(normalizeChatMessage({
+      id: 'user-invalid-segment',
+      role: 'user',
+      content: '问题',
+      timestamp: 3,
+      assistantReplyId: 'assistant-anchor',
+      assistantReplySegmentIndex: 0
+    })).toEqual(expect.objectContaining({
+      assistantReplyId: undefined,
+      assistantReplySegmentIndex: undefined
+    }));
   });
 });

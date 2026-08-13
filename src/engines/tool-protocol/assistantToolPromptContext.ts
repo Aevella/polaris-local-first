@@ -145,7 +145,10 @@ export function buildUiContextPrompt(context: AssistantToolContext | undefined):
         ? `当前协作者：${ui.activeCollaboratorName}`
         : null,
     ui.activeWorld === 'chat' && ui.chatAvatarLayoutEnabled
-      ? '当前对话开启了对话式头像布局：界面会显示双方头像并调整消息位置，但回复正文仍然渲染在同一个助手气泡里。闲聊可以自然分段；代码、列表、表格、工具说明或任务账本这类结构化内容保持整段，不要硬拆。'
+      ? [
+          '当前是带头像的对话式聊天软件布局，普通文字每次换行都会显示为下一只气泡。',
+          '代码、列表、表格、长工具说明和任务账本保持连续完整；多个气泡仍属于同一回合，工具只调用一次。'
+        ].join('\n')
       : null
   ].filter(Boolean) as string[];
   return lines.join('\n');

@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../../../../types/domain';
+import { buildAssistantReplyContentIndex } from '../../../../engines/assistantReplySegments';
 
 export type TimelineRenderItem = {
   message: ChatMessage;
@@ -7,6 +8,7 @@ export type TimelineRenderItem = {
   userBubbleIndex?: number;
   isAssistantContinuation: boolean;
   isTerminalAssistantInUserTurn: boolean;
+  assistantReplyContent: string;
 };
 
 const EMPTY_TOOL_MESSAGES: ChatMessage[] = [];
@@ -36,6 +38,7 @@ function buildToolMessagesByOriginId(messages: ChatMessage[]) {
 export function buildTimelineRenderItems(messages: ChatMessage[]): TimelineRenderItem[] {
   const items: TimelineRenderItem[] = [];
   const toolMessagesByOriginId = buildToolMessagesByOriginId(messages);
+  const assistantReplyContentByMessageId = buildAssistantReplyContentIndex(messages);
   let cycleIndex = 0;
   let userBubbleIndex = 0;
   let hasAssistantInCurrentUserTurn = false;
@@ -94,7 +97,10 @@ export function buildTimelineRenderItems(messages: ChatMessage[]): TimelineRende
       messageCycleIndex: isCycleMessage ? cycleIndex++ : null,
       userBubbleIndex: isUserBubble ? userBubbleIndex++ : undefined,
       isAssistantContinuation,
-      isTerminalAssistantInUserTurn
+      isTerminalAssistantInUserTurn,
+      assistantReplyContent: isAssistantMessage
+        ? assistantReplyContentByMessageId.get(message.id) ?? message.content
+        : message.content
     });
 
     if (message.role === 'assistant' && !message.toolInvocation) {

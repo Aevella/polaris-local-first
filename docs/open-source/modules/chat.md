@@ -43,6 +43,7 @@ Chat runs conversation workflows with collaborators, model providers, context, a
 - Message edits and replacement slices through writable conversation bodies.
 - Provider reasoning state retained with assistant messages, including on-demand translation presented as a separate derived view.
 - Generated image and audio attachments projected from message and tool-result evidence.
+- Explicit assistant reply boundaries persisted as sibling bubbles while request preparation reconstructs one provider assistant turn.
 
 ## Important Failure States
 

@@ -10,6 +10,7 @@ import {
   resolveChatStreamingPresentation
 } from './chatStreamingDisplay';
 import { createStreamingSession } from './chatStreamingSession';
+import { buildAssistantMessagePatch } from '../../engines/chatMessageNormalization';
 
 type RafCallback = (timestamp: number) => void;
 
@@ -30,6 +31,92 @@ function buildWritableConversation(messages: ChatMessage[] = []): WritableConver
 }
 
 describe('createStreamingSession', () => {
+  it('turns an explicit streamed boundary into persisted sibling messages while keeping tools on the terminal anchor', () => {
+    let streamingState: ChatStreamingState = null;
+    let scheduledFrame: RafCallback | null = null;
+    let messages: ChatMessage[] = [];
+
+    vi.stubGlobal('window', {
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
+      requestAnimationFrame: (callback: RafCallback) => {
+        scheduledFrame = callback;
+        return 1;
+      },
+      cancelAnimationFrame: vi.fn()
+    });
+
+    try {
+      const writableConversation = buildWritableConversation(messages);
+      const session = createStreamingSession({
+        ui: {
+          abortControllerRef: { current: null },
+          streamingLifecycleReleaseRef: { current: null },
+          setSending: vi.fn(),
+          setStreaming: (value) => {
+            streamingState = typeof value === 'function' ? value(streamingState) : value;
+          }
+        },
+        chat: {
+          addMessage: (_target, message) => {
+            messages = [...messages, message];
+          },
+          insertMessageBefore: (_target, beforeMessageId, message) => {
+            const index = messages.findIndex((candidate) => candidate.id === beforeMessageId);
+            messages = [...messages.slice(0, index), message, ...messages.slice(index)];
+          },
+          updateMessage: (_target, messageId, patch) => {
+            messages = messages.map((message) => message.id === messageId ? { ...message, ...patch } : message);
+          },
+          getConversationMessages: () => messages,
+          replaceConversationMessages: (_target, nextMessages) => {
+            messages = nextMessages;
+          }
+        },
+        conversationId: 'conv_1',
+        writableConversation,
+        placeholderId: 'assistant_anchor',
+        assistantName: 'Pharos',
+        modelTier: 'medium',
+        themeToolMode: 'stable',
+        segmentedRepliesEnabled: true
+      });
+
+      session.start();
+      const content = ['先抱一下。', '然后说正事。'].join('\n');
+      session.queueProgress({ content });
+      const frame = scheduledFrame as RafCallback | null;
+      if (!frame) throw new Error('Expected a streaming animation frame.');
+      frame(0);
+
+      expect(messages).toHaveLength(2);
+      expect(messages.map((message) => message.content)).toEqual(['先抱一下。', '然后说正事。']);
+      expect(messages.map((message) => message.assistantReplyId)).toEqual([
+        'assistant_anchor',
+        'assistant_anchor'
+      ]);
+      expect(streamingState).toEqual({ messageId: 'assistant_anchor', phase: 'live' });
+
+      session.commitFinalReply(content, buildAssistantMessagePatch({
+        messageId: 'assistant_anchor',
+        assistantName: 'Pharos',
+        visibleContent: content,
+        reply: { model: 'test-model' },
+        nativeToolCalls: [{ id: 'call-1', name: 'web_search', argumentsText: '{}' }]
+      }));
+
+      expect(messages[0]?.nativeToolCalls).toBeUndefined();
+      expect(messages[1]).toEqual(expect.objectContaining({
+        id: 'assistant_anchor',
+        content: '然后说正事。',
+        assistantReplySegmentIndex: 1,
+        nativeToolCalls: [expect.objectContaining({ id: 'call-1' })]
+      }));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('keeps the placeholder in stage until the first streamed patch flushes', () => {
     let streamingState: ChatStreamingState = null;
     let scheduledFrame: RafCallback | null = null;

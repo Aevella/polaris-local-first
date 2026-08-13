@@ -22,6 +22,7 @@ import {
   reconcileConversationTaskAfterMessageRemoval,
   removeUserMessageTurn
 } from '../../engines/chatMessageTurnRemoval';
+import { resolveAssistantReplySegments } from '../../engines/assistantReplySegments';
 
 type CreateChatActionHandlersArgs = {
   startupReady: boolean;
@@ -212,7 +213,12 @@ export function createChatActionHandlers({
     }
     const messageIndex = writableConversation.messages.findIndex((candidate) => candidate.id === message.id);
     if (messageIndex <= 0) return;
-    const nextMessages = writableConversation.messages.slice(0, messageIndex);
+    const replySegments = resolveAssistantReplySegments(writableConversation.messages, message.id);
+    const firstSegmentIndex = replySegments.reduce((earliestIndex, segment) => {
+      const index = writableConversation.messages.findIndex((candidate) => candidate.id === segment.id);
+      return index >= 0 ? Math.min(earliestIndex, index) : earliestIndex;
+    }, messageIndex);
+    const nextMessages = writableConversation.messages.slice(0, firstSegmentIndex);
     store.chat.replaceConversationMessages(writableConversation, nextMessages);
     await runReply({
       conversationId: activeConversation.id,
@@ -284,11 +290,34 @@ export function createChatActionHandlers({
       ui.setCommandStatus('读取当前对话历史失败，先别修改回答。', true);
       return;
     }
-    store.chat.updateMessage(writableConversation, message.id, {
-      content: nextContent,
-      timestamp: Date.now(),
-      voiceCache: undefined
-    });
+    const replySegments = resolveAssistantReplySegments(writableConversation.messages, message.id);
+    if (replySegments.length === 1 && !message.assistantReplyId) {
+      store.chat.updateMessage(writableConversation, message.id, {
+        content: nextContent,
+        timestamp: Date.now(),
+        voiceCache: undefined
+      });
+      ui.setCommandStatus('已修改这条回答。');
+      return;
+    }
+    const removedSegmentIds = new Set(
+      replySegments.filter((segment) => segment.id !== message.id).map((segment) => segment.id)
+    );
+    store.chat.replaceConversationMessages(
+      writableConversation,
+      writableConversation.messages
+        .filter((candidate) => !removedSegmentIds.has(candidate.id))
+        .map((candidate) => candidate.id === message.id
+          ? {
+              ...candidate,
+              content: nextContent,
+              timestamp: Date.now(),
+              voiceCache: undefined,
+              assistantReplyId: undefined,
+              assistantReplySegmentIndex: undefined
+            }
+          : candidate)
+    );
     ui.setCommandStatus('已修改这条回答。');
   };
 
@@ -335,10 +364,15 @@ export function createChatActionHandlers({
       ui.setCommandStatus('新分支还没准备好，先别写入。', true);
       return;
     }
-    const clonedMessages = sourceConversation.messages.slice(0, messageIndex + 1).map((entry, index) => ({
+    const sourceMessages = sourceConversation.messages.slice(0, messageIndex + 1);
+    const clonedIdsBySourceId = new Map(sourceMessages.map((entry) => [entry.id, createUid(entry.role)]));
+    const clonedMessages = sourceMessages.map((entry, index) => ({
       ...entry,
-      id: createUid(entry.role),
-      timestamp: Date.now() + index
+      id: clonedIdsBySourceId.get(entry.id) as string,
+      timestamp: Date.now() + index,
+      assistantReplyId: entry.assistantReplyId
+        ? clonedIdsBySourceId.get(entry.assistantReplyId)
+        : undefined
     }));
     store.chat.replaceConversationMessages(writableConversation, clonedMessages);
     store.space.clearPendingAttachments();

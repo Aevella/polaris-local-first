@@ -71,6 +71,7 @@ import {
   ChatReplyPersistenceError,
   persistChatReplyBoundary
 } from './chatReplyPersistence';
+import { buildAssistantReplySegmentContent } from '../../engines/assistantReplySegments';
 
 type RequestReplyArgs = {
   ui: Pick<
@@ -348,6 +349,7 @@ async function requestReplyRound({
     activeProjectId: activeRequestSnapshot.activeProjectId,
     allowCreativeCssRecovery: toolContextWithMcp.toolEnforcementScope === 'theme-only',
     mcpTools: toolContextWithMcp.mcpTools,
+    segmentedRepliesEnabled: activeRequestSnapshot.chatAvatarLayoutEnabled,
     onFirstProgressFlushed: () => {
       recordChatSendPerformanceMark(conversationId, '聊天发送 · 首个回复已渲染');
     }
@@ -415,7 +417,9 @@ async function requestReplyRound({
     throwIfAborted(streaming.controller.signal);
 
     const latestPlaceholder = chat.findConversationMessage(conversationId, placeholderId);
-    const finalContent = reply.content.trim() ? reply.content : latestPlaceholder?.content ?? reply.content;
+    const finalContent = reply.content.trim()
+      ? reply.content
+      : streaming.getLatestProgress()?.content ?? latestPlaceholder?.content ?? reply.content;
     const { parsed, visibleContent, isToolOnlyTurn, taskUpdate } = parseAssistantReplyContent(
       finalContent,
       modelTier,
@@ -495,7 +499,7 @@ async function requestReplyRound({
       nativeToolCalls: reply.nativeToolCalls ?? []
     });
 
-    chat.updateMessage(writableConversation, placeholderId, buildAssistantMessagePatch({
+    streaming.commitFinalReply(visibleContent, buildAssistantMessagePatch({
       messageId: placeholderId,
       assistantName,
       speakerCollaboratorId: collaboratorId,
@@ -882,8 +886,12 @@ async function requestReplyRound({
 
     if (isAbortError(error)) {
       const latestPlaceholder = chat.findConversationMessage(conversationId, placeholderId);
+      const partialVisibleContent = buildAssistantReplySegmentContent(
+        chat.getConversationMessages(conversationId),
+        placeholderId
+      );
 
-      if (!latestPlaceholder?.content.trim() && !latestPlaceholder?.thinkingText?.trim()) {
+      if (!partialVisibleContent.trim() && !latestPlaceholder?.thinkingText?.trim()) {
         chat.replaceConversationMessages(writableConversation, messages);
       } else {
         streaming.scheduleLifecycleRelease(220);
@@ -896,9 +904,9 @@ async function requestReplyRound({
         collaboratorId,
         assistantName,
         messages,
-        visibleReply: latestPlaceholder?.content ?? '',
+        visibleReply: partialVisibleContent,
         reply: {
-          content: latestPlaceholder?.content ?? '',
+          content: partialVisibleContent,
           model: latestPlaceholder?.model,
           tokenCount: latestPlaceholder?.tokenCount
         }
@@ -912,9 +920,9 @@ async function requestReplyRound({
         assistantMessageId: placeholderId,
         messages,
         audit: requestAudit,
-        visibleReply: latestPlaceholder?.content ?? '',
+        visibleReply: partialVisibleContent,
         reply: {
-          content: latestPlaceholder?.content ?? '',
+          content: partialVisibleContent,
           model: latestPlaceholder?.model,
           tokenCount: latestPlaceholder?.tokenCount,
           tokenUsage: latestPlaceholder?.tokenUsage,
@@ -930,8 +938,12 @@ async function requestReplyRound({
     const text = error instanceof Error ? error.message : '请求失败';
     const normalized = normalizeProviderErrorMessage(text);
     const latestPlaceholder = chat.findConversationMessage(conversationId, placeholderId);
+    const partialVisibleContent = buildAssistantReplySegmentContent(
+      chat.getConversationMessages(conversationId),
+      placeholderId
+    );
 
-    if (latestPlaceholder?.content.trim() || latestPlaceholder?.thinkingText?.trim()) {
+    if (latestPlaceholder && (partialVisibleContent.trim() || latestPlaceholder.thinkingText?.trim())) {
       const latestProgress = streaming.getLatestProgress();
       const hasWorkspaceDraftShape = hasInterruptedWorkspaceDraftShape({
         activeProjectId: activeRequestSnapshot.activeProjectId,
@@ -942,7 +954,7 @@ async function requestReplyRound({
       let recoveryOutcomes: ToolActionRunOutcome[] = [];
       let recoveryFailure: unknown;
 
-      if (latestPlaceholder.content.trim() || (latestPlaceholder.nativeToolCalls?.length ?? 0) > 0) {
+      if (partialVisibleContent.trim() || (latestPlaceholder.nativeToolCalls?.length ?? 0) > 0) {
         try {
           recoveryOutcomes = await executeInterruptedWorkspaceDraftActions({
             executeToolActions,

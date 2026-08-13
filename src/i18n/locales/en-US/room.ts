@@ -8,7 +8,7 @@ export const room = {
   'room.settings.fallbackName': 'this collaborator',
   'room.settings.userAvatarLabel': 'You',
   'room.settings.chatAvatarLayout': 'Conversational layout',
-  'room.settings.chatAvatarLayoutDetail': 'Messenger-style: avatars, names, and replies arriving as separate short bubbles. Only affects this collaborator room.',
+  'room.settings.chatAvatarLayoutDetail': 'Messenger-style avatars, names, and replies arriving as separate persisted messages. Paragraph layout is better for long code or tool-heavy tasks.',
   'room.settings.worldSwitchHandle': 'Side quick switch',
   'room.settings.worldSwitchHandleDetail': 'The half-button on the right switches between chat and room, while a long press restores the theme. Turn it off to remove the button and its touch area.',
   'room.settings.background.imageOnly': 'Choose an image file for the room background.',

@@ -4,6 +4,7 @@ import type { ChatMessage, Persona } from '../../types/domain';
 import { buildCardReferenceSystemContent } from './requestContextContent';
 import { materializeRequestContextMessage, normalizeRequestContextMessageOrder } from './requestContextMessages';
 import { toRequestMessage, type RequestMessage } from './requestMessage';
+import { collapseAssistantReplySegmentsForRequest } from '../assistantReplySegments';
 
 export type PreparedConversationMessages = {
   messages: RequestMessage[];
@@ -89,7 +90,7 @@ export function prepareConversationMessages(
   messages: ChatMessage[],
   persona: Persona | null | undefined
 ): PreparedConversationMessages {
-  const contextMessages = messages
+  const contextMessages = collapseAssistantReplySegmentsForRequest(messages)
     .map(toRequestMessage)
     .map((message) => materializeRequestContextMessage(message));
   const preparedMessages = applyRequestMessagePersonaTransforms(contextMessages, persona);
