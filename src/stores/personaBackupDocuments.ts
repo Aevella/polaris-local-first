@@ -44,7 +44,7 @@ export async function preserveExistingBodiesForMissingImports(personas: Persona[
   if (!personas.some(persona => persona.memory.referenceDocs.some(doc => doc.bodyStatus === 'missing'))) return personas;
   const { kvGet } = await import('../infrastructure/persistence');
   const { createStoreLocalDataRepository, isLocalDataRepositoryDomainActive } = await import('./localDataStorePersistence');
-  const { getPersonaObjectLocalDataRef } = await import('../engines/localData');
+  const { getPersonaObjectLocalDataRef, isLiveProductPersonaState } = await import('../engines/localData');
   const { readPersonaMemoryDocContent } = await import('./personaMemoryReferenceDocPersistence');
   const active = await isLocalDataRepositoryDomainActive('persona');
   const legacy = active ? null : await kvGet<{ personas: Persona[] }>('persona-state-v2');
@@ -52,7 +52,10 @@ export async function preserveExistingBodiesForMissingImports(personas: Persona[
   for (const persona of personas) {
     if (!persona.memory.referenceDocs.some(doc => doc.bodyStatus === 'missing')) { result.push(persona); continue; }
     const row = active ? await createStoreLocalDataRepository().read<import('../engines/localData').PersonaObjectRow>(getPersonaObjectLocalDataRef(persona.id)) : null;
-    const existing = row?.status === 'complete' ? row.row.value.value : legacy?.personas.find(item => item.id === persona.id);
+    if (row?.status === 'timedOut' || row?.status === 'unloaded') {
+      throw new Error(`Destination collaborator is temporarily unreadable (${row.status}): ${persona.id}`);
+    }
+    const existing = row?.status === 'complete' && isLiveProductPersonaState(row.value.state) ? row.value.value : legacy?.personas.find(item => item.id === persona.id);
     const referenceDocs = [];
     for (const doc of persona.memory.referenceDocs) {
       const previous = existing?.memory.referenceDocs.find(item => item.id === doc.id);

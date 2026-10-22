@@ -150,11 +150,10 @@ export function MenuStoragePage({
           <p className="menu-section-note">{t('settings.storage.compositionNote')}</p>
         </div>
         {snapshot ? (
-          <>
-            <div className="settings-note local-data-health-plain-summary">
-              {formatStorageSafetySummary(snapshot, copy)}
-            </div>
-          </>
+          <details className="settings-note local-data-health-plain-summary">
+            <summary>{t('settings.storage.diagnosticDetails')}</summary>
+            <p>{formatStorageSafetySummary(snapshot, copy)}</p>
+          </details>
         ) : null}
         <div className="usage-entry-list">
           {(snapshot?.buckets ?? []).map((bucket) => (

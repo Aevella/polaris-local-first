@@ -6,8 +6,11 @@ export type StoreImportDomainFailure = {
   reason: string;
 };
 
+export type ImportedMissingDocumentBody = { personaId: string; docId: string; title: string };
+
 export type StoreImportResult = {
   status: 'complete' | 'partial';
+  missingDocumentBodies?: ImportedMissingDocumentBody[];
   importedDomains: LocalDataDomain[];
   retainedDomains: StoreImportDomainFailure[];
 };
@@ -24,8 +27,11 @@ const DOMAIN_LABELS: Record<StoreImportDomainFailure['domain'], string> = {
 };
 
 export function formatStoreImportResult(result: StoreImportResult) {
+  const missing = result.missingDocumentBodies ?? [];
+  const documentNotice = missing.length
+    ? `其中 ${missing.length} 份资料缺少正文，标题和摘要已保留：${missing.map(doc => doc.title || doc.docId).join('、')}。` : '';
   if (result.status === 'complete') {
-    return `导入完成：${result.importedDomains.length} 个数据域已安全替换。`;
+    return `导入完成：${result.importedDomains.length} 个数据域已安全替换。${documentNotice}`;
   }
   const retained = result.retainedDomains
     .filter((entry) => entry.stage !== 'promotion' && entry.stage !== 'refresh')
@@ -40,5 +46,5 @@ export function formatStoreImportResult(result: StoreImportResult) {
   if (verification.length > 0) {
     parts.push(`${Array.from(new Set(verification)).join('、')}的激活、清理或界面刷新将在下次启动继续检查。`);
   }
-  return parts.join('');
+  return parts.join('') + documentNotice;
 }

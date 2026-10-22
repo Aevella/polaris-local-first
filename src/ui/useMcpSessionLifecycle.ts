@@ -23,9 +23,11 @@ export function useMcpSessionLifecycle({ enabled = true }: { enabled?: boolean }
   );
 
   useEffect(() => {
-    if (!enabled || !hydrated) return;
+    if (!enabled || !hydrated || !mcpToolsEnabled) {
+      void closeAllMcpSessions();
+      return;
+    }
     reconcileMcpSessions(mcpServers);
-    if (!mcpToolsEnabled) return;
     void primeMcpSessions({
       servers: mcpServers,
       timeoutSeconds: mcpToolTimeoutSeconds

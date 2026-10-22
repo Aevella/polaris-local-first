@@ -6,7 +6,7 @@ import {
   RETIRED_POLARIS_ASSISTANT_PROVIDER_ID,
   createPersonaTemplate
 } from '../config/persona/personaBuilder';
-import { migratePersistedPersonaPayload, migratePersistedPersonas, usePersonaStore } from './personaStore';
+import { normalizePersona, migratePersistedPersonaPayload, migratePersistedPersonas, usePersonaStore } from './personaStore';
 import * as personaMemoryDocPersistence from './personaMemoryReferenceDocPersistence';
 
 describe('migratePersistedPersonas', () => {
@@ -238,5 +238,14 @@ describe('migratePersistedPersonas', () => {
     const personas = migratePersistedPersonas([regular, pinned]);
 
     expect(personas.map((persona) => persona.id)).toEqual(['persona-pinned', 'persona-regular']);
+  });
+});
+
+it('normalizes incomplete imported window defaults at the persona boundary', () => {
+  const imported = { ...createPersonaTemplate({id: 'p', name: 'P', description: ''}),
+    conversationDefaults: {reasoningStrength: 'invalid'} };
+  const normalized = normalizePersona(imported as unknown as Parameters<typeof normalizePersona>[0]);
+  expect(normalized.conversationDefaults).toMatchObject({
+    requestContext: {mode: 'inherit'}, reasoningStrength: 'automatic'
   });
 });

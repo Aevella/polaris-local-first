@@ -118,6 +118,16 @@ describe('personaMemoryReferenceDocPersistence', () => {
     expect(restored[0]?.memory.referenceDocs[0]?.contentLoaded).toBe(true);
   });
 
+  it('clears a missing marker when the package supplies a verified body', () => {
+    const persona = createPersonaTemplate({id: 'p', name: 'P', description: '', memory: {referenceDocs: [{
+      id: 'd', title: 'Notes', summary: '', content: '', contentLoaded: false, charCount: 4,
+      bodyStatus: 'missing', source: 'upload', updatedAt: 1
+    }]}});
+    const doc = restorePersonaMemoryDocContent([persona], {version: 1, docs: {'p:d': 'body'}})[0].memory.referenceDocs[0];
+    expect(doc).toMatchObject({content: 'body', contentLoaded: true});
+    expect(doc.bodyStatus).toBeUndefined();
+  });
+
   it('does not restore a missing split body as loaded empty content', () => {
     const persona = createPersonaTemplate({
       id: 'persona-1',

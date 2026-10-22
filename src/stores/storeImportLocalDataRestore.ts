@@ -1,4 +1,4 @@
-import { preserveExistingBodiesForMissingImports } from './personaBackupDocuments';
+import type { ImportedMissingDocumentBody } from './storeImportResult';
 import { collectAssetReferenceOwners } from '../engines/assetGovernance';
 import {
   buildAssetMigrationPlan,
@@ -67,6 +67,7 @@ export type StructuredImportLocalDataRestoreSkippedDomain = {
 };
 
 export type StructuredImportLocalDataRestoreResult = {
+  missingDocumentBodies?: ImportedMissingDocumentBody[];
   restoredDomains: LocalDataDomain[];
   promotedDomains: LocalDataDomain[];
   skippedDomains: StructuredImportLocalDataRestoreSkippedDomain[];
@@ -129,10 +130,10 @@ export async function restoreStructuredImportToLocalDataRepository(
   const validatedAt = committedAt;
   const repository = createStoreLocalDataRepository({ now: () => committedAt });
   const version = LOCAL_DATA_SCHEMA_VERSION;
-  const personasWithDocContent = await preserveExistingBodiesForMissingImports(restorePersonaMemoryDocContent(
+  const personasWithDocContent = restorePersonaMemoryDocContent(
     payload.personaState.personas,
     payload.personaMemoryDocContent
-  ));
+  );
   const restoredDomains: LocalDataDomain[] = [];
   const skippedDomains: StructuredImportLocalDataRestoreSkippedDomain[] = [];
   const skippedDomainSet = new Set(options.skipDomains ?? []);
@@ -350,7 +351,12 @@ export async function restoreStructuredImportToLocalDataRepository(
     return await commitAndPromoteProjectedDomain(await prepareReplacement(assetPlan.unitOfWork));
   });
 
+  const missingDocumentBodies = restoredDomains.includes('persona')
+    ? personasWithDocContent.flatMap(persona => persona.memory.referenceDocs
+      .filter(doc => doc.bodyStatus === 'missing')
+      .map(doc => ({ personaId: persona.id, docId: doc.id, title: doc.title }))) : [];
   return {
+    ...(missingDocumentBodies.length ? { missingDocumentBodies } : {}),
     restoredDomains: STRUCTURED_IMPORT_DOMAINS.filter((domain) => restoredDomains.includes(domain)),
     promotedDomains: STRUCTURED_IMPORT_DOMAINS.filter((domain) => restoredDomains.includes(domain)),
     skippedDomains,

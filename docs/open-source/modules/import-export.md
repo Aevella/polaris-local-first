@@ -58,7 +58,7 @@ and ordinary saves use the current LocalData model.
 
 - Imported body, binary, or owner data is missing.
 - Confirmed missing persona document bodies retain their directory, summary, and explicit missing-body marker in the backup report. Unknown storage errors still stop export.
-- Import of an explicit missing-body marker preserves a readable destination body for the same document; an empty destination keeps the marker without fabricating content.
+- Import of an explicit missing-body marker preserves a readable destination body for the same document from a live collaborator; sealed historical rows are excluded. These reads complete before asset staging or local UI writes. An empty destination keeps the marker without fabricating content, and the import result names the affected documents.
 - A missing original image can use its available preview; export reports this substitution inside the archive.
 - Package evidence is unreadable or malformed.
 - Import refuses to promote a domain that cannot become coherent current rows.

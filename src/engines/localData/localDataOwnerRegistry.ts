@@ -1,4 +1,4 @@
-import { BUNDLED_DEFAULT_PERSONA_IDS } from '../../config/persona/personaBuilder';
+import { KNOWN_BUNDLED_PERSONA_IDS } from '../../config/persona/personaBuilder';
 
 const CHAT_CATALOG_KEY = 'chat-catalog-v1';
 const PERSONA_STATE_KEY = 'persona-state-v2';
@@ -27,7 +27,7 @@ export type LocalDataOwnerRegistry = {
 
 export function buildLocalDataOwnerRegistry(byKey: Map<string, unknown>): LocalDataOwnerRegistry {
   const collaboratorIds = new Set<string>();
-  const historicalOwnerIds = new Set<string>(BUNDLED_DEFAULT_PERSONA_IDS);
+  const historicalOwnerIds = new Set<string>(KNOWN_BUNDLED_PERSONA_IDS);
   const personaState = byKey.get(PERSONA_STATE_KEY);
   const chatCatalog = byKey.get(CHAT_CATALOG_KEY);
   const runtimeState = byKey.get(RUNTIME_STATE_KEY);

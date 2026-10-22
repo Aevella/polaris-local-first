@@ -45,13 +45,30 @@ describe('preparePersonaBackupDocuments', () => {
 describe('preserveExistingBodiesForMissingImports', () => {
   it('keeps the destination body when the imported package explicitly lacks it', async () => {
     const previous = persona();
-    mocks.read.mockResolvedValue({ status: 'complete', row: { value: { value: previous } } });
+    mocks.read.mockResolvedValue({ status: 'complete', value: { value: previous } });
     vi.mocked(readPersonaMemoryDocContent).mockResolvedValue('body');
     const incoming = persona();
     incoming.memory.referenceDocs[0].bodyStatus = 'missing';
     const result = await preserveExistingBodiesForMissingImports([incoming]);
     expect(result[0].memory.referenceDocs[0]).toMatchObject({ content: 'body', contentLoaded: true, charCount: 4 });
     expect(result[0].memory.referenceDocs[0].bodyStatus).toBeUndefined();
+  });
+
+  it.each(['timedOut', 'unloaded'])('stops on a %s destination instead of treating it as absent', async (status) => {
+    mocks.read.mockResolvedValue({ status });
+    const incoming = persona();
+    incoming.memory.referenceDocs[0].bodyStatus = 'missing';
+    await expect(preserveExistingBodiesForMissingImports([incoming])).rejects.toThrow('temporarily unreadable');
+    expect(readPersonaMemoryDocContent).not.toHaveBeenCalled();
+  });
+
+  it.each(['archive', 'recovering', 'quarantine', 'missing-body'])('does not borrow a body from a sealed %s persona', async (state) => {
+    mocks.read.mockResolvedValue({ status: 'complete', value: { state, value: persona() } });
+    const incoming = persona();
+    incoming.memory.referenceDocs[0].bodyStatus = 'missing';
+    const result = await preserveExistingBodiesForMissingImports([incoming]);
+    expect(result[0].memory.referenceDocs[0].bodyStatus).toBe('missing');
+    expect(readPersonaMemoryDocContent).not.toHaveBeenCalled();
   });
 
   it('does not resurrect a deleted destination collaborator', async () => {

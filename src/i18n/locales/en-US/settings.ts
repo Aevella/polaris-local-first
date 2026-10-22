@@ -652,6 +652,7 @@ export const settings = {
   'settings.storage.estimatedTotal': 'Estimated total {size} · {time}',
   'settings.storage.loadingSummary': 'Reading local data statistics',
   'settings.storage.refreshingNotice': 'Checking local data. Polaris reads only size and entry counts, and will not clean content automatically.',
+  'settings.storage.diagnosticDetails': 'Diagnostic details',
   'settings.storage.compositionSection': 'Breakdown',
   'settings.storage.compositionNote': 'Local statistics only. User content is never deleted automatically.',
   'settings.storage.entryCount': '{count} entries',

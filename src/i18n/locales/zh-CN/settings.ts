@@ -650,6 +650,7 @@ export const settings = {
   'settings.storage.estimatedTotal': '估算总量 {size} · {time}',
   'settings.storage.loadingSummary': '正在读取本机数据统计',
   'settings.storage.refreshingNotice': '正在体检本机数据，只读取体积和条目统计，不会自动清理内容。',
+  'settings.storage.diagnosticDetails': '诊断详情',
   'settings.storage.compositionSection': '组成',
   'settings.storage.compositionNote': '只展示本机统计；不会自动删除用户内容。',
   'settings.storage.entryCount': '{count} 项',

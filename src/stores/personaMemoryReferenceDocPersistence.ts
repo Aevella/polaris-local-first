@@ -262,8 +262,9 @@ function restorePersonaMemoryReferenceDocContent(
       persistedContent,
       `Persona memory document content is missing: ${personaId}:${doc.id}`
     );
+    const { bodyStatus: _missing, ...available } = doc;
     return {
-      ...doc,
+      ...available,
       content: persistedContent,
       charCount: persistedContent.length,
       contentLoaded: true

@@ -77,3 +77,6 @@ and revalidates on foreground/network recovery. Native SSE bridges expose transp
 
 Tool-preparation diagnostics contain structural receipts. Error text, request content, credentials,
 and storage summaries are excluded from this event category.
+
+MCP session lifetime follows startup readiness and the global MCP switch. Disabling
+MCP closes current sessions; foreground recovery only revalidates allowed connections.
