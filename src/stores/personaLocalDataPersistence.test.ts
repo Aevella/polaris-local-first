@@ -175,6 +175,54 @@ describe('persona LocalData persistence', () => {
     setPersistenceBackendForTesting(null);
   });
 
+  it('saves worldbook rules durably without rewriting another collaborator', async () => {
+    const first = persona('first');
+    const other = persona('other');
+    await promotePersonaState({ personas: [first, other], activeCollaboratorId: 'first' });
+    usePersonaStore.setState({ personas: [first], activeCollaboratorId: 'first' });
+    const before = await rawPersonaRow('other');
+    await usePersonaStore.getState().saveWorldBookRules('first', [{ pattern: 'hello', flags: 'i', prompt: 'world' }]);
+    const row = await rawPersonaRow('first');
+    expect(row?.state === 'complete' && row.value.value.advanced.regexTriggers).toContain('world');
+    expect(await rawPersonaRow('other')).toEqual(before);
+    await expect(usePersonaStore.getState().saveWorldBookRules('first', [], { expectedPrevious: 'stale' })).rejects.toThrow('其他修改');
+    expect(await rawPersonaRow('first')).toEqual(row);
+  });
+
+  it('does not edit a sealed collaborator through a stale worldbook drawer', async () => {
+    const first = persona('first');
+    await promotePersonaState({ personas: [first], activeCollaboratorId: 'first' });
+    usePersonaStore.setState({ personas: [first] });
+    const row = await rawPersonaRow('first');
+    if (row?.state !== 'complete') throw new Error('Expected a complete fixture');
+    const sealed = { ...row, value: { ...row.value, state: 'archive' } };
+    await kvSet(getLocalDataRowKey(getPersonaObjectLocalDataRef('first')), sealed);
+    await expect(usePersonaStore.getState().saveWorldBookRules('first', []))
+      .rejects.toThrow('不在可编辑资料');
+    expect(await rawPersonaRow('first')).toEqual(sealed);
+  });
+
+  it('does not publish a worldbook save after a durable write fails', async () => {
+    const first = persona('first');
+    const backend = createMemoryPersistenceBackend();
+    setPersistenceBackendForTesting(backend);
+    await promotePersonaState({ personas: [first], activeCollaboratorId: 'first' });
+    usePersonaStore.setState({ personas: [first] });
+    backend.kvApplyMutations = async () => { throw new Error('disk unavailable'); };
+    await expect(usePersonaStore.getState().saveWorldBookRules('first', [{ pattern: 'x', flags: '', prompt: 'body' }])).rejects.toThrow();
+    expect(usePersonaStore.getState().personas[0].advanced.regexTriggers).toBe(first.advanced.regexTriggers);
+  });
+
+  it('reloads only a missing collaborator and preserves unsaved changes in another', async () => {
+    const first = persona('first');
+    const other = persona('other');
+    await promotePersonaState({ personas: [first, other], activeCollaboratorId: 'first' });
+    usePersonaStore.setState({ personas: [{ ...other, name: 'unsaved name' }], activeCollaboratorId: 'other' });
+    expect(await usePersonaStore.getState().reloadMissingCollaborator('first')).toBe(true);
+    expect(usePersonaStore.getState().personas.find(item => item.id === 'other')?.name).toBe('unsaved name');
+    expect(usePersonaStore.getState().activeCollaboratorId).toBe('other');
+  });
+
   it('hydrates persona state from repository while keeping memory document bodies split', async () => {
     await promotePersonaState({
       personas: [persona('persona-1', 'repository body')],

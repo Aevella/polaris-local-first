@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { getVisibleToolboxPromptGroups } from '../../../app/shell/menuToolboxGroups';
 import type { PolarisToolPromptGroup } from '../../../engines/tool-protocol/assistantToolProtocolTypes';
 import type { I18nKey } from '../../../i18n/messages';
@@ -8,11 +7,8 @@ import type { ThemeState, WebSearchConfig, WebSearchProviderType } from '../../.
 import { HelpHint } from '../../HelpHint';
 import { Icon, type IconName } from '../../Icon';
 import { useI18n } from '../../../i18n';
-import { ThemeToolModeWarningDialog } from '../../theme-tool-mode/ThemeToolModeWarningDialog';
 import {
-  buildThemeToolModePanelDescription,
-  markCreativeModeWarningSeen,
-  shouldShowCreativeModeWarning
+  buildThemeToolModePanelDescription
 } from '../../theme-tool-mode/themeToolModeGuidance';
 import {
   ThemeToolModeInlineConfig,
@@ -213,7 +209,6 @@ export function MenuToolboxPage({
   onSetTaskModeEnabled
 }: MenuToolboxPageProps) {
   const { t } = useI18n();
-  const [creativeWarningOpen, setCreativeWarningOpen] = useState(false);
   const visibleThemeToolMode = theme.toolMode === 'off' ? 'stable' : theme.toolMode;
   const themeModeDescription = buildThemeToolModePanelDescription(visibleThemeToolMode, t);
   const taskToolsEnabled = toolPromptPreferences.task;
@@ -221,13 +216,6 @@ export function MenuToolboxPage({
   const activeSearchLabel = getSearchProviderLabel(search.provider, t);
   const visibleToolGroups = getVisibleToolboxPromptGroups({ desktopLocalAvailable });
 
-  const handleSetThemeToolMode = (mode: ThemeState['toolMode']) => {
-    if (mode === 'creative' && shouldShowCreativeModeWarning()) {
-      setCreativeWarningOpen(true);
-      return;
-    }
-    onSetThemeToolMode(mode);
-  };
 
   return (
     <div className="menu-sheet-page">
@@ -267,7 +255,7 @@ export function MenuToolboxPage({
                   <ThemeToolModeInlineConfig
                     mode={visibleThemeToolMode}
                     description={themeModeDescription}
-                    onSetMode={handleSetThemeToolMode}
+                    onSetMode={onSetThemeToolMode}
                   />
                 ) : null}
                 {group === 'web' ? (
@@ -325,15 +313,6 @@ export function MenuToolboxPage({
           />
         </section>
       ) : null}
-      <ThemeToolModeWarningDialog
-        open={creativeWarningOpen}
-        onCancel={() => setCreativeWarningOpen(false)}
-        onConfirm={() => {
-          markCreativeModeWarningSeen();
-          setCreativeWarningOpen(false);
-          onSetThemeToolMode('creative');
-        }}
-      />
     </div>
   );
 }

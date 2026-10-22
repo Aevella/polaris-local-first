@@ -435,6 +435,7 @@
 .ps-rx-grid--trigger { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) 96px; }
 .ps-rx-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .ps-rx-field--wide { min-width: 0; }
+.ps-rx-field--content { grid-column: 1 / -1; min-width: 0; }
 .ps-rx-field-label { padding-left: 2px; font-size: var(--type-micro); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
 .ps-rx-input,
 .ps-rx-select { width: 100%; min-width: 0; border: var(--control-border); border-radius: 12px; background: var(--control-surface); padding: 9px 11px; color: var(--control-text); font: inherit; font-size: var(--type-small); outline: none; transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease; box-shadow: var(--control-shadow); }

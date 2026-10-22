@@ -85,3 +85,14 @@ describe('resolveConversationSummarySourceBatches', () => {
     expect(batches[0]?.sourceCharCount).toBeGreaterThan(DEFAULT_CONVERSATION_SUMMARY_SOURCE_CHARS);
   });
 });
+
+
+describe('conversation summary window sources', () => {
+  it('includes all windows from the same collaborator regardless of the removed legacy toggle', () => {
+    const excluded = { ...conversation({ id: 'private', messages: [message('private-message', 'user', 'private source', 1)] }), windowPreferences: { historicalImagePolicy: 'smart' as const, participatesInAutomaticSummary: false, composerReturnKeyBehavior: 'automatic' as const, mcpScope: { mode: 'inherit' as const } } };
+    const included = conversation({ id: 'included', messages: [message('included-message', 'user', 'included source', 2)] });
+    const batches = resolveConversationSummarySourceBatches({ conversations: [excluded, included], currentCollaboratorId: 'pharos' });
+    expect(batches.flatMap(batch => batch.sourceConversationIds)).toEqual(['private', 'included']);
+    expect(batches.flatMap(batch => batch.sourceMessageIds)).toEqual(['private-message', 'included-message']);
+  });
+});

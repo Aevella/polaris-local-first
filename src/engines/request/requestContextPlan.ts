@@ -1,3 +1,4 @@
+import { selectSteppedRequestMessages } from '../conversationContextSettings';
 import type { AssistantRequestAudit } from './requestAudit';
 import { estimateConversationMessageTokens } from './requestTokenEstimation';
 import {
@@ -86,18 +87,7 @@ function isOrphanedToolResultUnit(unit: RequestContextUnit) {
 }
 
 function selectRequestContextMessageWindow(messages: RequestMessage[], messageLimit: number) {
-  const normalizedLimit = Math.max(1, Math.floor(messageLimit));
-  const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user') ?? null;
-  const tailMessages = messages.slice(-normalizedLimit);
-  let selectedMessages = tailMessages;
-  if (latestUserMessage && !tailMessages.some((message) => message.id === latestUserMessage.id)) {
-    const nextMessages = [...tailMessages];
-    while (nextMessages.length >= normalizedLimit) {
-      nextMessages.shift();
-    }
-    nextMessages.push(latestUserMessage);
-    selectedMessages = nextMessages.sort((left, right) => messages.indexOf(left) - messages.indexOf(right));
-  }
+  const selectedMessages = selectSteppedRequestMessages(messages, messageLimit);
   const selectedMessageIds = new Set(selectedMessages.map((message) => message.id));
 
   return selectedMessages.filter((message) => {

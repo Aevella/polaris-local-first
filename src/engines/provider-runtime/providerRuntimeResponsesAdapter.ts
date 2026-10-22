@@ -178,6 +178,7 @@ export function buildResponsesRequest(input: ProviderRuntimeRequestInput) {
     body,
     customBody,
     bodyOverrides,
+    reasoningStrength: input.reasoningStrength,
     provider: 'openai-responses',
     compatibilityMode: providerCapability.route.compatibilityMode,
     capability: providerCapability,

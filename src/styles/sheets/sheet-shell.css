@@ -17,7 +17,7 @@
   align-items: stretch;
   justify-content: stretch;
   background:
-    linear-gradient(180deg, rgba(234, 238, 238, 0.78), rgba(222, 228, 227, 0.68));
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-solid) 78%, transparent), color-mix(in srgb, var(--surface-deep) 68%, transparent));
   backdrop-filter: blur(8px) saturate(0.86);
   animation: menuFullscreenScrimIn 200ms var(--ease-out) both;
 }
@@ -33,13 +33,9 @@
   flex-direction: column;
   overflow: hidden;
   background:
-    radial-gradient(circle at 18% 0%, color-mix(in srgb, rgba(255,255,255,0.64) 74%, var(--accent-glow) 26%), transparent 32%),
-    radial-gradient(circle at 88% 14%, color-mix(in srgb, rgba(255,255,255,0.3) 68%, var(--accent-soft) 32%), transparent 30%),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface-solid) 68%, rgba(255,255,255,0.86)),
-      color-mix(in srgb, var(--surface-solid) 58%, rgba(255,255,255,0.62))
-    );
+    radial-gradient(circle at 18% 0%, var(--accent-glow), transparent 32%),
+    radial-gradient(circle at 88% 14%, var(--accent-soft), transparent 30%),
+    var(--sheet-surface-fill);
   box-shadow: none;
   backdrop-filter: blur(20px) saturate(1.02);
   animation: menuFullscreenSheetIn 240ms var(--ease-out) both;

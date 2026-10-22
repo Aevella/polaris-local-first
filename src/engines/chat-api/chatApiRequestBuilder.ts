@@ -1,4 +1,4 @@
-import type { PersonaAdvancedSettings, ProviderProfile } from '../../types/domain';
+import type { ConversationReasoningStrength, PersonaAdvancedSettings, ProviderProfile } from '../../types/domain';
 import type { AssistantRequestContext } from '../request/requestContext';
 import { buildProviderRuntimeRequest } from '../provider-runtime/providerRuntimeRequest';
 import type { BuiltRequest } from './chatApiTypes';
@@ -9,6 +9,7 @@ export function buildApiRequest(params: {
   context: AssistantRequestContext;
   sessionId?: string;
   advanced?: PersonaAdvancedSettings;
+  reasoningStrength?: import('../../types/domain').ConversationReasoningStrength;
   bodyOverrides?: Record<string, unknown>;
   openAiToolHistoryMode?: OpenAiToolHistoryMode;
 }): BuiltRequest {

@@ -70,3 +70,11 @@ This module is about native capability. Tablet adaptation is documented separate
 
 - Physical iPhone SQLite proof and visible health/census inspection belong to native-release
   verification, not the source publication gate.
+
+## Backup And MCP Transport
+
+`NativeMcpSsePlugin` on iOS and Android owns the native connection and reports headers, stream data,
+closure, and failure to the shared MCP session owner. It is registered explicitly by each shell.
+Android WebDAV uses its native HTTP bridge for backup upload and ranged download; iOS uses its
+supported upload method. Native backup text chunks preserve UTF-16 surrogate pairs. Selected Kelivo
+`.db`, `.sqlite`, and `.sqlite3` files enter the shared import converter.

@@ -220,6 +220,60 @@ describe('extractOpenAiCompatibleReply', () => {
     }]);
   });
 
+  it('normalizes structured and flattened relay tool calls in complete responses', () => {
+    const reply = extractOpenAiCompatibleReply({
+      model: 'deepseek-v4-flash',
+      choices: [{
+        finish_reason: 'tool_calls',
+        message: {
+          content: null,
+          tool_calls: [
+            {
+              index: 7,
+              id: 'call_structured',
+              function: {
+                name: 'readMemoryDoc',
+                arguments: { docId: 'memory-1' }
+              }
+            },
+            {
+              id: 'call_flat',
+              name: 'readProjectFile',
+              arguments: ''
+            }
+          ]
+        }
+      }]
+    }, 'fallback-model');
+
+    expect(reply.finishReason).toBe('tool_calls');
+    expect(reply.nativeToolCalls).toEqual([
+      {
+        id: 'call_structured',
+        name: 'readMemoryDoc',
+        argumentsText: '{"docId":"memory-1"}'
+      },
+      {
+        id: 'call_flat',
+        name: 'readProjectFile',
+        argumentsText: '{}'
+      }
+    ]);
+  });
+
+  it('reports a relay schema failure instead of an empty API response when the tool body is missing', () => {
+    expect(() => extractOpenAiCompatibleReply({
+      model: 'deepseek-v4-flash',
+      choices: [{
+        finish_reason: 'tool_calls',
+        message: {
+          role: 'assistant',
+          content: null
+        }
+      }]
+    }, 'fallback-model')).toThrow('中转是否完整转发 tool_calls');
+  });
+
   it('prefers full reasoning content over abbreviated reasoning summary', () => {
     const reply = extractOpenAiCompatibleReply({
       model: 'openai/gpt-5.4-20260305',
@@ -312,5 +366,33 @@ describe('extractAnthropicReply', () => {
         { type: 'redacted_thinking', data: 'redacted-a' }
       ]
     });
+  });
+
+  it('preserves empty Anthropic tool input as an object-root argument payload', () => {
+    const reply = extractAnthropicReply({
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'tool_use',
+      content: [{
+        type: 'tool_use',
+        id: 'toolu_1',
+        name: 'readProjectFile',
+        input: {}
+      }]
+    }, 'fallback-model');
+
+    expect(reply.finishReason).toBe('tool_use');
+    expect(reply.nativeToolCalls).toEqual([{
+      id: 'toolu_1',
+      name: 'readProjectFile',
+      argumentsText: '{}'
+    }]);
+  });
+
+  it('reports an Anthropic tool schema failure before generic empty handling', () => {
+    expect(() => extractAnthropicReply({
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'tool_use',
+      content: []
+    }, 'fallback-model')).toThrow('中转是否完整转发 tool_calls');
   });
 });

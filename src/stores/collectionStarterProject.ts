@@ -9,7 +9,7 @@ import { STARTER_WORKBENCH_PROJECT_APP_JS } from '../content/bundledCollection/s
 import { STARTER_WORKBENCH_PROJECT_INDEX_HTML } from '../content/bundledCollection/starterWorkbenchProject/indexHtml';
 import { STARTER_WORKBENCH_PROJECT_README_MD } from '../content/bundledCollection/starterWorkbenchProject/readmeMd';
 import { STARTER_WORKBENCH_PROJECT_STYLES_CSS } from '../content/bundledCollection/starterWorkbenchProject/stylesCss';
-import { POLARIS_ASSISTANT_PERSONA_ID } from '../config/persona/personaBuilder';
+import { RETIRED_POLARIS_ASSISTANT_PERSONA_ID } from '../config/persona/personaBuilder';
 import { createRoomProject, sortRoomProjects } from '../engines/roomProjects';
 import type { ProjectFile, RoomProject } from '../types/domain';
 import { createProjectFileEntry, sortProjectFiles } from './collectionStoreProjectFiles';
@@ -25,7 +25,7 @@ function refreshKnownStarterWorkbenchProject(project: RoomProject, bundledProjec
   const isKnownStarter =
     project.id === bundledProject.id
     && project.source === 'chat-generated'
-    && (project.ownerCollaboratorId === 'pharos' || project.ownerCollaboratorId === POLARIS_ASSISTANT_PERSONA_ID)
+    && (project.ownerCollaboratorId === 'pharos' || project.ownerCollaboratorId === RETIRED_POLARIS_ASSISTANT_PERSONA_ID)
     && ['掌心小手机', 'Pharos 的手机', bundledProject.title].includes(project.title);
 
   if (!isKnownStarter) return project;
@@ -94,7 +94,7 @@ export function createStarterWorkbenchProjectBundle(now = Date.now()): StarterPr
     id: STARTER_WORKBENCH_PROJECT_ID,
     title: 'Polaris 小工作台',
     slug: 'polaris-workbench',
-    ownerCollaboratorId: POLARIS_ASSISTANT_PERSONA_ID,
+    ownerCollaboratorId: 'pharos',
     entryFileId: STARTER_WORKBENCH_PROJECT_INDEX_FILE_ID,
     fileIds: [
       STARTER_WORKBENCH_PROJECT_INDEX_FILE_ID,
@@ -102,8 +102,8 @@ export function createStarterWorkbenchProjectBundle(now = Date.now()): StarterPr
       STARTER_WORKBENCH_PROJECT_APP_FILE_ID,
       STARTER_WORKBENCH_PROJECT_README_FILE_ID
     ],
-    coverNote: '小助手家的默认工作区：便签、任务、摘录和 Markdown 预览，用来认识多文件项目怎么继续改。',
-    tags: ['工作区', '小助手', 'starter'],
+    coverNote: 'Pharos 房间的默认工作区：便签、任务、摘录和 Markdown 预览，用来认识多文件项目怎么继续改。',
+    tags: ['工作区', 'Pharos', 'starter'],
     source: 'chat-generated',
     createdAt: now,
     updatedAt: now
@@ -111,7 +111,7 @@ export function createStarterWorkbenchProjectBundle(now = Date.now()): StarterPr
 
   const commonFileSeed = {
     projectId: project.id,
-    ownerCollaboratorId: POLARIS_ASSISTANT_PERSONA_ID,
+    ownerCollaboratorId: 'pharos',
     source: 'chat-generated' as const,
     createdAt: now,
     updatedAt: now
@@ -169,7 +169,7 @@ export function includeDefaultCollectionProjects(
     const isUntouchedBundledFile = Boolean(bundledFile)
       && file.projectId === bundle.project.id
       && file.source === 'chat-generated'
-      && (file.ownerCollaboratorId === 'pharos' || file.ownerCollaboratorId === POLARIS_ASSISTANT_PERSONA_ID)
+      && (file.ownerCollaboratorId === 'pharos' || file.ownerCollaboratorId === RETIRED_POLARIS_ASSISTANT_PERSONA_ID)
       && isKnownStarterWorkbenchRevision(file);
 
     if (!bundledFile || !isUntouchedBundledFile) {

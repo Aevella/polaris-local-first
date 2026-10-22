@@ -95,7 +95,9 @@ export function applyProviderRuntimeStreamEvents(
       return;
     }
     if (event.type === 'done') {
-      target.finishReason = event.finishReason;
+      if (event.finishReason && !(event.finishReason === 'stop' && target.finishReason)) {
+        target.finishReason = event.finishReason;
+      }
       target.transportIncomplete = event.transportIncomplete;
       changed = true;
       return;
@@ -114,7 +116,9 @@ export function applyProviderRuntimeStreamEvents(
       if (event.id) {
         existing.id = event.id;
       }
-      existing.name = event.name;
+      if (event.name) {
+        existing.name = event.name;
+      }
     }
     if (event.type === 'tool_call.delta') {
       if (event.id) {

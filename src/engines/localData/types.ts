@@ -4,6 +4,9 @@ import type {
   ChatMessage,
   CodeCard,
   CollectionShelf,
+  ConversationReasoningStrength,
+  ConversationRequestContext,
+  ConversationWindowPreferences,
   ConversationTaskState,
   ConversationSummaryModelSettings,
   GroupConversationState,
@@ -151,6 +154,10 @@ export type ConversationCatalogRow = {
   group?: GroupConversationState;
   groupRoomId?: string | null;
   activeProjectId: string | null;
+  reasoningStrength?: ConversationReasoningStrength;
+  requestContext?: ConversationRequestContext;
+  windowPreferences?: ConversationWindowPreferences;
+  contextMessageLimit?: number; // Older persisted catalogs only.
   pinnedAt: number | null;
   updatedAt: number;
   messageCount: number;
@@ -163,6 +170,7 @@ export type ConversationCatalogRow = {
   lifecycleReason?: string;
   missingRecordKeys?: string[];
   recordVersion: number;
+  messageStorage?: 'incremental';
 };
 
 export type ChatDomainMetaRow = {

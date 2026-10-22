@@ -744,4 +744,8 @@ export const settings = {
   'settings.memory.manualMode': '手动整理',
   'settings.memory.skipProcessedOn': '跳过已处理',
   'settings.memory.skipProcessedOff': '允许重扫旧来源',
+  'settings.display.topbarTitle': '顶部布局',
+  'settings.display.topbarDetail': '选择名字和对话信息的排列方式。',
+  'settings.display.topbarCentered': '居中',
+  'settings.display.topbarLeading': '经典',
 } as const;

@@ -336,6 +336,7 @@ export function useAppShellController() {
       ...world.topbarProps,
       state: {
         ...world.topbarProps.state,
+        topbarLayout: displayPreferences.topbarLayout,
         menuOpen: overlays.modals.menuOpen
       }
     },

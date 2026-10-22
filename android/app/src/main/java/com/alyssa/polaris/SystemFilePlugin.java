@@ -301,7 +301,8 @@ public class SystemFilePlugin extends Plugin {
     public void addZipTextEntry(PluginCall call) {
         String exportId = call.getString("exportId");
         String path = call.getString("path");
-        String text = call.getString("text", "");
+        String text = call.getString("text");
+        if (text == null) { call.reject("导出文本格式不正确。"); return; }
         fileExecutor.execute(() -> {
             try {
                 ZipExportSession session = requireZipSession(exportId);
@@ -323,7 +324,8 @@ public class SystemFilePlugin extends Plugin {
     @PluginMethod
     public void appendZipTextChunk(PluginCall call) {
         String exportId = call.getString("exportId");
-        String text = call.getString("text", "");
+        String text = call.getString("text");
+        if (text == null) { call.reject("导出文本格式不正确。"); return; }
         fileExecutor.execute(() -> {
             try {
                 requireZipSession(exportId).write(text.getBytes(StandardCharsets.UTF_8));

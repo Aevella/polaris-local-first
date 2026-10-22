@@ -12,6 +12,7 @@
   .attachment-picker-actions { gap: 6px; }
   .attachment-picker-action { min-height: 76px; padding: 11px; border-radius: 16px; }
   .attachment-picker-action-copy strong { font-size: 13px; }
+  .conversation-reasoning-options { grid-template-columns: 1fr; max-height: min(54vh, 430px); overflow-y: auto; }
   .active-preview-strip,
   .chat-box-shell { backdrop-filter: blur(12px) saturate(1.08); box-shadow: 0 10px 18px color-mix(in srgb, var(--accent-soft) 6%, transparent); }
   .chat-box-shell {
@@ -34,6 +35,7 @@
   .chat-dock,
   .attachment-picker-sheet,
   .attachment-picker-action,
+  .conversation-reasoning-option,
   .chat-box-main,
   .composer-slot-btn,
   .send-btn,
@@ -43,6 +45,8 @@
   .chat-box:focus-within,
   .attachment-picker-action:hover,
   .attachment-picker-action:focus-visible,
+  .conversation-reasoning-option:hover,
+  .conversation-reasoning-option:focus-visible,
   .composer-slot-btn:hover,
   .composer-slot-btn:focus-visible,
   .send-btn.has-content:hover,

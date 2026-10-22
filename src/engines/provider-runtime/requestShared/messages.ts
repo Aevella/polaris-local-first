@@ -37,14 +37,28 @@ export function buildOrderedMessages(
   if (policy.deferVolatileSystemMessages) {
     const stableSystemMessages = rawSystemMessages.filter(isStableSystemMessage);
     const volatileSystemMessages = rawSystemMessages.filter((message) => !isStableSystemMessage(message));
+    // Keep the completed history cacheable without making recalled background
+    // the apparent newest instruction. Tool calls/results remain together.
+    let latestUserIndex = -1;
+    for (let index = nonSystemMessages.length - 1; index >= 0; index -= 1) {
+      const message = nonSystemMessages[index];
+      if (message.role === 'user' && !message.promptPartName && !message.isToolTranscript) {
+        latestUserIndex = index;
+        break;
+      }
+    }
+    const turnStart = latestUserIndex < 0 ? nonSystemMessages.length : latestUserIndex;
+    const clockIndex = nonSystemMessages.findIndex((message) => message.promptPartName === 'runtime_clock_context');
+    const insertionIndex = clockIndex < 0 ? turnStart : Math.min(turnStart, clockIndex);
     return [
       ...buildSystemMessageGroup(stableSystemMessages, policy),
-      ...nonSystemMessages,
+      ...nonSystemMessages.slice(0, insertionIndex),
       ...(
         policy.omitVolatileSystemMessages
           ? buildSystemMessageGroup(volatileSystemMessages.filter(shouldKeepDeepSeekVolatileSystemMessage), policy)
           : buildSystemMessageGroup(volatileSystemMessages, policy)
-      )
+      ),
+      ...nonSystemMessages.slice(insertionIndex)
     ];
   }
 
@@ -54,7 +68,22 @@ export function buildOrderedMessages(
   ];
 }
 
-function isStableSystemMessage(message: OrderedContextMessage) {
+/** Protocols with a separate system field cannot leave moving background there. */
+export function buildSeparatedSystemMessages(context: AssistantRequestContext): OrderedContextMessage[] {
+  return buildOrderedMessages(context, {
+    collapseSystemMessages: false,
+    deferVolatileSystemMessages: true,
+    omitVolatileSystemMessages: false
+  }).map((message) => message.role === 'system' && !isStableSystemMessage(message)
+    ? {
+        ...message,
+        role: 'user' as const,
+        content: `[request_context]\n以下是本轮应用背景，不是用户的新消息。\n${extractTextPayload(message.content)}\n[/request_context]`
+      }
+    : message);
+}
+
+export function isStableSystemMessage(message: OrderedContextMessage) {
   return (
     message.cachePrefixEligible === true
     || message.promptPartLayer === 'identity'

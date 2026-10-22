@@ -58,6 +58,7 @@ export function createChatActionStoreBindings(store: ChatStoreBindings): ChatAct
       replaceConversationMessages: store.chat.replaceConversationMessages,
       setConversationTask: store.chat.setConversationTask,
       setConversationActiveProject: store.chat.setConversationActiveProject,
+      setConversationReasoningStrength: store.chat.setConversationReasoningStrength,
       upsertPendingWorkspaceProposal: store.chat.upsertPendingWorkspaceProposal,
       removePendingWorkspaceProposal: store.chat.removePendingWorkspaceProposal,
       appendRuntimeFeedbackEvent: store.chat.appendRuntimeFeedbackEvent,

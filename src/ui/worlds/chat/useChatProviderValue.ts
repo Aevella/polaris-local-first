@@ -103,7 +103,8 @@ function buildComposerSection(args: {
     toolPromptPreferences: args.store.runtime.toolPromptPreferences,
     taskModeEnabled: args.store.runtime.taskModeEnabled,
     themeToolMode: args.store.space.theme.toolMode,
-    canReviveTheme: args.store.space.theme.skinHistory.length > 0
+    canReviveTheme: args.store.space.theme.skinHistory.length > 0,
+    reasoningStrength: activeConversation?.reasoningStrength ?? 'automatic'
   };
 }
 
@@ -227,6 +228,12 @@ function buildActionsSection(args: {
     codeCardAction: args.toolActions.handleCodeCardAction,
     setInputDraft: args.store.chat.setInputDraft,
     setConversationDraft: args.store.chat.setConversationDraft,
+    setConversationReasoningStrength: (strength) => {
+      const activeConversationId = args.store.chat.activeConversationId;
+      if (!activeConversationId) return;
+      args.store.chat.setConversationReasoningStrength(activeConversationId, strength);
+      args.ui.setCommandStatus(args.t('chat.reasoning.changed'));
+    },
     setPendingCardReference: (reference) => {
       args.store.space.setPendingCardReference(reference);
       if (reference) {

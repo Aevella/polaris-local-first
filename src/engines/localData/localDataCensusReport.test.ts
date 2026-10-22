@@ -375,7 +375,7 @@ describe('buildLocalDataCensusReport', () => {
     expect(report.activeDataSource).toBe('unknown');
     expect(report.repositoryRowCount).toBe(1);
     expect(report.knownCollaboratorIds).toEqual(['pharos']);
-    expect(report.knownOwnerIds).toEqual(['missing-persona', 'pharos', 'polaris-assistant']);
+    expect(report.knownOwnerIds).toEqual(['missing-persona', 'pharos']);
     expect(chat).toEqual(expect.objectContaining({
       baselineObjectIds: ['c-1', 'c-2', 'c-3'],
       activeObjectIds: ['c-1', 'c-2', 'c-3'],

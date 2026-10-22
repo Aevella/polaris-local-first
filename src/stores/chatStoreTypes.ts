@@ -34,6 +34,7 @@ export type ChatState = {
     collaboratorId?: string | null,
     options?: {
       activeProjectId?: string | null;
+      draft?: string;
     }
   ) => string;
   createGroupConversation: (options: {
@@ -50,6 +51,10 @@ export type ChatState = {
   insertMessageAfter: (target: WritableConversationBody, afterMessageId: string, message: ChatMessage) => void;
   updateMessage: (target: WritableConversationBody, messageId: string, patch: Partial<ChatMessage>) => void;
   replaceConversationMessages: (target: WritableConversationBody, messages: ChatMessage[]) => void;
+  setConversationWindowPreferences: (id: string, patch: Partial<NonNullable<Conversation['windowPreferences']>>) => void;
+  setConversationRequestContext: (id: string, context: NonNullable<Conversation['requestContext']>) => void;
+  setConversationReasoningStrength: (id: string, strength: NonNullable<Conversation['reasoningStrength']>) => void;
+  reassignCollaboratorConversations: (sourceId: string, targetId: string) => string[];
   setConversationActiveProject: (conversationId: string, projectId: string | null) => void;
   reconcileConversationWorkspaceBindings: (validProjectIds: string[]) => void;
   upsertPendingWorkspaceProposal: (proposal: PendingWorkspaceProposalRecord) => void;

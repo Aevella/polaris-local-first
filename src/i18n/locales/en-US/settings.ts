@@ -746,4 +746,8 @@ export const settings = {
   'settings.memory.manualMode': 'Manual updates',
   'settings.memory.skipProcessedOn': 'Skipping processed sources',
   'settings.memory.skipProcessedOff': 'Rescanning old sources allowed',
+  'settings.display.topbarTitle': 'Header layout',
+  'settings.display.topbarDetail': 'Choose how names and conversation details are arranged.',
+  'settings.display.topbarCentered': 'Centered',
+  'settings.display.topbarLeading': 'Classic',
 } satisfies Record<keyof typeof zhSettings, string>;

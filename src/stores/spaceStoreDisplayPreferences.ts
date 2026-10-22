@@ -27,6 +27,7 @@ export function normalizeDisplayPreferences(
     : {};
 
   return {
+    ...(source.topbarLayout === 'leading' ? { topbarLayout: 'leading' as const } : {}),
     appearance: normalizeAppearancePreference(source.appearance),
     hapticsEnabled:
       typeof source.hapticsEnabled === 'boolean'

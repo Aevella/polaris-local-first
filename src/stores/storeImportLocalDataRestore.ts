@@ -1,3 +1,4 @@
+import { preserveExistingBodiesForMissingImports } from './personaBackupDocuments';
 import { collectAssetReferenceOwners } from '../engines/assetGovernance';
 import {
   buildAssetMigrationPlan,
@@ -128,10 +129,10 @@ export async function restoreStructuredImportToLocalDataRepository(
   const validatedAt = committedAt;
   const repository = createStoreLocalDataRepository({ now: () => committedAt });
   const version = LOCAL_DATA_SCHEMA_VERSION;
-  const personasWithDocContent = restorePersonaMemoryDocContent(
+  const personasWithDocContent = await preserveExistingBodiesForMissingImports(restorePersonaMemoryDocContent(
     payload.personaState.personas,
     payload.personaMemoryDocContent
-  );
+  ));
   const restoredDomains: LocalDataDomain[] = [];
   const skippedDomains: StructuredImportLocalDataRestoreSkippedDomain[] = [];
   const skippedDomainSet = new Set(options.skipDomains ?? []);

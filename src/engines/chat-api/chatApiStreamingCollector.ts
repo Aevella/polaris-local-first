@@ -21,6 +21,7 @@ import {
 } from '../provider-runtime/providerRuntimeReplyAccumulator';
 import { extractTextPayload, extractThinkingPayload } from '../provider-runtime/providerRuntimeResponseText';
 import { createStreamLineParser } from './chatApiStreamParser';
+import { validateProviderToolCallTermination } from '../provider-runtime/providerRuntimeToolCallResponse';
 
 function tryParseStreamPayload(input: string): unknown | null {
   try {
@@ -179,6 +180,8 @@ export function createStreamingReplyCollector(
         }
       }
     }
+
+    validateProviderToolCallTermination(collected);
 
     if (!collected.content.trim() && !collected.thinkingText.trim() && !(collected.toolCalls?.length ?? 0)) {
       throw new Error(formatEmptyProviderResponseMessage(rawResponseText));

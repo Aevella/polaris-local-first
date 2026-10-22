@@ -51,6 +51,7 @@ export interface ChatMessage {
   memoryEvidence?: ChatMemoryEvidence;
   assistantName?: string;
   speakerCollaboratorId?: string;
+  replyIncomplete?: boolean;
   assistantReplyId?: string;
   assistantReplySegmentIndex?: number;
   thinkingText?: string;
@@ -123,6 +124,14 @@ export type WorkspaceLedgerEvent =
 
 export type ConversationTaskStatus = 'running' | 'blocked' | 'completed' | 'cancelled';
 export type ConversationTaskStepStatus = 'pending' | 'in_progress' | 'completed' | 'blocked';
+export type ConversationReasoningStrength =
+  | 'off'
+  | 'automatic'
+  | 'light'
+  | 'medium'
+  | 'high'
+  | 'extreme';
+
 export type ConversationTaskMode = 'seed' | 'active';
 
 export interface ConversationTaskStep {
@@ -159,7 +168,29 @@ export interface ConversationTaskState {
   lastAssistantMessageId?: string;
 }
 
+export type ConversationRequestContext =
+  | { mode: 'inherit' }
+  | { mode: 'all' }
+  | { mode: 'recent'; messageCount: number }
+  | { mode: 'fromMessage'; anchorMessageId: string | null };
+
+export interface ConversationWindowPreferences {
+  modelBinding?: { providerId: string; model: string };
+  historicalImagePolicy: 'smart' | 'currentTurnOnly' | 'always';
+  composerReturnKeyBehavior: 'automatic' | 'newline' | 'send';
+  mcpScope: { mode: 'inherit' } | { mode: 'selected'; serverIds: string[] };
+}
+
+export interface ConversationWindowDefaults {
+  windowPreferences?: ConversationWindowPreferences;
+  requestContext: ConversationRequestContext;
+  reasoningStrength: ConversationReasoningStrength;
+}
+
 export interface Conversation {
+  reasoningStrength?: ConversationReasoningStrength;
+  requestContext?: ConversationRequestContext;
+  windowPreferences?: ConversationWindowPreferences;
   id: string;
   title: string;
   kind?: 'direct' | 'group';

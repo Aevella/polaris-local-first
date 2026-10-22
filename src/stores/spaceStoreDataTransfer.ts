@@ -9,7 +9,7 @@ export async function importAllData(
   options: { onProgress?: StoreImportProgressReporter } = {}
 ): Promise<StoreImportResult> {
   options.onProgress?.({ message: '识别备份包' });
-  const header = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+  const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
   const isZip =
     header[0] === 0x50
     && header[1] === 0x4b
@@ -18,8 +18,9 @@ export async function importAllData(
       || (header[2] === 0x05 && header[3] === 0x06)
       || (header[2] === 0x07 && header[3] === 0x08)
     );
+  const isSQLite = new TextDecoder().decode(header) === 'SQLite format 3\0';
 
-  if (!isZip) {
+  if (!isZip && !isSQLite) {
     throw new Error('无法识别的备份格式：请选择 Polaris 导出的 zip 备份');
   }
 

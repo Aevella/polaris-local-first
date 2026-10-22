@@ -1,0 +1,70 @@
+/* April 7, 2026 (1cff24b57): restore the original header proportions.
+   The current menu, font preferences and shell geometry owners remain in charge. */
+.topbar.topbar--leading-context {
+  padding: max(18px, calc(6px + env(safe-area-inset-top, 0px))) 20px 8px;
+}
+.topbar--leading-context .topbar-main {
+  justify-content: space-between;
+  gap: 12px;
+}
+.topbar--leading-context .brand-trigger {
+  position: relative;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 10px;
+  padding: 2px 0;
+}
+.topbar--leading-context .brand {
+  align-items: flex-start;
+  min-width: 0;
+}
+.topbar--leading-context .world-anchor .brand h1 {
+  margin: 0;
+  font-size: calc(21px * var(--polaris-font-scale, 1));
+  line-height: 1;
+  font-family: var(--font-display-latin);
+  font-weight: 500;
+  letter-spacing: .02em;
+}
+.topbar--leading-context .world-anchor .brand h1.display-title--system {
+  font-family: var(--font-ui);
+}
+.topbar--leading-context .world-anchor .brand p {
+  margin: 3px 0 0;
+  font-size: calc(11px * var(--polaris-font-scale, 1));
+  font-weight: 400;
+  letter-spacing: .01em;
+  gap: 6px;
+  justify-content: flex-start;
+  max-width: 100%;
+}
+.topbar--leading-context .brand-world-mark {
+  width: 25px;
+  height: 25px;
+  flex-shrink: 0;
+}
+.topbar--leading-context .world-anchor--aggregate .brand-world-mark {
+  width: 33px;
+  height: 33px;
+}
+.topbar--leading-context .brand-meta-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.topbar--leading-context .topbar-actions {
+  position: relative;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.topbar--leading-context .preview-banner-trigger {
+  margin-left: 0;
+  margin-right: auto;
+}
+@media (max-width: 640px) {
+  .topbar.topbar--leading-context { padding-left: 16px; padding-right: 16px; }
+}

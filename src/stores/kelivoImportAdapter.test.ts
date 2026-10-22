@@ -1,12 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
+import initSqlJs from 'sql.js';
 import type { ChatMessage } from '../types/domain';
 import {
   convertKelivoBackupToStructuredExportSnapshot,
   convertKelivoBackupZip,
-  isKelivoBackupZip
+  isKelivoBackupZip,
+  importKelivoBackupPackage,
+  importKelivoBackupPackageIfMatched
 } from './kelivoImportAdapter';
 import type { RuntimePayload } from './runtimeStorePersistence';
+
+const imports = vi.hoisted(() => ({
+  importStructuredExportSnapshot: vi.fn(async (_snapshot: unknown, _options?: unknown) => ({})),
+  importPersistedDataDirectly: vi.fn()
+}));
+vi.mock('./storeImportPackage', () => imports);
 
 async function createKelivoBackupBlob(options: {
   settingsPatch?: Record<string, unknown>;
@@ -143,7 +152,141 @@ async function createKelivoBackupBlob(options: {
   return new Blob([buffer], { type: 'application/zip' });
 }
 
+async function createCurrentKelivoDatabase() {
+  const SQL = await initSqlJs({
+    locateFile: () => `${process.cwd()}/node_modules/sql.js/dist/sql-wasm.wasm`
+  });
+  const db = new SQL.Database();
+  db.run(`
+    CREATE TABLE conversation_rows (id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, assistant_id TEXT, version_selections_json TEXT NOT NULL);
+    CREATE TABLE message_rows (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL, timestamp INTEGER NOT NULL, reasoning_segments_json TEXT, message_order INTEGER NOT NULL, group_id TEXT, version INTEGER NOT NULL);
+    CREATE TABLE message_part_rows (part_id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT NOT NULL, revision_id TEXT NOT NULL, ordinal INTEGER NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+    CREATE TABLE asset_rows (id TEXT PRIMARY KEY, path TEXT NOT NULL);
+    CREATE TABLE message_asset_rows (revision_id TEXT NOT NULL, asset_id TEXT NOT NULL);
+    CREATE TABLE assistant_rows (id TEXT PRIMARY KEY, sort_order INTEGER NOT NULL, payload TEXT NOT NULL, updated_at INTEGER NOT NULL);
+    CREATE TABLE assistant_memory_rows (id TEXT PRIMARY KEY, sort_order INTEGER NOT NULL, assistant_id TEXT NOT NULL, payload TEXT NOT NULL, updated_at INTEGER NOT NULL);
+    CREATE TABLE world_book_rows (id TEXT PRIMARY KEY, sort_order INTEGER NOT NULL, payload TEXT NOT NULL, updated_at INTEGER NOT NULL);
+    CREATE TABLE provider_rows (provider_key TEXT PRIMARY KEY, sort_order INTEGER NOT NULL, payload TEXT NOT NULL, updated_at INTEGER NOT NULL);
+    CREATE TABLE mcp_server_rows (id TEXT PRIMARY KEY, sort_order INTEGER NOT NULL, payload TEXT NOT NULL, updated_at INTEGER NOT NULL);
+  `);
+  db.run('INSERT INTO conversation_rows VALUES (?, ?, ?, ?, ?, ?)', [
+    'conversation-sqlite', 'Branched chat', 1_718_000_000_000_000, 1_718_000_000_300_000,
+    'assistant-sqlite', '{"group-a":0}'
+  ]);
+  db.run('INSERT INTO message_rows VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
+    'assistant-v0', 'conversation-sqlite', 'assistant', 1_718_000_000_100_000, '', 0, 'group-a', 0
+  ]);
+  db.run('INSERT INTO message_rows VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
+    'assistant-v1', 'conversation-sqlite', 'assistant', 1_718_000_000_200_000, '', 0, 'group-a', 1
+  ]);
+  db.run('INSERT INTO message_part_rows VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)', [
+    'conversation-sqlite', 'assistant-v0', 0, 'reasoning', 'kept thought', 1, 1
+  ]);
+  db.run('INSERT INTO message_part_rows VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)', [
+    'conversation-sqlite', 'assistant-v0', 1, 'text', 'selected branch', 1, 1
+  ]);
+  db.run('INSERT INTO message_part_rows VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)', [
+    'conversation-sqlite', 'assistant-v1', 0, 'text', 'unselected newer branch', 1, 1
+  ]);
+  db.run('INSERT INTO asset_rows VALUES (?, ?)', ['asset-branch', 'upload/branch.png']);
+  db.run('INSERT INTO message_asset_rows VALUES (?, ?)', ['assistant-v0', 'asset-branch']);
+  db.run('INSERT INTO assistant_rows VALUES (?, ?, ?, ?)', [
+    'assistant-sqlite', 0, JSON.stringify({
+      id: 'assistant-sqlite', name: 'Nova', systemPrompt: 'Stay exact.',
+      chatModelProvider: 'sqlite-provider', chatModelId: 'sqlite-chat'
+    }), 1
+  ]);
+  db.run('INSERT INTO assistant_memory_rows VALUES (?, ?, ?, ?, ?)', [
+    'memory-sqlite', 0, 'assistant-sqlite', JSON.stringify({
+      id: 'memory-sqlite', assistantId: 'assistant-sqlite', content: 'Remember the harbor.'
+    }), 1
+  ]);
+  db.run('INSERT INTO world_book_rows VALUES (?, ?, ?, ?)', [
+    'book-sqlite', 0, JSON.stringify({
+      id: 'book-sqlite', name: 'SQLite Canon', enabled: true,
+      entries: [{ id: 'entry-sqlite', enabled: true, constantActive: true, content: 'The harbor exists.' }]
+    }), 1
+  ]);
+  db.run('INSERT INTO provider_rows VALUES (?, ?, ?, ?)', [
+    'sqlite-provider', 0, JSON.stringify({
+      id: 'sqlite-provider', name: 'SQLite Relay', providerType: 'openai',
+      baseUrl: 'https://sqlite-relay.example.test/v1', apiKey: 'sqlite-provider-secret', models: ['sqlite-chat']
+    }), 1
+  ]);
+  db.run('INSERT INTO mcp_server_rows VALUES (?, ?, ?, ?)', [
+    'sqlite-mcp', 0, JSON.stringify({
+      id: 'sqlite-mcp', name: 'SQLite MCP', transport: 'http', enabled: true,
+      url: 'https://sqlite-mcp.example.test/rpc', headers: { Authorization: 'Bearer sqlite-mcp-secret' }
+    }), 1
+  ]);
+  const bytes = db.export();
+  db.close();
+  return bytes;
+}
+
+async function createCurrentKelivoBackupBlob() {
+  const zip = new JSZip();
+  zip.file('manifest.json', JSON.stringify({ format: 'kelivo-backup', formatVersion: 2 }));
+  zip.file('settings.json', JSON.stringify({
+    provider_configs_v1: JSON.stringify({
+      'sqlite-provider': {
+        id: 'sqlite-provider', name: 'Stale Relay', providerType: 'openai',
+        baseUrl: 'https://stale.example.test/v1', apiKey: 'stale-secret', models: ['stale-model']
+      }
+    })
+  }));
+  zip.file('database/kelivo.db', await createCurrentKelivoDatabase());
+  zip.file('upload/branch.png', new Uint8Array([20, 21, 22]));
+  return new Blob([await zip.generateAsync({ type: 'arraybuffer' })], { type: 'application/zip' });
+}
+
 describe('convertKelivoBackupZip', () => {
+  it('imports current SQLite backups with selected revisions, explicit assets, and credentials', async () => {
+    const blob = await createCurrentKelivoBackupBlob();
+    await expect(isKelivoBackupZip(blob)).resolves.toBe(true);
+
+    const { snapshot, stats } = await convertKelivoBackupToStructuredExportSnapshot(blob);
+    const conversation = snapshot.chatState?.conversations[0];
+    expect(stats).toMatchObject({ conversations: 1, messages: 1, personas: 1, providers: 1, mcpServers: 1, assets: 1 });
+    expect(conversation?.messages).toHaveLength(1);
+    expect(conversation?.messages[0]).toMatchObject({
+      id: 'assistant-v0',
+      content: 'selected branch',
+      thinkingText: 'kept thought',
+      attachments: [expect.objectContaining({ name: 'branch.png' })]
+    });
+    expect(snapshot.personaState?.personas[0]?.memory.personalMemories).toEqual(['Remember the harbor.']);
+    expect(JSON.parse(snapshot.personaState?.personas[0]?.advanced.regexTriggers ?? '[]')).toEqual([
+      expect.objectContaining({ alwaysOn: true, prompt: 'The harbor exists.' })
+    ]);
+    expect(snapshot.runtimeState?.providers[0]).toMatchObject({
+      id: 'sqlite-provider', apiKey: 'sqlite-provider-secret', model: 'sqlite-chat'
+    });
+    expect(snapshot.runtimeState?.mcpServers[0]?.headers).toEqual([
+      expect.objectContaining({ key: 'Authorization', value: 'Bearer sqlite-mcp-secret' })
+    ]);
+  });
+
+  it('imports a standalone Kelivo SQLite database without archive assets', async () => {
+    const bytes = await createCurrentKelivoDatabase();
+    const { snapshot, stats } = await convertKelivoBackupToStructuredExportSnapshot(
+      new Blob([new Uint8Array(bytes).buffer], { type: 'application/vnd.sqlite3' })
+    );
+
+    expect(stats).toMatchObject({ conversations: 1, messages: 1, assets: 0 });
+    expect(snapshot.chatState?.conversations[0]?.messages[0]?.content).toBe('selected branch');
+    expect(snapshot.chatState?.conversations[0]?.messages[0]?.attachments).toBeUndefined();
+  });
+
+  it('does not claim a generic settings zip as a Kelivo backup', async () => {
+    const zip = new JSZip();
+    zip.file('settings.json', JSON.stringify({ theme: 'dark' }));
+    zip.file('chats.json', JSON.stringify({ conversations: [], messages: [] }));
+    const blob = new Blob([await zip.generateAsync({ type: 'arraybuffer' })], { type: 'application/zip' });
+
+    await expect(isKelivoBackupZip(blob)).resolves.toBe(false);
+  });
+
   it('recognizes and converts Kelivo backup stores, assets, providers, and MCP settings', async () => {
     const blob = await createKelivoBackupBlob();
     await expect(isKelivoBackupZip(blob)).resolves.toBe(true);
@@ -284,5 +427,31 @@ describe('convertKelivoBackupZip', () => {
     ]));
     expect(chatCatalog.conversations?.[0]?.collaboratorId).toBe('missing-assistant');
     expect(spaceState.state?.frontstageCollaboratorId).toBe('missing-assistant');
+  });
+});
+
+
+describe('Kelivo live import publication', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it.each(['legacy-zip', 'sqlite-zip', 'sqlite'] as const)('publishes %s through the shared transactional snapshot importer', async (format) => {
+    const blob = format === 'legacy-zip' ? await createKelivoBackupBlob()
+      : format === 'sqlite-zip' ? await createCurrentKelivoBackupBlob()
+      : new Blob([new Uint8Array(await createCurrentKelivoDatabase())]);
+    expect(await importKelivoBackupPackageIfMatched(blob)).toEqual({});
+    expect(imports.importStructuredExportSnapshot).toHaveBeenCalledTimes(1);
+    const snapshot = imports.importStructuredExportSnapshot.mock.calls[0]?.[0] as unknown as {
+      chatState: { conversations: unknown[] }; personaState: { personas: unknown[] }; assetEntries: unknown[];
+    };
+    expect(snapshot.chatState.conversations.length).toBeGreaterThan(0);
+    expect(snapshot.personaState.personas.length).toBeGreaterThan(0);
+    expect(imports.importPersistedDataDirectly).not.toHaveBeenCalled();
+  });
+
+  it('propagates publication failure without retrying through destructive legacy replacement', async () => {
+    imports.importStructuredExportSnapshot.mockRejectedValueOnce(new Error('publish failed'));
+    await expect(importKelivoBackupPackage(await createKelivoBackupBlob())).rejects.toThrow('publish failed');
+    expect(imports.importStructuredExportSnapshot).toHaveBeenCalledTimes(1);
+    expect(imports.importPersistedDataDirectly).not.toHaveBeenCalled();
   });
 });

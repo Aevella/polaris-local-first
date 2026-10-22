@@ -1,3 +1,5 @@
+import { normalizeConversationWindowPreferences } from '../engines/conversationWindowSettings';
+import { usePersonaStore } from './personaStore';
 import { sortConversations } from './chatCurrentPersistence';
 import {
   createBodyStatus,
@@ -36,6 +38,10 @@ type ChatConversationActions = Pick<
   | 'renameConversation'
   | 'toggleConversationPinned'
   | 'orphanConversation'
+  | 'setConversationWindowPreferences'
+  | 'setConversationRequestContext'
+  | 'setConversationReasoningStrength'
+  | 'reassignCollaboratorConversations'
 >;
 
 export function createChatConversationActions(
@@ -43,6 +49,62 @@ export function createChatConversationActions(
   get: ChatStoreGet
 ): ChatConversationActions {
   return {
+  setConversationWindowPreferences: (conversationId, patch) => {
+    set((state) => {
+      const target = state.conversations.find(item => item.id === conversationId);
+      if (!target) return state;
+      const windowPreferences = { ...normalizeConversationWindowPreferences(target.windowPreferences), ...patch };
+      if (JSON.stringify(windowPreferences) === JSON.stringify(target.windowPreferences)) return state;
+      return {
+        conversations: state.conversations.map(item => item.id === conversationId ? { ...item, windowPreferences } : item),
+        ...markConversationDirty(state, conversationId)
+      };
+    });
+    flushChatPersistenceIfHydrated(get, 'set-conversation-window-preferences-flush');
+  },
+
+  setConversationRequestContext: (conversationId, context) => {
+    const requestContext = { ...context };
+    set((state) => {
+      const target = state.conversations.find((conversation) => conversation.id === conversationId);
+      if (!target || JSON.stringify(target.requestContext) === JSON.stringify(requestContext)) return state;
+      return {
+        conversations: state.conversations.map((conversation) => conversation.id === conversationId
+          ? { ...conversation, requestContext } : conversation),
+        ...markConversationDirty(state, conversationId)
+      };
+    });
+    flushChatPersistenceIfHydrated(get, 'set-conversation-request-context-flush');
+  },
+
+  setConversationReasoningStrength: (conversationId, reasoningStrength) => {
+    set((state) => {
+      const targetConversation = state.conversations.find((conversation) => conversation.id === conversationId);
+      if (!targetConversation) return state;
+      if ((targetConversation.reasoningStrength ?? 'automatic') === reasoningStrength) return state;
+
+      return {
+        conversations: state.conversations.map((conversation) =>
+          conversation.id === conversationId
+            ? { ...conversation, reasoningStrength }
+            : conversation
+        ),
+        ...markConversationDirty(state, conversationId)
+      };
+    });
+    flushChatPersistenceIfHydrated(get, 'set-conversation-reasoning-strength-flush');
+  },
+
+  reassignCollaboratorConversations: (sourceId, targetId) => {
+    if (!sourceId.trim() || !targetId.trim() || sourceId === targetId) return [];
+    const ids = get().conversations.filter(c => c.kind !== 'group' && c.collaboratorId === sourceId).map(c => c.id);
+    if (!ids.length) return [];
+    set(state => ({ conversations: state.conversations.map(c => ids.includes(c.id) ? { ...c, collaboratorId: targetId } : c),
+      dirtyConversationIds: [...new Set([...state.dirtyConversationIds, ...ids])], conversationPersistVersion: state.conversationPersistVersion + 1 }));
+    flushChatPersistenceIfHydrated(get, 'reassign-collaborator-conversations');
+    return ids;
+  },
+
     setInputDraft: (value) =>
       set((state) => {
         const result = updateActiveConversationDraft(state, value);
@@ -78,13 +140,15 @@ export function createChatConversationActions(
     createConversation: (collaboratorId = null, options) => {
       const next = createDirectConversationRecord({
         collaboratorId,
-        activeProjectId: options?.activeProjectId ?? null
+        activeProjectId: options?.activeProjectId ?? null,
+        draft: options?.draft,
+        defaults: usePersonaStore.getState().personas.find(persona => persona.id === collaboratorId)?.conversationDefaults
       });
       set((state) => ({
         conversations: sortConversations([next, ...state.conversations]),
         activeConversationId: next.id,
         ...withConversationBodyStatus(state, next.id, createBodyStatus('loaded')),
-        inputDraft: '',
+        inputDraft: next.draft ?? '',
         ...markConversationDirty(state, next.id)
       }));
       flushChatPersistenceIfHydrated(get, 'create-conversation-flush');
@@ -97,7 +161,7 @@ export function createChatConversationActions(
         conversations: sortConversations([next, ...state.conversations]),
         activeConversationId: next.id,
         ...withConversationBodyStatus(state, next.id, createBodyStatus('loaded')),
-        inputDraft: '',
+        inputDraft: next.draft ?? '',
         ...markConversationDirty(state, next.id)
       }));
       flushChatPersistenceIfHydrated(get, 'create-group-conversation-flush');

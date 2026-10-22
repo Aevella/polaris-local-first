@@ -149,7 +149,8 @@ export function createChatReplyRunner({
       const effectiveProviderBinding = resolvePersonaProviderBinding({
         globalApi: runtimeState.api,
         providers: runtimeState.providers,
-        persona: snapshotActiveCollaborator
+        persona: snapshotActiveCollaborator,
+        windowBinding: activeConversation?.windowPreferences?.modelBinding
       });
 
       const source: ChatReplyRequestSnapshotSource = {
@@ -209,7 +210,8 @@ export function createChatReplyRunner({
           ? {
               id: activeConversation.id,
               title: activeConversation.title,
-              activeProjectId: activeConversation.activeProjectId ?? null
+              activeProjectId: activeConversation.activeProjectId ?? null,
+              reasoningStrength: activeConversation.reasoningStrength ?? 'automatic'
             }
           : null
       });

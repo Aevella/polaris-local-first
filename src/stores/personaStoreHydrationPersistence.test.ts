@@ -40,7 +40,7 @@ describe('personaStore hydration persistence repair', () => {
     const { usePersonaStore } = await import('./personaStore');
     const shouldPersist = await usePersonaStore.getState().hydrateFromDb();
 
-    expect(shouldPersist).toBe(true);
+    expect(shouldPersist).toBe(false);
     expect(usePersonaStore.getState().hydrated).toBe(true);
     expect(kvGet).toHaveBeenCalledWith('persona-state-v2');
     expect(kvGet).not.toHaveBeenCalledWith('persona-memory-doc-content-v1');

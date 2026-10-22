@@ -11,6 +11,10 @@ export type ChatMigrationLegacyConversationSnapshot = {
   collaboratorId: string | null;
   activeProjectId?: string | null;
   task?: ConversationTaskState | null;
+  reasoningStrength?: Conversation['reasoningStrength'];
+  requestContext?: Conversation['requestContext'];
+  windowPreferences?: Conversation['windowPreferences'];
+  toolLedger?: Conversation['toolLedger'];
   draft?: string;
   workspaceLedger?: WorkspaceLedgerEvent[];
   pinnedAt: number | null;
@@ -113,6 +117,10 @@ function toConversation(source: ChatMigrationLegacyConversationSnapshot, message
     collaboratorId: source.collaboratorId,
     activeProjectId: source.activeProjectId ?? null,
     messages,
+    reasoningStrength: source.reasoningStrength,
+    requestContext: source.requestContext,
+    windowPreferences: source.windowPreferences,
+    toolLedger: source.toolLedger,
     workspaceLedger: source.workspaceLedger ?? [],
     task: source.task ?? null,
     draft: source.draft ?? '',

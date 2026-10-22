@@ -37,6 +37,7 @@ export function useChatConversationStoreBindings() {
     persistToDb: useChatStore((state) => state.persistToDb),
     replaceConversationMessages: useChatStore((state) => state.replaceConversationMessages),
     setConversationActiveProject: useChatStore((state) => state.setConversationActiveProject),
+    setConversationReasoningStrength: useChatStore((state) => state.setConversationReasoningStrength),
     upsertPendingWorkspaceProposal: useChatStore((state) => state.upsertPendingWorkspaceProposal),
     removePendingWorkspaceProposal: useChatStore((state) => state.removePendingWorkspaceProposal),
     appendRuntimeFeedbackEvent: useChatStore((state) => state.appendRuntimeFeedbackEvent),

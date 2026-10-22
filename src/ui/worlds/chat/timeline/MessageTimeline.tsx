@@ -1,3 +1,4 @@
+import { useChatStore } from '../../../../stores/chatStore';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { resolveChatGenerationActive, resolveChatMessageLifecycle, type ChatMessageLifecycle } from '../../../../app/chat/chatStreamingDisplay';
 import { resolveChatCardReference } from '../../../../app/collection/codeCollectionSource';
@@ -25,6 +26,7 @@ import { TaskRuntimeCard, type TaskRuntimeExecutionSegment } from './TaskRuntime
 import { TaskRuntimeDock } from './TaskRuntimeDock';
 import { resolveTimelineWindow } from './messageTimelineWindow';
 import { useTimelineScroll } from './TimelineScroll';
+import { TimelineGeometryBoundary } from './TimelineGeometryBoundary';
 import { Icon } from '../../../Icon';
 import { CodeRunFullscreen } from '../../../collection/workshop/CodeRunFullscreen';
 import { TextReadingFullscreen } from '../../../collection/workshop/TextReadingFullscreen';
@@ -34,6 +36,7 @@ type MessageTimelineProps = {
 };
 
 type TimelineViewport = {
+  rowGap: number;
   scrollTop: number;
   viewportHeight: number;
 };
@@ -111,6 +114,7 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
   const rowMetricsRafRef = useRef<number | null>(null);
   const [rowMetricsVersion, setRowMetricsVersion] = useState(0);
   const [timelineViewport, setTimelineViewport] = useState<TimelineViewport>({
+    rowGap: 18,
     scrollTop: 0,
     viewportHeight: typeof window === 'undefined' ? 0 : window.innerHeight
   });
@@ -135,7 +139,7 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
     sending: ui.sending,
     streaming: ui.streaming
   });
-  const { containerRef, handleScroll, followMode, jumpToLatest, jumpToTop, showJumpToLatest, showJumpToTop } = useTimelineScroll({
+  const { containerRef, handleScroll, handleScrollIntent, followMode, readingMessageId, captureReadingPosition, syncTimelineGeometry, jumpToLatest, jumpToTop, showJumpToLatest, showJumpToTop } = useTimelineScroll({
     conversationId,
     messages,
     isGenerationActive,
@@ -147,11 +151,13 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
     if (!container) return;
     setTimelineViewport((current) => {
       const next = {
+        rowGap: Number.parseFloat(window.getComputedStyle(container).rowGap) || 0,
         scrollTop: container.scrollTop,
         viewportHeight: container.clientHeight
       };
       return (
-        Math.abs(current.scrollTop - next.scrollTop) < 1
+        current.rowGap === next.rowGap
+        && Math.abs(current.scrollTop - next.scrollTop) < 1
         && Math.abs(current.viewportHeight - next.viewportHeight) < 1
       )
         ? current
@@ -409,11 +415,18 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
     () => resolveTimelineWindow(renderItems, followMode, ui.focusedMessageId, {
       ...timelineViewport,
       rowHeights: rowHeightsRef.current,
-      anchorMessageId: followMode === 'reply-stage' ? latestUserMessageId : null
+      anchorMessageId: followMode === 'reply-stage' ? latestUserMessageId : readingMessageId
     }),
-    [renderItems, followMode, ui.focusedMessageId, timelineViewport, rowMetricsVersion, latestUserMessageId]
+    [renderItems, followMode, ui.focusedMessageId, timelineViewport, rowMetricsVersion, latestUserMessageId, readingMessageId]
   );
+  const setContextStart = useCallback((message: ChatMessage) => {
+    if (!conversationId || ui.sending) return;
+    useChatStore.getState().setConversationRequestContext(conversationId, { mode: 'fromMessage', anchorMessageId: message.id });
+    actions.setCommandStatus(t('chat.messageActions.contextStartSaved'));
+  }, [conversationId, ui.sending, actions.setCommandStatus, t]);
+  const contextStartId = stablePayload.conversation?.requestContext?.mode === 'fromMessage' ? stablePayload.conversation.requestContext.anchorMessageId : null;
   const rowActions = useMemo<MessageRowActions>(() => ({
+    setContextStart: !ui.sending ? setContextStart : undefined,
     removeEditingAttachment: actions.removeEditingAttachment,
     updateEditingDraft: actions.updateEditingDraft,
     commitEdit: actions.commitEdit,
@@ -438,6 +451,7 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
     runCodeCard,
     setCommandStatus: actions.setCommandStatus
   }), [
+    setContextStart, ui.sending,
     actions.applyCustomCss,
     actions.applyToolPreview,
     actions.cancelEdit,
@@ -464,11 +478,23 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
   ]);
 
   return (
-    <div className="chat-flow-shell">
+    <TimelineGeometryBoundary
+      conversationId={conversationId}
+      captureReadingPosition={captureReadingPosition}
+      onGeometryChange={(position) => {
+        syncTimelineGeometry(ui.focusedMessageId, position);
+        queueTimelineViewportMeasure();
+      }}
+    >
       <div
         className={`chat-flow follow-${followMode} ${isGenerationActive ? 'generation-active' : 'generation-settled'}`}
         ref={containerRef}
         onScroll={handleTimelineScroll}
+        onWheelCapture={handleScrollIntent}
+        onTouchStartCapture={handleScrollIntent}
+        onTouchMoveCapture={handleScrollIntent}
+        onTouchEndCapture={handleScroll}
+        onTouchCancelCapture={handleScroll}
       >
         {!presentation.startupReady ? (
           <div className="chat-empty-state empty-state-floating">
@@ -517,7 +543,9 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
             isCodeExpanded: expandedCodeIds.has(message.id),
             canEdit: message.role === 'user' && !message.toolInvocation && !ui.sending,
             canEditAssistant: canUseAssistantMore,
-            canRetry: canUseAssistantMore,
+            canRetry: canUseAssistantMore || (message.role === 'assistant'
+              && !message.toolInvocation && isTerminalAssistantInUserTurn
+              && !ui.sending && Boolean(message.replyIncomplete)),
             codeCardActionMode: ui.codeCardActionModeByMessageId[message.id] ?? 'hidden',
             codeCardProgress: ui.codeCardProgressByMessageId[message.id] ?? null,
             messageCycleIndex
@@ -525,6 +553,7 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
 
           return (
             <TimelineMeasuredRow key={message.id} messageId={message.id} onMeasure={handleRowMeasure}>
+              {contextStartId === message.id && <div className="chat-context-start-divider" role="separator" aria-label={t('chat.messageActions.contextStartDivider')}><span>{t('chat.messageActions.contextStartDivider')}</span></div>}
               <MessageRow
                 message={message}
                 resolvedCardReference={resolveChatCardReference(message.cardReference, composer.availableCards)}
@@ -614,6 +643,6 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
           onClose={() => setCodeCardPreview(null)}
         />
       ) : null}
-    </div>
+    </TimelineGeometryBoundary>
   );
 }

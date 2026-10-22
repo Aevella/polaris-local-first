@@ -1,6 +1,10 @@
 import type { AssistantContextMessage, AssistantMessageContent, AssistantRequestTool } from '../request/requestContext';
 import type { AssistantRequestCacheTtl } from '../request/requestCachePlan';
-import { buildHistoricalToolCallNameMap, extractTextPayload } from './requestShared/messages';
+import {
+  buildHistoricalToolCallNameMap,
+  extractTextPayload,
+  buildSeparatedSystemMessages
+} from './requestShared/messages';
 import { ANTHROPIC_VERSION } from './requestShared/headers';
 import { resolveRequestBuilderBase, shouldSendTemperature, shouldSendTopP } from './requestShared/sampling';
 import { buildToolResultPayloadText, parseToolCallArguments } from './requestShared/toolResultPayload';
@@ -154,13 +158,11 @@ function buildAnthropicReasoningBlocks(
 }
 
 function buildAnthropicMessages(context: ProviderRuntimeRequestInput['context']) {
-  const orderedMessages = context.segments
-    .flatMap((segment) => segment.messages)
-    .filter((message) => message.role !== 'system');
-  const normalizedToolNames = buildHistoricalToolCallNameMap(orderedMessages);
+  const materializedMessages = buildSeparatedSystemMessages(context).filter((message) => message.role !== 'system');
+  const normalizedToolNames = buildHistoricalToolCallNameMap(materializedMessages);
   const messages: Array<{ role: 'user' | 'assistant'; content: string | AnthropicContentBlock[] }> = [];
 
-  for (const message of orderedMessages) {
+  for (const message of materializedMessages) {
     if (message.role === 'assistant') {
       const blocks = [
         ...buildAnthropicReasoningBlocks(message),
@@ -236,8 +238,7 @@ function resolveAnthropicSystemCacheControlIndexes(
 }
 
 function buildAnthropicSystemContent(context: ProviderRuntimeRequestInput['context']) {
-  const systemMessages = context.segments
-    .flatMap((segment) => segment.messages)
+  const systemMessages = buildSeparatedSystemMessages(context)
     .filter((message) => message.role === 'system')
     .map((message) => ({
       ...message,
@@ -353,6 +354,7 @@ export function buildAnthropicRequest(input: ProviderRuntimeRequestInput) {
     body,
     customBody,
     bodyOverrides,
+    reasoningStrength: input.reasoningStrength,
     provider: 'anthropic-messages',
     compatibilityMode: providerCapability.route.compatibilityMode,
     capability: providerCapability

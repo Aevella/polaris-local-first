@@ -1,14 +1,15 @@
+import { buildAnthropicRequest } from '../provider-runtime/providerRuntimeAnthropicAdapter';
+import { buildGeminiNativeRequest } from '../provider-runtime/providerRuntimeGeminiAdapter';
+import { parseWorldBookRegexTriggers } from '../regexTriggerProcessor';
+import { buildRequestImageDataUrl, hydrateConversationAssets, omitUnselectedRequestImageBytes, resolveRequestImageHydrationMessageIds } from './requestImagePreparation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RequestMessage } from './requestMessage';
 import type { AssistantSemanticRecallCandidateDecision } from './requestSemanticRecallPlan';
 import { createPersonaTemplate } from '../../config/persona/personaBuilder';
 import {
-  buildRequestImageDataUrl,
-  hydrateConversationAssets,
   prepareCollaboratorReplyRequest,
   resolveContextTokenBudget,
-  resolvePreparedAdvancedSettings,
-  resolveRequestImageHydrationMessageIds
+  resolvePreparedAdvancedSettings
 } from './requestPreparation';
 import { getAssetBlob } from '../../infrastructure/assetStore';
 import type { ChatMessage, Conversation, ProviderProfile } from '../../types/domain';
@@ -119,6 +120,22 @@ describe('hydrateConversationAssets', () => {
     })];
 
     await expect(hydrateConversationAssets(messages)).resolves.toEqual(messages);
+  });
+
+  it('honors current-turn and always policies and removes stale inline bytes only from the request copy', async () => {
+    mockedGetAssetBlob.mockImplementation(async (id: string) => new Blob([id], { type: 'image/jpeg' }));
+    const old = createImageMessage({ id: 'old', assetId: 'old-image', size: 1, timestamp: 1 });
+    old.attachments![0].dataUrl = 'data:image/jpeg;base64,b2xk';
+    const latest = createImageMessage({ id: 'latest', assetId: 'latest-image', size: 1, timestamp: 2 });
+    const current = await hydrateConversationAssets([old, latest], 'currentTurnOnly');
+    expect(current[0].attachments![0].dataUrl).toBeUndefined();
+    expect(current[1].attachments![0].dataUrl).toBeDefined();
+    expect(old.attachments![0].dataUrl).toBe('data:image/jpeg;base64,b2xk');
+    expect(mockedGetAssetBlob).toHaveBeenCalledTimes(1);
+    mockedGetAssetBlob.mockClear();
+    const all = await hydrateConversationAssets([old, latest], 'always');
+    expect(mockedGetAssetBlob).toHaveBeenCalledTimes(2);
+    expect(all.every(message => Boolean(message.attachments![0].dataUrl))).toBe(true);
   });
 
   it('hydrates only the latest image-bearing user turns', async () => {
@@ -756,5 +773,172 @@ describe('resolvePreparedAdvancedSettings', () => {
     });
 
     expect(advanced?.maxTokens).toBe('4096');
+  });
+});
+
+
+describe('prepareCollaboratorReplyRequest persona material delivery', () => {
+  const routes = [
+    { protocol: 'anthropic-messages' as const, model: 'claude-test', path: '/messages', build: buildAnthropicRequest },
+    { protocol: 'gemini-generate-content' as const, model: 'gemini-2.5-pro', path: '', build: buildGeminiNativeRequest }
+  ];
+
+  it.each(routes)('sends the latest custom prompt and a readable directory on $protocol', async (route) => {
+    const persona = createPersonaTemplate({ id: 'material-test', name: '资料测试', description: '测试' });
+    persona.compiledPrompt = '人格标记：始终用完整句子回应。';
+    persona.memory.referenceDocs = [{
+      id: 'document-marker', title: '资料目录标记', summary: '关于旧约定的摘要',
+      content: '资料正文标记：只在工具读取后可见。', source: 'user', updatedAt: 1
+    }];
+    const api = { ...textProvider, protocol: route.protocol, model: route.model, path: route.path };
+    for (const prompt of ['人格标记：始终用完整句子回应。', '更新人格标记：不要用列表回应。']) {
+      persona.compiledPrompt = prompt;
+      const prepared = await prepareCollaboratorReplyRequest({
+        api, persona, semanticRecallEnabled: false,
+        toolContext: { activeCard: null, visibleCards: [], enabledToolGroups: { memory: true } },
+        messages: [createUserMessage('material-user', '你好', 2)]
+      });
+      const body = route.build({ api, context: prepared.context }).body;
+      const encoded = JSON.stringify(body);
+      expect(prepared.audit.personaPromptSource).toBe('custom');
+      expect(encoded).toContain(prompt);
+      expect(encoded).toContain('资料目录标记');
+      expect(encoded).toContain('document-marker');
+      expect(encoded).toContain('readMemoryDoc');
+      expect(encoded).not.toContain('资料正文标记');
+      expect(prepared.context.tools?.some(tool => tool.function.name === 'readMemoryDoc')).toBe(true);
+    }
+  });
+
+  it.each(routes)('respects the disabled long-term material group on $protocol', async (route) => {
+    const persona = createPersonaTemplate({ id: 'material-disabled', name: '资料测试', description: '测试' });
+    persona.compiledPrompt = '人格仍应生效';
+    persona.memory.referenceDocs = [{
+      id: 'disabled-document', title: '已关闭资料标记', summary: '目录摘要',
+      content: '已关闭正文标记', source: 'user', updatedAt: 1
+    }];
+    const api = { ...textProvider, protocol: route.protocol, model: route.model, path: route.path };
+    const prepared = await prepareCollaboratorReplyRequest({
+      api, persona, semanticRecallEnabled: false,
+      toolContext: { activeCard: null, visibleCards: [], enabledToolGroups: { memory: false } },
+      messages: [createUserMessage('material-user', '你好', 2)]
+    });
+    const encoded = JSON.stringify(route.build({ api, context: prepared.context }).body);
+    expect(encoded).toContain('人格仍应生效');
+    expect(encoded).not.toContain('已关闭资料标记');
+    expect(encoded).not.toContain('已关闭正文标记');
+    expect(prepared.context.tools?.some(tool => tool.function.name === 'readMemoryDoc')).toBe(false);
+  });
+
+  it.each(routes)('sends material body and its ending in the tool follow-up on $protocol', async (route) => {
+    const api = { ...textProvider, protocol: route.protocol, model: route.model, path: route.path };
+    const detailText = '资料内容测试。'.repeat(4000) + '长期资料全文末尾标记';
+    const prepared = await prepareCollaboratorReplyRequest({
+      api, persona: null, semanticRecallEnabled: false,
+      toolContext: { activeCard: null, visibleCards: [], enabledToolGroups: { memory: true } },
+      messages: [
+        createUserMessage('material-user', '请读资料', 1),
+        { id: 'material-assistant', role: 'assistant', content: '', timestamp: 2,
+          nativeToolCalls: [{ id: 'material-call', name: 'readMemoryDoc', argumentsText: '{"docId":"material-doc"}' }] },
+        { id: 'material-result', role: 'system', origin: 'tool-runtime', content: '已读取长期资料', timestamp: 3,
+          toolInvocation: {
+            id: 'material-result', kind: 'readMemoryDoc', status: 'executed', title: '读取长期资料',
+            summary: '已读取长期资料', detailText, originMessageId: 'material-assistant', toolCallId: 'material-call'
+          } }
+      ]
+    });
+    const encoded = JSON.stringify(route.build({ api, context: prepared.context }).body);
+    expect(encoded).toContain(detailText);
+    expect(encoded).toContain('readMemoryDoc');
+  });
+});
+
+describe('prepareCollaboratorReplyRequest worldbook injection', () => {
+  it('includes an imported constant on every request without keyword matches', async () => {
+    const persona = createPersonaTemplate({ id: 'constant-book', name: '常驻测试', description: '世界书测试' });
+    const imported = parseWorldBookRegexTriggers(JSON.stringify({ entries: {
+      constant: { key: ['永远不会出现的关键词'], content: '常驻验收：天空永远是紫色。', constant: true }
+    } }));
+    persona.advanced.regexTriggers = JSON.stringify(imported.rules);
+    for (const [index, text] of ['你好', '继续', '说说今天'].entries()) {
+      const prepared = await prepareCollaboratorReplyRequest({
+        api: textProvider, persona: JSON.parse(JSON.stringify(persona)), semanticRecallEnabled: false,
+        messages: [createUserMessage(`constant-${index}`, text, index + 1)]
+      });
+      const worldbook = prepared.context.segments.flatMap((segment) => segment.messages)
+        .find((message) => message.promptPartName === 'regex_trigger_context');
+      expect(worldbook?.role).toBe('system');
+      expect(worldbook?.content).toContain('常驻验收：天空永远是紫色。');
+      const anthropic = buildAnthropicRequest({
+        api: { ...textProvider, protocol: 'anthropic-messages', path: '/messages', model: 'claude-test' },
+        context: prepared.context
+      });
+      const gemini = buildGeminiNativeRequest({
+        api: { ...textProvider, protocol: 'gemini-generate-content', model: 'gemini-test' },
+        context: prepared.context
+      });
+      for (const history of [anthropic.body.messages, gemini.body.contents]) {
+        expect(JSON.stringify(history)).toContain('常驻验收：天空永远是紫色。');
+        expect(JSON.stringify(history)).toContain('不是用户新发的消息');
+      }
+    }
+  });
+
+  it('injects imported constants and conditional entries after canonical save and hydration', async () => {
+    const persona = createPersonaTemplate({ id: 'imported-book', name: '白树', description: '世界书测试' });
+    const imported = parseWorldBookRegexTriggers(JSON.stringify({ data: { character_book: { entries: [
+      { content: '{{char}} 的常驻设定', constant: true, enabled: true },
+      { keys: ['白树'], secondary_keys: ['夜晚'], selective: true, content: '白树的夜晚设定', enabled: true },
+      { keys: ['白树'], secondary_keys: ['白天'], selective: true, content: '白树的白天设定', enabled: true }
+    ] } } }));
+    persona.advanced.regexTriggers = JSON.stringify(imported.rules);
+    const hydratedPersona = JSON.parse(JSON.stringify(persona));
+    const prepared = await prepareCollaboratorReplyRequest({
+      api: textProvider, persona: hydratedPersona, semanticRecallEnabled: false,
+      messages: [createUserMessage('book-user', '夜晚的白树', 1)]
+    });
+    const context = JSON.stringify(prepared.context);
+    expect(context).toContain('白树 的常驻设定');
+    expect(context).toContain('白树的夜晚设定');
+    expect(context).not.toContain('白树的白天设定');
+    expect(context).not.toContain('{{char}}');
+  });
+
+  it('injects a default-depth worldbook matched by recent assistant context into the request', async () => {
+    const persona = createPersonaTemplate({ id: 'worldbook-test', name: '世界书测试', description: '请求测试' });
+    persona.advanced = {
+      ...persona.advanced,
+      regexTriggers: JSON.stringify([
+        { id: 'recent', name: '白树', pattern: '白树', prompt: '世界书设定：白树位于北境。', enabled: true },
+        { id: 'latest', name: '仅最新', pattern: '白树', prompt: '不该注入的规则', enabled: true, scanDepth: 1 }
+      ])
+    };
+    const prepared = await prepareCollaboratorReplyRequest({
+      api: textProvider, persona, semanticRecallEnabled: false,
+      messages: [
+        createUserMessage('u1', '继续故事', 1),
+        { id: 'a1', role: 'assistant', content: '你来到白树旁。', timestamp: 2 },
+        createUserMessage('u2', '这里发生了什么？', 3)
+      ]
+    });
+    const requestContext = JSON.stringify(prepared.context);
+    expect(requestContext).toContain('世界书设定：白树位于北境。');
+    expect(requestContext).not.toContain('不该注入的规则');
+  });
+});
+
+
+describe('omitUnselectedRequestImageBytes', () => {
+  it('removes unselected inline bytes on text routes while preserving stored attachment text and identity', () => {
+    const old = createImageMessage({ id: 'old', assetId: 'old-image', size: 1, timestamp: 1 });
+    old.attachments![0].dataUrl = 'data:image/jpeg;base64,b2xk';
+    old.attachments![0].textContent = 'saved OCR text';
+    const latest: RequestMessage = { id: 'latest', role: 'user', content: 'text', timestamp: 2 };
+    const projected = omitUnselectedRequestImageBytes([old, latest], 'currentTurnOnly');
+    expect(projected[0].attachments![0]).toMatchObject({ id: old.attachments![0].id, assetId: 'old-image', textContent: 'saved OCR text', dataUrl: undefined });
+    expect(old.attachments![0].dataUrl).toBe('data:image/jpeg;base64,b2xk');
+    expect(projected[1]).toBe(latest);
+    expect(omitUnselectedRequestImageBytes([old], 'always')[0]).toBe(old);
+    expect(omitUnselectedRequestImageBytes([])).toEqual([]);
   });
 });

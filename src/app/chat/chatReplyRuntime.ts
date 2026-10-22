@@ -1,3 +1,5 @@
+import { selectConversationRequestMessages } from '../../engines/conversationContextSettings';
+import { reportChatToolPreparation } from './chatToolPreparationDiagnostics';
 import { createUid } from '../../engines/id';
 import type { OpenAiToolHistoryMode } from '../../engines/provider-runtime/providerRuntimeOpenAiToolHistory';
 import {
@@ -117,6 +119,7 @@ type RequestReplyArgs = {
 };
 
 type ChatReplyContinuationState = {
+  toolDiagnosticAttemptId?: string;
   toolExchangeDepth: number;
   seenToolExchangeFingerprints: readonly string[];
   lengthRecoveryDepth: number;
@@ -370,10 +373,12 @@ async function requestReplyRound({
       globalApi: activeRequestSnapshot.globalApi,
       memoryVectorRetrieval: activeRequestSnapshot.memoryVectorRetrieval,
       imageUnderstanding: activeRequestSnapshot.imageUnderstanding,
+      historicalImagePolicy: activeRequestSnapshot.windowPreferences?.historicalImagePolicy,
       persona: collaboratorForReply,
+      reasoningStrength: activeRequestSnapshot.reasoningStrength,
       personas: activeRequestSnapshot.personas,
       semanticRecallEnabled: activeRequestSnapshot.semanticRecallEnabled,
-      messages: requestMessages,
+      messages: selectConversationRequestMessages(requestMessages, activeRequestSnapshot.requestContext),
       semanticRecallConversations: activeRequestSnapshot.semanticRecallConversations ?? activeRequestSnapshot.conversations,
       loadSemanticRecallConversations,
       activeConversationId: conversationId,
@@ -536,6 +541,15 @@ async function requestReplyRound({
       chat.setConversationTask(conversationId, nextTask);
     }
     throwIfAborted(streaming.controller.signal);
+
+    if (toolOutcome.status !== 'ready' || continuation.toolDiagnosticAttemptId) {
+      try {
+        const attemptId = continuation.toolDiagnosticAttemptId ?? `tool-diag-${crypto.randomUUID()}`;
+        continuation = { ...continuation, toolDiagnosticAttemptId: attemptId };
+        reportChatToolPreparation(toolOutcome, attemptId, preparationRetryDepth, lengthRecoveryDepth);
+      } catch { /* A diagnostic failure must never stop the user's tool flow. */ }
+      if (toolOutcome.status === 'ready') continuation = { ...continuation, toolDiagnosticAttemptId: undefined };
+    }
 
     if (toolOutcome.status !== 'ready') {
       if (shouldRequestLengthFollowup({
@@ -865,9 +879,11 @@ async function requestReplyRound({
     streaming.scheduleLifecycleRelease(320);
     preserveStreamingLifecycle = true;
     finishChatSendPerformanceTrace(conversationId, 'completed');
+    if (!reply.transportIncomplete) streaming.markCompleted();
     return { status: 'completed' };
   } catch (error) {
     if (error instanceof ChatReplyContinuation) {
+      streaming.markCompleted();
       throw error;
     }
     streaming.commitQueuedProgress();
@@ -891,8 +907,9 @@ async function requestReplyRound({
         placeholderId
       );
 
-      if (!partialVisibleContent.trim() && !latestPlaceholder?.thinkingText?.trim()) {
-        chat.replaceConversationMessages(writableConversation, messages);
+      if (!partialVisibleContent.trim() && !latestPlaceholder?.thinkingText?.trim() && !latestPlaceholder?.nativeToolCalls?.length) {
+        chat.replaceConversationMessages(writableConversation,
+          chat.getConversationMessages(conversationId).filter(message => message.id !== placeholderId));
       } else {
         streaming.scheduleLifecycleRelease(220);
         preserveStreamingLifecycle = true;

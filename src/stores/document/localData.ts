@@ -62,6 +62,9 @@ export async function readDocumentBodyIfActive(
   const repository = createStoreLocalDataRepository();
   const result = await repository.read<DocumentBodyRow>(getDocumentObjectLocalDataRef(kind, id));
   if (result.status === 'complete') return { status: 'complete', content: result.value.content };
+  if (result.status === 'timedOut' || result.status === 'unloaded') {
+    throw new Error(`Document body is temporarily unreadable (${result.status}): ${id}`);
+  }
   if (result.status === 'incomplete') {
     if (result.reason === MISSING_ROW_REASON) return { status: 'missing' };
     reportPersistenceError({

@@ -177,14 +177,11 @@ const parityCases: AnthropicAdapterParityCase[] = [
         },
         {
           type: 'text',
-          text: 'Model runtime context.'
-        },
-        {
-          type: 'text',
           text: 'Stable tool catalog.',
           cache_control: { type: 'ephemeral', ttl: '1h' }
         }
       ]);
+      expect(JSON.stringify(request.body.messages)).toContain('Model runtime context.');
       expect(request.body.thinking).toBeUndefined();
     },
     verifyCapabilities: expect.objectContaining({

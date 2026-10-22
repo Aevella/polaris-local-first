@@ -215,6 +215,8 @@ export function CollectionWorld({
                   editingConversationId={controller.editingConversationId}
                   conversationTitleDraft={controller.conversationTitleDraft}
                   exportingConversationArchive={controller.exportingConversationArchive}
+                  isAggregateScope={controller.isAggregateScope}
+                  collaboratorRecovery={controller.collaboratorRecovery}
                   onConversationTitleDraftChange={controller.onConversationTitleDraftChange}
                   onStartConversationRename={controller.onStartConversationRename}
                   onCommitConversationRename={controller.onCommitConversationRename}

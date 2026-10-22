@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { BUNDLED_DEFAULT_PERSONA_IDS } from '../../config/persona/personaBuilder';
+import { KNOWN_BUNDLED_PERSONA_IDS } from '../../config/persona/personaBuilder';
 import {
   buildChatMigrationDryRunReport,
   type ChatMigrationDryRunChatState,
@@ -82,7 +82,7 @@ async function readOptionalPersonaIds(zip: JSZip, path: string) {
 
 async function readKnownCollaboratorIds(zip: JSZip, personaPath: string, runtimePath: string) {
   return Array.from(new Set([
-    ...BUNDLED_DEFAULT_PERSONA_IDS,
+    ...KNOWN_BUNDLED_PERSONA_IDS,
     ...await readOptionalPersonaIds(zip, personaPath),
     ...await readOptionalRuntimeCompanionCollaboratorIds(zip, runtimePath)
   ])).sort();

@@ -13,6 +13,7 @@ import type {
   CodeCardFileRole,
   CollectionShelf,
   Conversation,
+  ConversationReasoningStrength,
   ConversationTaskState,
   ImageGenerationSettings,
   ImageUnderstandingSettings,
@@ -94,6 +95,7 @@ export type ChatConversationState = {
   title: string;
   collaboratorId: string | null;
   activeProjectId?: string | null;
+  reasoningStrength?: ConversationReasoningStrength;
   messages: ChatMessage[];
 } | null;
 
@@ -182,6 +184,10 @@ export type ChatActionStoreBindings = {
     replaceConversationMessages: (target: WritableConversationBody, messages: ChatMessage[]) => void;
     setConversationTask: (conversationId: string, task: ConversationTaskState | null) => void;
     setConversationActiveProject: (conversationId: string, projectId: string | null) => void;
+    setConversationReasoningStrength?: (
+      conversationId: string,
+      strength: ConversationReasoningStrength
+    ) => void;
     upsertPendingWorkspaceProposal: (proposal: PendingWorkspaceProposalRecord) => void;
     removePendingWorkspaceProposal: (proposalId: string) => void;
     appendRuntimeFeedbackEvent: (conversationId: string, event: RuntimeFeedbackEvent) => void;

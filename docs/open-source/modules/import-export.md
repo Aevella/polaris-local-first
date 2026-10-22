@@ -13,7 +13,8 @@ and ordinary saves use the current LocalData model.
 - Structured export import.
 - Migration staging and validation.
 - Package export from current LocalData facts.
-- Complete-backup hydration of referenced document bodies before the snapshot is serialized.
+- Backup hydration of referenced document bodies before the snapshot is serialized.
+- Kelivo JSON ZIP, SQLite ZIP, and standalone SQLite conversion through the structured import boundary.
 - Census, health, and dry-run reporting for importability.
 - Per-domain atomic replacement and failed-import safety.
 - Durable asset staging and startup recovery after process interruption.
@@ -31,6 +32,9 @@ and ordinary saves use the current LocalData model.
 - `src/stores/storeImportPackage.ts`
 - `src/stores/storeImportLocalDataRestore.ts`
 - `src/stores/storeExportPackage.ts`
+- `src/stores/personaBackupDocuments.ts`
+- `src/stores/kelivoImportAdapter.ts`
+- `src/stores/kelivoSQLiteImportReader.ts`
 - `src/infrastructure/assetStore.ts`
 - `src/app/bootstrap/storeLocalDataBackendBootstrap.ts`
 - migration and census modules under `src/engines/localData/`
@@ -53,7 +57,9 @@ and ordinary saves use the current LocalData model.
 ## Important Failure States
 
 - Imported body, binary, or owner data is missing.
-- A complete backup cannot load a referenced document body; export stops instead of emitting a partial archive.
+- Confirmed missing persona document bodies retain their directory, summary, and explicit missing-body marker in the backup report. Unknown storage errors still stop export.
+- Import of an explicit missing-body marker preserves a readable destination body for the same document; an empty destination keeps the marker without fabricating content.
+- A missing original image can use its available preview; export reports this substitution inside the archive.
 - Package evidence is unreadable or malformed.
 - Import refuses to promote a domain that cannot become coherent current rows.
 - A failed domain commit leaves that domain's prior rows intact. Other domains may commit independently,

@@ -1,3 +1,4 @@
+import { ConversationMenu } from '../shell/conversation/ConversationMenu';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import type { CollectionShelf, Persona, World } from '../../types/domain';
 import type { ConversationCardSummary } from '../../app/collection/conversationCardSummary';
@@ -453,6 +454,7 @@ export function DesktopAppSidebar({
                         <Icon name="edit" size={13} />
                         <span>{t('desktop.renameConversation')}</span>
                       </button>
+                      <ConversationMenu conversationId={conversation.id} className="desktop-sidebar-thread-menu-item" showLabel />
                       <button
                         type="button"
                         className="desktop-sidebar-thread-menu-item danger"

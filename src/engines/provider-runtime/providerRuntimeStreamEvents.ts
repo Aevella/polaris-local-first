@@ -5,6 +5,11 @@ import type {
 } from './providerRuntimeTypes';
 import { extractStructuredText } from './providerRuntimeResponseText';
 import { mergeToolCallArgumentsText } from './providerRuntimeToolArguments';
+import {
+  normalizeOpenAiToolCalls,
+  serializeProviderToolArguments,
+  type ProviderToolCallWireShape
+} from './providerRuntimeToolCallResponse';
 import { parseOpenAiCompatibleUsage } from './providerRuntimeUsage';
 import {
   extractProviderReasoningText,
@@ -70,14 +75,6 @@ function pushResponsesOutputItemEvents(events: CanonicalProviderStreamEvent[], i
   const parsed = readObject(item);
   if (!parsed) return;
 
-  if (parsed.type === 'message') {
-    const text = extractStructuredText(parsed.content);
-    if (text) {
-      events.push({ type: 'text.snapshot', text });
-    }
-    return;
-  }
-
   if (parsed.type === 'reasoning') {
     const text = extractStructuredText(parsed.content) || extractStructuredText(parsed.summary);
     if (text) {
@@ -96,23 +93,39 @@ function pushResponsesOutputItemEvents(events: CanonicalProviderStreamEvent[], i
   }
 }
 
-function parseOpenAiToolCallDelta(rawToolCall: unknown): CanonicalProviderStreamEvent[] {
-  const toolCall = readObject(rawToolCall);
-  const delta = readObject(toolCall?.function);
-  if (!toolCall || !delta) return [];
-
-  const id = typeof toolCall.id === 'string' ? toolCall.id : '';
-  const index = typeof toolCall.index === 'number' && toolCall.index >= 0 ? toolCall.index : undefined;
-  const name = typeof delta.name === 'string' ? delta.name : '';
-  const argumentsDelta = typeof delta.arguments === 'string' ? delta.arguments : '';
+function parseOpenAiToolCallEvents(
+  rawToolCalls: unknown,
+  shape: ProviderToolCallWireShape
+): CanonicalProviderStreamEvent[] {
   const events: CanonicalProviderStreamEvent[] = [];
 
-  if (name) {
-    events.push({ type: 'tool_call.start', id, name, index });
-  }
-  if (argumentsDelta) {
-    events.push({ type: 'tool_call.delta', id, argumentsDelta, index });
-  }
+  normalizeOpenAiToolCalls(rawToolCalls, shape).forEach((toolCall) => {
+    if (toolCall.id || toolCall.name || shape === 'complete') {
+      events.push({
+        type: 'tool_call.start',
+        id: toolCall.id,
+        name: toolCall.name,
+        index: toolCall.index
+      });
+    }
+    if (toolCall.argumentsKind === 'delta') {
+      events.push({
+        type: 'tool_call.delta',
+        id: toolCall.id,
+        argumentsDelta: toolCall.argumentsText,
+        index: toolCall.index
+      });
+    } else if (toolCall.argumentsKind === 'snapshot') {
+      events.push({
+        type: 'tool_call.done',
+        id: toolCall.id,
+        name: toolCall.name,
+        argumentsText: toolCall.argumentsText,
+        index: toolCall.index
+      });
+    }
+  });
+
   return events;
 }
 
@@ -169,7 +182,16 @@ function parseResponsesStreamEvent(payload: Record<string, unknown>): CanonicalP
         model: typeof response?.model === 'string' ? response.model : undefined
       }
     ];
-    const outputText = extractStructuredText(response?.output_text);
+    // A completed response is one reply snapshot. Individual message items
+    // are only parts of it, so emitting a snapshot per item loses all but the
+    // last item. output_text is the aggregate alternative, not another part.
+    const outputText = extractStructuredText(response?.output_text)
+      || (Array.isArray(response?.output)
+        ? response.output.map((item) => {
+            const parsed = readObject(item);
+            return parsed?.type === 'message' ? extractStructuredText(parsed.content) : '';
+          }).join('')
+        : '');
     if (outputText) {
       events.push({ type: 'text.snapshot', text: outputText });
     }
@@ -200,6 +222,13 @@ function parseAnthropicStreamEvent(payload: Record<string, unknown>): CanonicalP
     const block = readObject(payload.content_block);
     if (block?.type === 'tool_use' && typeof block.id === 'string' && typeof block.name === 'string') {
       events.push({ type: 'tool_call.start', id: block.id, name: block.name, index: blockIndex });
+      events.push({
+        type: 'tool_call.done',
+        id: block.id,
+        name: block.name,
+        argumentsText: serializeProviderToolArguments(block.input),
+        index: blockIndex
+      });
     }
     if (block?.type === 'text' && typeof block.text === 'string') {
       events.push({ type: 'text.delta', text: block.text });
@@ -274,7 +303,9 @@ function parseAnthropicStreamEvent(payload: Record<string, unknown>): CanonicalP
 function parseOpenAiCompatibleStreamEvent(payload: Record<string, unknown>): CanonicalProviderStreamEvent[] {
   const events: CanonicalProviderStreamEvent[] = [];
   const choice = Array.isArray(payload.choices) ? readObject(payload.choices[0]) : undefined;
-  const message = readObject(choice?.delta) ?? readObject(choice?.message);
+  const deltaMessage = readObject(choice?.delta);
+  const completeMessage = readObject(choice?.message);
+  const message = deltaMessage ?? completeMessage;
   const usage = parseOpenAiCompatibleUsage(payload.usage ?? choice?.usage);
   if (typeof payload.model === 'string') {
     events.push({ type: 'metadata', model: payload.model });
@@ -300,9 +331,7 @@ function parseOpenAiCompatibleStreamEvent(payload: Record<string, unknown>): Can
       events.push({ type: 'reasoning.delta', text: reasoningText, mode: 'text' });
     }
     if (Array.isArray(message.tool_calls)) {
-      message.tool_calls.forEach((toolCall) => {
-        events.push(...parseOpenAiToolCallDelta(toolCall));
-      });
+      events.push(...parseOpenAiToolCallEvents(message.tool_calls, deltaMessage ? 'delta' : 'complete'));
     }
   }
 

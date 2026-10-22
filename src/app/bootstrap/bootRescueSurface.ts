@@ -1,20 +1,18 @@
 import type { StoreTransferProgressReporter } from '../../stores/storeImportProgress';
+import type { exportPersistedCompleteBackup } from '../shell/persistedBackupExport';
 
 type BootRescueSurfaceOptions = {
   root: HTMLElement | null;
-  timeoutMs?: number;
   exportPersistedBackup?: (options: {
     downloadFile: (blob: Blob, fileName: string) => void;
     onProgress: StoreTransferProgressReporter;
-  }) => Promise<void>;
+  }) => ReturnType<typeof exportPersistedCompleteBackup>;
 };
 
 type BootRescueSurface = {
   watchReactRoot(): void;
   dispose(): void;
 };
-
-const DEFAULT_BOOT_RESCUE_TIMEOUT_MS = 18000;
 
 function describeError(error: unknown) {
   if (error instanceof Error) return error.message || error.name;
@@ -40,12 +38,11 @@ async function exportPersistedBackupByDefault(options: {
   onProgress: StoreTransferProgressReporter;
 }) {
   const { exportPersistedCompleteBackup } = await import('../shell/persistedBackupExport');
-  await exportPersistedCompleteBackup(options);
+  return await exportPersistedCompleteBackup(options);
 }
 
 export function installBootRescueSurface({
   root,
-  timeoutMs = DEFAULT_BOOT_RESCUE_TIMEOUT_MS,
   exportPersistedBackup = exportPersistedBackupByDefault
 }: BootRescueSurfaceOptions): BootRescueSurface {
   if (typeof window === 'undefined' || typeof document === 'undefined' || !root) {
@@ -57,15 +54,7 @@ export function installBootRescueSurface({
 
   let reactRootMounted = false;
   let rescueVisible = false;
-  let bootTimer: number | null = null;
   let mountWatchTimer: number | null = null;
-
-  const clearBootTimer = () => {
-    if (bootTimer !== null) {
-      window.clearTimeout(bootTimer);
-      bootTimer = null;
-    }
-  };
 
   const clearMountWatchTimer = () => {
     if (mountWatchTimer !== null) {
@@ -83,7 +72,6 @@ export function installBootRescueSurface({
   const showRescue = (reason: string) => {
     if (reactRootMounted || rescueVisible) return;
     rescueVisible = true;
-    clearBootTimer();
     clearMountWatchTimer();
 
     const main = document.createElement('main');
@@ -97,10 +85,10 @@ export function installBootRescueSurface({
     kicker.textContent = 'Polaris 启动没有完成';
 
     const title = document.createElement('h1');
-    title.textContent = '先把数据救出来';
+    title.textContent = '应用没有打开';
 
     const copy = document.createElement('p');
-    copy.textContent = '界面还没成功打开。可以先导出已保存的完整备份，再重新打开应用。';
+    copy.textContent = '请重新打开应用。';
 
     const code = document.createElement('div');
     code.className = 'app-error-code';
@@ -115,7 +103,7 @@ export function installBootRescueSurface({
 
     const exportButton = document.createElement('button');
     exportButton.type = 'button';
-    exportButton.textContent = '导出完整备份';
+    exportButton.textContent = '导出本机数据';
 
     const reloadButton = document.createElement('button');
     reloadButton.type = 'button';
@@ -126,7 +114,7 @@ export function installBootRescueSurface({
       try {
         exportButton.disabled = true;
         setStatus(status, '读取已保存数据');
-        await exportPersistedBackup({
+        const result = await exportPersistedBackup({
           downloadFile: downloadBlobInBrowser,
           onProgress: (progress) => {
             const suffix = typeof progress.current === 'number' && typeof progress.total === 'number'
@@ -135,7 +123,9 @@ export function installBootRescueSurface({
             setStatus(status, `${progress.message}${suffix}`);
           }
         });
-        setStatus(status, '备份已导出');
+        setStatus(status, !result.saved
+          ? '已取消导出'
+          : result.kind === 'restorable' ? '备份已导出' : '已导出诊断数据包，不能作为备份导入。');
       } catch (error) {
         setStatus(status, describeError(error) || '导出备份包失败。', true);
       } finally {
@@ -143,8 +133,12 @@ export function installBootRescueSurface({
       }
     });
 
-    actions.append(exportButton, reloadButton);
-    card.append(kicker, title, copy, code, status, actions);
+    actions.append(reloadButton);
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = '技术详情';
+    details.append(summary, code, exportButton);
+    card.append(kicker, title, copy, status, actions, details);
     main.append(card);
     root.replaceChildren(main);
   };
@@ -161,14 +155,7 @@ export function installBootRescueSurface({
 
   window.addEventListener('error', onWindowError);
   window.addEventListener('unhandledrejection', onUnhandledRejection);
-  bootTimer = window.setTimeout(() => {
-    if (!reactRootMounted && !rootHasMountedContent(root)) {
-      showRescue('boot-timeout');
-    }
-  }, timeoutMs);
-
   const dispose = () => {
-    clearBootTimer();
     clearMountWatchTimer();
     window.removeEventListener('error', onWindowError);
     window.removeEventListener('unhandledrejection', onUnhandledRejection);

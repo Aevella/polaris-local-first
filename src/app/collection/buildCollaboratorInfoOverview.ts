@@ -1,5 +1,4 @@
 import { resolveConversationCollaboratorId } from '../../engines/conversationOwnership';
-import { isProductGuidePersona } from '../../engines/personaBuiltin';
 import { normalizePersonaDefaultSummary, PERSONA_SUMMARY_PLACEHOLDER } from '../../config/persona/personaBaseCatalog';
 import type { AvatarShape, CodeCard, Conversation, ImageAssetCard, Persona } from '../../types/domain';
 import { hasArchivedConversationContent } from './conversationArchiveVisibility';
@@ -58,7 +57,7 @@ export function buildCollaboratorInfoOverview({
     const summary = normalizePersonaDefaultSummary(persona.description)
       || persona.purpose.trim()
       || PERSONA_SUMMARY_PLACEHOLDER;
-    const modelLabel = isProductGuidePersona(persona) ? null : persona.advanced.modelOverride.trim() || null;
+    const modelLabel = persona.advanced.modelOverride.trim() || null;
 
     return {
       id: persona.id,

@@ -5,6 +5,8 @@ import type { ConversationMessageSearchIndex } from '../../../app/collection/con
 import { Icon } from '../../Icon';
 import { CollectionShelfLead } from './CollectionShelfLead';
 import { ConversationCardGrid } from './ConversationCardGrid';
+import { MissingCollaboratorRecoveryPanel } from './MissingCollaboratorRecoveryPanel';
+import type { CollaboratorRecoveryController } from '../../../app/collection/useCollaboratorRecoveryController';
 
 type DialogueCollectionShelfProps = {
   cardsExpanded: boolean;
@@ -16,6 +18,8 @@ type DialogueCollectionShelfProps = {
   editingConversationId: string | null;
   conversationTitleDraft: string;
   exportingConversationArchive: boolean;
+  isAggregateScope: boolean;
+  collaboratorRecovery: CollaboratorRecoveryController;
   onConversationTitleDraftChange: (value: string) => void;
   onStartConversationRename: (conversationId: string, title: string) => void;
   onCommitConversationRename: (conversationId: string) => void;
@@ -37,6 +41,8 @@ export function DialogueCollectionShelf({
   editingConversationId,
   conversationTitleDraft,
   exportingConversationArchive,
+  isAggregateScope,
+  collaboratorRecovery,
   onConversationTitleDraftChange,
   onStartConversationRename,
   onCommitConversationRename,
@@ -78,6 +84,19 @@ export function DialogueCollectionShelf({
           </button>
         )}
       />
+      {isAggregateScope ? (
+        <MissingCollaboratorRecoveryPanel
+          incidents={collaboratorRecovery.incidents}
+          personas={personas}
+          busyCollaboratorId={collaboratorRecovery.busyCollaboratorId}
+          onRestore={(collaboratorId) => void collaboratorRecovery.restoreCollaborator(collaboratorId)}
+          onRebuild={(collaboratorId, name) => void collaboratorRecovery.rebuildCollaborator(collaboratorId, name)}
+          onReassign={(sourceCollaboratorId, targetCollaboratorId) => void collaboratorRecovery.reassignConversations(
+            sourceCollaboratorId,
+            targetCollaboratorId
+          )}
+        />
+      ) : null}
       <ConversationCardGrid
         cardsExpanded={cardsExpanded}
         conversations={conversations}

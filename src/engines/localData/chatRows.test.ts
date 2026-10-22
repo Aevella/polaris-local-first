@@ -7,6 +7,7 @@ import {
 } from './chatConversationContracts';
 import {
   buildConversationLocalDataProjection,
+  buildConversationRecordMetadata,
   buildConversationLocalDataUnitOfWork,
   collectConversationAssetRefs,
   getChatDomainMetaLocalDataRef,
@@ -41,6 +42,7 @@ function conversation(messages: ChatMessage[]): Conversation {
     title: 'LocalData chat',
     collaboratorId: 'pharos',
     activeProjectId: 'project-1',
+    reasoningStrength: 'high',
     task: {
       id: 'task-1',
       sourceMessageId: 'm-1',
@@ -149,6 +151,9 @@ describe('conversation durable projection contract', () => {
       group: 'durable',
       groupRoomId: 'durable',
       activeProjectId: 'durable',
+      reasoningStrength: 'durable',
+      requestContext: 'durable',
+      windowPreferences: 'durable',
       messages: 'durable',
       toolLedger: 'derived',
       workspaceLedger: 'durable',
@@ -165,6 +170,9 @@ describe('conversation durable projection contract', () => {
       'group',
       'groupRoomId',
       'activeProjectId',
+      'reasoningStrength',
+      'requestContext',
+      'windowPreferences',
       'messages',
       'workspaceLedger',
       'task',
@@ -199,6 +207,7 @@ describe('buildConversationLocalDataProjection', () => {
         collaboratorId: 'pharos',
         groupRoomId: null,
         activeProjectId: 'project-1',
+        reasoningStrength: 'high',
         pinnedAt: 5,
         messageCount: 2,
         latestMessageTimestamp: 15,
@@ -372,5 +381,19 @@ describe('buildConversationLocalDataUnitOfWork', () => {
         })
       })
     ]));
+  });
+});
+
+describe('buildConversationRecordMetadata', () => {
+  it('keeps the durable metadata contract shared by whole and incremental bodies', () => {
+    const source = conversation([message('m', 'hello', 1)]);
+    source.draft = 'draft';
+    source.activeProjectId = 'project';
+    const args = { conversation: source, bodyState: 'complete' as const, version: 1, committedAt: 2 };
+    const metadata = buildConversationRecordMetadata(args, ['asset']);
+    expect(metadata).toMatchObject({ id: source.id, draft: 'draft', ownerProjectId: 'project', version: 1, committedAt: 2, assetRefs: ['asset'] });
+    const row = buildConversationLocalDataProjection(args).recordRow;
+    expect(row?.state === 'complete' ? { ...row.value, assetRefs: ['asset'], messages: undefined } : null).toEqual({ ...metadata, messages: undefined });
+    expect(buildConversationRecordMetadata(args, ['asset'])).toEqual(metadata);
   });
 });

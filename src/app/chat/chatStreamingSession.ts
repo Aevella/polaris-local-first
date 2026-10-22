@@ -1,3 +1,4 @@
+import { reportPersistenceError } from '../../infrastructure/persistenceDiagnostics';
 import type { AssistantReplyProgress } from '../../engines/chatApi';
 import { buildAssistantMessagePatch } from '../../engines/chatMessageNormalization';
 import type { McpResolvedToolDefinition } from '../../engines/mcpRuntime';
@@ -16,7 +17,7 @@ type StreamingSessionArgs = {
   >;
   chat: Pick<ChatReplyStoreBindings['chat'], 'addMessage' | 'updateMessage'> & Partial<Pick<
     ChatReplyStoreBindings['chat'],
-    'insertMessageBefore' | 'getConversationMessages' | 'replaceConversationMessages'
+    'insertMessageBefore' | 'getConversationMessages' | 'replaceConversationMessages' | 'persistToDb'
   >>;
   conversationId: string;
   writableConversation: WritableConversationBody;
@@ -86,6 +87,36 @@ export function createStreamingSession(args: StreamingSessionArgs) {
   let lastProgressFlushAt = 0;
   let hasReceivedFirstProgress = false;
   let prefixSegmentIds: string[] = [];
+  let checkpointTimer: number | null = null;
+  let finished = false;
+  let completed = false;
+  let checkpointInFlight = false;
+  let progressNeedsCheckpoint = false;
+
+  // Checkpoints share the normal chat writer; they never wait on the network
+  // or replay a tool. Only one background checkpoint can be in flight.
+  const persistCheckpoint = () => {
+    if (checkpointInFlight) return;
+    chat.updateMessage(writableConversation, placeholderId, { replyIncomplete: true });
+    if (!chat.persistToDb) return;
+    checkpointInFlight = true;
+    void chat.persistToDb().catch((error) => {
+      reportPersistenceError({ label: '[store:persist]', store: 'chat', operation: 'reply-checkpoint' }, error);
+      progressNeedsCheckpoint = true;
+    }).finally(() => { checkpointInFlight = false; });
+  };
+  const scheduleCheckpoint = () => {
+    checkpointTimer = window.setTimeout(() => {
+      checkpointTimer = null;
+      if (finished || completed) return;
+      if (latestProgress) commitQueuedProgress();
+      if (progressNeedsCheckpoint && !checkpointInFlight) {
+        progressNeedsCheckpoint = false;
+        persistCheckpoint();
+      }
+      scheduleCheckpoint();
+    }, 1000);
+  };
 
   const removeUnusedPrefixSegments = (keepCount: number) => {
     if (prefixSegmentIds.length <= keepCount) return;
@@ -179,6 +210,7 @@ export function createStreamingSession(args: StreamingSessionArgs) {
     lastProgressFlushAt = Date.now();
     if (!latestProgress) return;
     latestSeenProgress = latestProgress;
+    progressNeedsCheckpoint = true;
 
     const { visibleContent } = parseAssistantReplyContent(
       latestProgress.content,
@@ -241,6 +273,12 @@ export function createStreamingSession(args: StreamingSessionArgs) {
     flushProgress();
   };
 
+  const checkpointOnLeave = () => {
+    if (finished || completed || document.visibilityState !== 'hidden') return;
+    commitQueuedProgress();
+    persistCheckpoint();
+  };
+
   const scheduleLifecycleRelease = (delayMs: number) => {
     clearScheduledLifecycleRelease();
     setStreamingPhase('settling');
@@ -263,9 +301,16 @@ export function createStreamingSession(args: StreamingSessionArgs) {
       setStreamingMessageId: (messageId) => ui.setStreaming({ messageId, phase: 'stage' })
     });
     ui.setSending(true);
+    persistCheckpoint();
+    if (chat.persistToDb) scheduleCheckpoint();
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', checkpointOnLeave);
   };
 
   const finish = (preserveLifecycle = false) => {
+    finished = true;
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', checkpointOnLeave);
+    if (checkpointTimer !== null) window.clearTimeout(checkpointTimer);
+    checkpointTimer = null;
     if (progressTimerId !== null) {
       window.clearTimeout(progressTimerId);
       progressTimerId = null;
@@ -285,6 +330,10 @@ export function createStreamingSession(args: StreamingSessionArgs) {
 
   return {
     controller,
+    markCompleted: () => {
+      completed = true;
+      chat.updateMessage(writableConversation, placeholderId, { replyIncomplete: undefined });
+    },
     queueProgress,
     commitQueuedProgress,
     getLatestProgress: () => latestProgress ?? latestSeenProgress,

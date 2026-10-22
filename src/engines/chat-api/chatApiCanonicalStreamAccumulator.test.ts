@@ -1,3 +1,6 @@
+import { parseOpenAiCompatibleStreamEvents } from '../provider-runtime/providerRuntimeStreamEvents';
+import { appendOpenAiToolCalls } from '../provider-runtime/providerRuntimeResponseToolCalls';
+import { extractAssistantNativeToolActions } from '../tool-protocol/assistantToolProtocolParser';
 import { describe, expect, it } from 'vitest';
 import type { ReplyAccumulator } from '../provider-runtime/providerRuntimeReplyAccumulator';
 import { applyProviderRuntimeStreamEvents } from './chatApiCanonicalStreamAccumulator';
@@ -105,5 +108,25 @@ describe('applyProviderRuntimeStreamEvents', () => {
       name: 'readProjectFile',
       argumentsText: '{"target":"active"}'
     }]);
+  });
+});
+
+
+describe('OpenAI-compatible empty argument fragments', () => {
+  it.each(['canonical', 'response'] as const)('preserves card code through leading, middle and trailing empty fragments in the %s accumulator', (path) => {
+    const target = createAccumulator();
+    const fragments = ['', '{"title":"demo",', '', '"code":"<main>hello</main>"}', ''];
+    for (const argumentsText of fragments) {
+      const wire = [{ index: 0, id: 'call-card', function: { name: 'createCodeCard', arguments: argumentsText } }];
+      if (path === 'canonical') {
+        applyProviderRuntimeStreamEvents(target, parseOpenAiCompatibleStreamEvents({ choices: [{ delta: { tool_calls: wire } }] }));
+      } else {
+        appendOpenAiToolCalls(target, wire, 'delta');
+      }
+    }
+    expect(target.toolCalls?.[0]?.argumentsText).toBe('{"title":"demo","code":"<main>hello</main>"}');
+    const result = extractAssistantNativeToolActions((target.toolCalls ?? []).map(call => ({ id: call.id ?? '', name: call.name ?? '', argumentsText: call.argumentsText })));
+    expect(result.issues).toEqual([]);
+    expect(result.actions).toMatchObject([{ kind: 'createCodeCard', card: { code: '<main>hello</main>' } }]);
   });
 });

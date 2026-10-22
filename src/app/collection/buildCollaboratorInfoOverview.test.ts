@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { POLARIS_ASSISTANT_DEFAULT_MODEL, POLARIS_ASSISTANT_PERSONA_ID, createPersonaTemplate } from '../../config/persona/personaBuilder';
+import { RETIRED_POLARIS_ASSISTANT_PERSONA_ID, createPersonaTemplate } from '../../config/persona/personaBuilder';
 import type { Conversation } from '../../types/domain';
 import { buildCollaboratorInfoOverview } from './buildCollaboratorInfoOverview';
 
@@ -22,7 +22,7 @@ describe('buildCollaboratorInfoOverview', () => {
       personas: [
         createPersonaTemplate({
           id: 'persona-a',
-          name: 'Nova',
+          name: 'Aelion',
           description: '温柔陪伴',
           assistantAvatarAssetId: 'asset-assistant',
           assistantAvatarShape: 'circle'
@@ -57,15 +57,15 @@ describe('buildCollaboratorInfoOverview', () => {
     expect(overview[0].summary).toBe('还没有协作者印象');
   });
 
-  it('hides the product guide model label from overview cards', () => {
+  it('shows the model label for a retained Xiao Assistant like any other collaborator', () => {
     const overview = buildCollaboratorInfoOverview({
       personas: [
         createPersonaTemplate({
-          id: POLARIS_ASSISTANT_PERSONA_ID,
+          id: RETIRED_POLARIS_ASSISTANT_PERSONA_ID,
           name: '小助手',
           description: 'Polaris 使用向导',
           advanced: {
-            modelOverride: POLARIS_ASSISTANT_DEFAULT_MODEL
+            modelOverride: 'user-model'
           }
         })
       ],
@@ -74,7 +74,7 @@ describe('buildCollaboratorInfoOverview', () => {
       imageCards: []
     });
 
-    expect(overview[0].modelLabel).toBeNull();
+    expect(overview[0].modelLabel).toBe('user-model');
   });
 
   it('carries collaborator pin state into overview cards', () => {
@@ -100,11 +100,11 @@ describe('buildCollaboratorInfoOverview', () => {
       personas: [
         createPersonaTemplate({
           id: 'persona-a',
-          name: 'Nova',
+          name: 'Aelion',
           description: '温柔陪伴'
         })
       ],
-      loadedMessageConversationIds: new Set(['empty-loaded']),
+      loadedMessageConversationIds: new Set(['visible', 'empty-loaded', 'blank-message']),
       conversations: [
         conversation({
           id: 'visible',

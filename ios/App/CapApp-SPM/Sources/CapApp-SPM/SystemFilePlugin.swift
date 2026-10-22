@@ -38,7 +38,8 @@ public class SystemFilePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDele
                 return
             }
 
-            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [UTType.zip, UTType.json], asCopy: true)
+            let databaseTypes = ["db", "sqlite", "sqlite3"].compactMap { UTType(filenameExtension: $0) }
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [UTType.zip, UTType.json] + databaseTypes, asCopy: true)
             picker.delegate = self
             picker.allowsMultipleSelection = false
             self.pendingOperation = .importing(call)

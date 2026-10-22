@@ -3,8 +3,7 @@
 // Discovers each active server's tools (with retry + a module-level cache),
 // normalizes them into stable schema-named definitions, and invokes a single
 // tool by picking the right transport and projecting its result. This is the
-// orchestration layer over the two transports (`mcpRuntimeHttp.ts`,
-// `mcpRuntimeSse.ts`); it owns no wire protocol itself. The public surface is
+// orchestration layer over the two transports in `mcp-transport/`; it owns no wire protocol itself. The public surface is
 // re-exported from `mcpRuntime.ts`.
 
 import type { McpServerConfig, McpServerHeader } from '../types/domain';
@@ -16,13 +15,11 @@ import {
 import type { McpToolAttachmentContent, ToolsCallResult } from './mcpRuntimeAttachments';
 import { createRpcId, ensureSuccessMessage } from './mcpRuntimeJsonRpc';
 import { wait } from './mcpRuntimeTiming';
-import type { McpTransportOptions } from './mcpRuntimeTransport';
-import {
-  closeStreamableSession,
-  initializeStreamableSession,
-  requestStreamableJsonRpc
-} from './mcpRuntimeHttp';
-import { initializeLegacySseConnection } from './mcpRuntimeSse';
+import type { McpTransportOptions } from './mcp-transport/types';
+import { getMcpSessionConnection, invalidateMcpSession, markMcpSessionUnavailable,
+  getMcpSessionAvailability, markMcpSessionConnecting, revalidateMcpSession,
+  closeAllMcpSessions, reconcileMcpSessions } from './mcp-transport/sessionRegistry';
+export { closeAllMcpSessions, reconcileMcpSessions };
 
 const DEFAULT_MCP_CATALOG_RETRY_DELAYS_MS = [600, 1200, 2400] as const;
 
@@ -151,69 +148,51 @@ async function listToolsViaStreamableHttp(
   options: McpTransportOptions,
   catalogOptions?: { includeDisabledTools?: boolean }
 ) {
-  const session = await initializeStreamableSession(options);
+  const connection = await getMcpSessionConnection(options);
+  const discovered: McpResolvedToolDefinition[] = [];
+  const errors: string[] = [];
+  let cursor: string | undefined;
 
-  try {
-    const discovered: McpResolvedToolDefinition[] = [];
-    let cursor: string | undefined;
+  while (true) {
+    const response = await connection.request({
+      jsonrpc: '2.0',
+      id: createRpcId(),
+      method: 'tools/list',
+      params: cursor ? { cursor } : {}
+    }, `读取 MCP 工具目录 · ${options.server.name}`);
 
-    while (true) {
-      const response = await requestStreamableJsonRpc({
-        jsonrpc: '2.0',
-        id: createRpcId(),
-        method: 'tools/list',
-        params: cursor ? { cursor } : {}
-      }, {
-        ...options,
-        ...session,
-        label: `读取 MCP 工具目录 · ${options.server.name}`
-      });
-
-      const result = (response.result ?? {}) as ToolsListResult;
-      discovered.push(...normalizeDiscoveredTools(options.server, result.tools, catalogOptions));
-      if (!result.nextCursor?.trim()) break;
-      cursor = result.nextCursor.trim();
-    }
-
-    return dedupeSchemaNames(discovered);
-  } finally {
-    await closeStreamableSession({
-      ...options,
-      ...session
-    });
+    const result = (response.result ?? {}) as ToolsListResult;
+    discovered.push(...normalizeDiscoveredTools(options.server, result.tools, catalogOptions));
+    if (!result.nextCursor?.trim()) break;
+    cursor = result.nextCursor.trim();
   }
+
+  return dedupeSchemaNames(discovered);
 }
 
 async function listToolsViaLegacySse(
   options: McpTransportOptions,
   catalogOptions?: { includeDisabledTools?: boolean }
 ) {
-  const { connection } = await initializeLegacySseConnection(options);
+  const connection = await getMcpSessionConnection(options);
+  const discovered: McpResolvedToolDefinition[] = [];
+  const errors: string[] = [];
+  let cursor: string | undefined;
 
-  try {
-    const discovered: McpResolvedToolDefinition[] = [];
-    let cursor: string | undefined;
-
-    while (true) {
-      const response = ensureSuccessMessage(
-        await connection.request({
-          jsonrpc: '2.0',
-          id: createRpcId(),
-          method: 'tools/list',
-          params: cursor ? { cursor } : {}
-        }, true),
-        `读取 MCP 工具目录 · ${options.server.name}`
-      );
-      const result = (response.result ?? {}) as ToolsListResult;
-      discovered.push(...normalizeDiscoveredTools(options.server, result.tools, catalogOptions));
-      if (!result.nextCursor?.trim()) break;
-      cursor = result.nextCursor.trim();
-    }
-
-    return dedupeSchemaNames(discovered);
-  } finally {
-    connection.close();
+  while (true) {
+    const response = await connection.request({
+      jsonrpc: '2.0',
+      id: createRpcId(),
+      method: 'tools/list',
+      params: cursor ? { cursor } : {}
+    }, `读取 MCP 工具目录 · ${options.server.name}`);
+    const result = (response.result ?? {}) as ToolsListResult;
+    discovered.push(...normalizeDiscoveredTools(options.server, result.tools, catalogOptions));
+    if (!result.nextCursor?.trim()) break;
+    cursor = result.nextCursor.trim();
   }
+
+  return dedupeSchemaNames(discovered);
 }
 
 async function callToolViaStreamableHttp(
@@ -221,38 +200,26 @@ async function callToolViaStreamableHttp(
   argumentsObject: Record<string, unknown>,
   options: McpTransportOptions
 ): Promise<McpToolCallResult> {
-  const session = await initializeStreamableSession(options);
+  const connection = await getMcpSessionConnection(options);
+  const response = await connection.request({
+    jsonrpc: '2.0',
+    id: createRpcId(),
+    method: 'tools/call',
+    params: {
+      name: tool.toolName,
+      arguments: argumentsObject
+    }
+  }, `调用 MCP 工具 · ${tool.serverName} / ${tool.toolName}`);
 
-  try {
-    const response = await requestStreamableJsonRpc({
-      jsonrpc: '2.0',
-      id: createRpcId(),
-      method: 'tools/call',
-      params: {
-        name: tool.toolName,
-        arguments: argumentsObject
-      }
-    }, {
-      ...options,
-      ...session,
-      label: `调用 MCP 工具 · ${tool.serverName} / ${tool.toolName}`
-    });
-
-    const result = (response.result ?? {}) as ToolsCallResult;
-    const attachmentContent = extractToolAttachmentContent(result);
-    return {
-      ok: true,
-      detailText: formatToolsCallResult(result),
-      isError: result.isError === true,
-      ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}),
-      ...(attachmentContent.length ? { attachmentContent } : {})
-    };
-  } finally {
-    await closeStreamableSession({
-      ...options,
-      ...session
-    });
-  }
+  const result = (response.result ?? {}) as ToolsCallResult;
+  const attachmentContent = extractToolAttachmentContent(result);
+  return {
+    ok: true,
+    detailText: formatToolsCallResult(result),
+    isError: result.isError === true,
+    ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}),
+    ...(attachmentContent.length ? { attachmentContent } : {})
+  };
 }
 
 async function callToolViaLegacySse(
@@ -260,34 +227,26 @@ async function callToolViaLegacySse(
   argumentsObject: Record<string, unknown>,
   options: McpTransportOptions
 ): Promise<McpToolCallResult> {
-  const { connection } = await initializeLegacySseConnection(options);
+  const connection = await getMcpSessionConnection(options);
+  const response = await connection.request({
+    jsonrpc: '2.0',
+    id: createRpcId(),
+    method: 'tools/call',
+    params: {
+      name: tool.toolName,
+      arguments: argumentsObject
+    }
+  }, `调用 MCP 工具 · ${tool.serverName} / ${tool.toolName}`);
 
-  try {
-    const response = ensureSuccessMessage(
-      await connection.request({
-        jsonrpc: '2.0',
-        id: createRpcId(),
-        method: 'tools/call',
-        params: {
-          name: tool.toolName,
-          arguments: argumentsObject
-        }
-      }, true),
-      `调用 MCP 工具 · ${tool.serverName} / ${tool.toolName}`
-    );
-
-    const result = (response.result ?? {}) as ToolsCallResult;
-    const attachmentContent = extractToolAttachmentContent(result);
-    return {
-      ok: true,
-      detailText: formatToolsCallResult(result),
-      isError: result.isError === true,
-      ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}),
-      ...(attachmentContent.length ? { attachmentContent } : {})
-    };
-  } finally {
-    connection.close();
-  }
+  const result = (response.result ?? {}) as ToolsCallResult;
+  const attachmentContent = extractToolAttachmentContent(result);
+  return {
+    ok: true,
+    detailText: formatToolsCallResult(result),
+    isError: result.isError === true,
+    ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}),
+    ...(attachmentContent.length ? { attachmentContent } : {})
+  };
 }
 
 function normalizeTimeoutMs(timeoutSeconds: number | undefined) {
@@ -343,6 +302,7 @@ async function resolveServerToolsWithRetry(args: {
       return { tools, error: null };
     } catch (error) {
       lastError = error;
+      invalidateMcpSession(args.server.id);
       const nextDelayMs = args.retryDelaysMs[attempt];
       if (nextDelayMs !== undefined) {
         await wait(nextDelayMs);
@@ -403,8 +363,9 @@ export async function resolveMcpToolCatalog(args: {
   };
 }
 
-export function clearMcpToolCatalogCacheForTests() {
+export async function clearMcpToolCatalogCacheForTests() {
   mcpToolCatalogCache.clear();
+  await closeAllMcpSessions();
 }
 
 export async function invokeMcpTool(args: {
@@ -427,15 +388,70 @@ export async function invokeMcpTool(args: {
   };
   const timeoutMs = normalizeTimeoutMs(args.timeoutSeconds);
 
-  return server.transport === 'sse'
-    ? await callToolViaLegacySse(args.tool, args.argumentsObject, {
-        server,
-        timeoutMs,
-        fetchImpl: args.fetchImpl
-      })
-    : await callToolViaStreamableHttp(args.tool, args.argumentsObject, {
-        server,
-        timeoutMs,
-        fetchImpl: args.fetchImpl
-      });
+  const call = async () => {
+    const authorizedServer = server;
+    const options = {
+      server: authorizedServer,
+      timeoutMs,
+      fetchImpl: args.fetchImpl
+    };
+    return server.transport === 'sse'
+      ? await callToolViaLegacySse(args.tool, args.argumentsObject, options)
+      : await callToolViaStreamableHttp(args.tool, args.argumentsObject, options);
+  };
+
+  try {
+    return await call();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    invalidateMcpSession(server.id);
+    if (!/HTTP\s+(404|410)\b|session[^\n]*(invalid|expired|not found)/i.test(message)) {
+      markMcpSessionUnavailable(server.id);
+      throw error;
+    }
+    try {
+      return await call();
+    } catch (retryError) {
+      markMcpSessionUnavailable(server.id);
+      throw retryError;
+    }
+  }
+}
+
+
+export async function primeMcpSessions(args: {
+  servers?: McpServerConfig[];
+  timeoutSeconds?: number;
+  fetchImpl?: typeof fetch;
+  revalidate?: boolean;
+}) {
+  const activeServers = (args.servers ?? []).filter((server) => server.isActive && server.url.trim());
+  const timeoutMs = normalizeTimeoutMs(args.timeoutSeconds);
+  const pending = activeServers.flatMap((server) => {
+    const availability = getMcpSessionAvailability(server.id);
+    if (availability === 'connecting' || (availability === 'available' && !args.revalidate)) return [];
+
+    if (availability !== 'available') markMcpSessionConnecting(server.id);
+    return [
+      (async () => {
+        try {
+          const authorizedServer = server;
+          const options = {
+            server: authorizedServer,
+            timeoutMs,
+            fetchImpl: args.fetchImpl
+          };
+          if (args.revalidate && availability === 'available') {
+            await revalidateMcpSession(options);
+          } else {
+            await getMcpSessionConnection(options);
+          }
+        } catch {
+          markMcpSessionUnavailable(server.id);
+        }
+      })()
+    ];
+  });
+
+  await Promise.all(pending);
 }

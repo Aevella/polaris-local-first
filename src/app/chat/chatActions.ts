@@ -1,5 +1,6 @@
 import type { MutableRefObject } from 'react';
 import type { ChatMessage, ChatMessageVoiceCache } from '../../types/domain';
+import { createMessage } from '../../engines/chatMessageFactory';
 import { createUid } from '../../engines/id';
 import type { ChatActionStoreBindings, ChatDerivedStatePort, ChatUiActionState } from './chatPorts';
 import {
@@ -150,9 +151,12 @@ export function createChatActionHandlers({
     }
   };
 
-  const commitMessageEdit = async (message: ChatMessage) => {
-    const activeConversation = derived.activeConversation;
-    if (!activeConversation || ui.sending || !ui.editing) return;
+  const commitMessageEdit = async (message: ChatMessage, mode: 'retry' | 'save-only' = 'retry') => {
+    const latestState = store.chat.readLatestState();
+    const activeConversation = latestState.conversations.find(
+      (conversation) => conversation.id === latestState.activeConversationId
+    );
+    if (!activeConversation || ui.sending || ui.editing?.messageId !== message.id || message.role !== 'user') return;
 
     const nextContent = ui.editing.draft.trim();
     const nextAttachments = ui.editing.attachments;
@@ -167,6 +171,25 @@ export function createChatActionHandlers({
     }
     if (isCompanionCollaboratorId(activeConversation.collaboratorId)) {
       ui.setCommandStatus('电脑端 companion 这轮还不支持在手机上原地改写上一句。', true);
+      return;
+    }
+
+    if (mode === 'save-only') {
+      const writable = await store.chat.ensureConversationWritable(activeConversation.id);
+      if (!writable) { ui.setCommandStatus('消息正文尚未完整载入，修改未保存。', true); return; }
+      store.chat.updateMessage(writable, message.id, {
+        content: nextContent,
+        attachments: nextAttachments.length ? nextAttachments : undefined
+      });
+      try {
+        await store.chat.persistToDb?.();
+      } catch (error) {
+        reportPersistenceError({ label: '[chat:message-edit]', store: 'chat', operation: 'save-message-edit' }, error);
+        ui.setCommandStatus(localize('chat.messageEdit.saveFailed', '保存失败，修改仍保留在编辑框中，请重试。'), true);
+        return;
+      }
+      ui.cancelEditingMessage();
+      ui.setCommandStatus(localize('chat.messageEdit.saved', '已保存修改，后续回复已保留。'));
       return;
     }
 
@@ -213,6 +236,25 @@ export function createChatActionHandlers({
     }
     const messageIndex = writableConversation.messages.findIndex((candidate) => candidate.id === message.id);
     if (messageIndex <= 0) return;
+    if (writableConversation.messages[messageIndex].replyIncomplete) {
+      const notice = createMessage('system',
+        '用户选择继续中断的回复。已收到的内容和工具结果已保留。没有结果的工具调用不代表执行成功；执行状态可能未知，涉及副作用时先核对实际状态，不要盲目重复。请接着完成用户的原请求。',
+        undefined, 'system-note');
+      store.chat.updateMessage(writableConversation, message.id, { replyIncomplete: undefined });
+      store.chat.addMessage(writableConversation, notice);
+      try {
+        await runReply({
+          conversationId: activeConversation.id,
+          collaboratorId: derived.activeCollaboratorSourceId ?? activeConversation.collaboratorId,
+          messages: [...writableConversation.messages.map(candidate => candidate.id === message.id
+            ? { ...candidate, replyIncomplete: undefined } : candidate), notice]
+        });
+      } catch (error) {
+        store.chat.updateMessage(writableConversation, message.id, { replyIncomplete: true });
+        throw error;
+      }
+      return;
+    }
     const replySegments = resolveAssistantReplySegments(writableConversation.messages, message.id);
     const firstSegmentIndex = replySegments.reduce((earliestIndex, segment) => {
       const index = writableConversation.messages.findIndex((candidate) => candidate.id === segment.id);
@@ -364,12 +406,12 @@ export function createChatActionHandlers({
       ui.setCommandStatus('新分支还没准备好，先别写入。', true);
       return;
     }
+    store.chat.setConversationReasoningStrength?.(conversationId, sourceConversation.conversation.reasoningStrength ?? 'automatic');
     const sourceMessages = sourceConversation.messages.slice(0, messageIndex + 1);
     const clonedIdsBySourceId = new Map(sourceMessages.map((entry) => [entry.id, createUid(entry.role)]));
-    const clonedMessages = sourceMessages.map((entry, index) => ({
+    const clonedMessages = sourceMessages.map((entry) => ({
       ...entry,
       id: clonedIdsBySourceId.get(entry.id) as string,
-      timestamp: Date.now() + index,
       assistantReplyId: entry.assistantReplyId
         ? clonedIdsBySourceId.get(entry.assistantReplyId)
         : undefined

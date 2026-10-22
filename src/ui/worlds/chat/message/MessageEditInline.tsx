@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChatAttachment, ChatMessage } from '../../../../types/domain';
 import type { ChatEditingState } from '../context/ChatUiState';
 import { ChatAttachmentStrip } from '../ChatAttachmentStrip';
@@ -9,7 +9,7 @@ type MessageEditInlineProps = {
   message: ChatMessage;
   onRemoveEditingAttachment: (attachmentId: string) => void;
   onUpdateEditingDraft: (value: string) => void;
-  onCommitEdit: (message: ChatMessage) => Promise<void>;
+  onCommitEdit: (message: ChatMessage, mode?: 'retry' | 'save-only') => Promise<void>;
   onCancelEdit: () => void;
 };
 
@@ -23,6 +23,19 @@ export function MessageEditInline({
 }: MessageEditInlineProps) {
   const { t } = useI18n();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const committingRef = useRef(false);
+  const [committing, setCommitting] = useState(false);
+  const commit = async (mode: 'retry' | 'save-only') => {
+    if (committingRef.current) return;
+    committingRef.current = true;
+    setCommitting(true);
+    try {
+      await onCommitEdit(message, mode);
+    } finally {
+      committingRef.current = false;
+      setCommitting(false);
+    }
+  };
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -37,15 +50,17 @@ export function MessageEditInline({
 
   return (
     <div className="message-edit-panel">
-      <ChatAttachmentStrip attachments={editing.attachments as ChatAttachment[]} tone="message" onRemove={onRemoveEditingAttachment} />
+      <ChatAttachmentStrip attachments={editing.attachments as ChatAttachment[]} tone="message" onRemove={committing ? undefined : onRemoveEditingAttachment} />
       <textarea
         ref={textareaRef}
         value={editing.draft}
+        disabled={committing}
         onChange={(event) => onUpdateEditingDraft(event.target.value)}
         onKeyDown={(event) => {
           if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-            void onCommitEdit(message);
-          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            void commit('retry');
+          } else if (event.key === 'Escape' && !committingRef.current) {
             onCancelEdit();
           }
         }}
@@ -55,10 +70,13 @@ export function MessageEditInline({
       />
       <div className="message-edit-hint">{t('chat.messageEdit.hint')}</div>
       <div className="message-inline-actions user">
-        <button type="button" className="btn-secondary compact" onClick={onCancelEdit}>
+        <button type="button" className="btn-secondary compact" disabled={committing} onClick={onCancelEdit}>
           {t('chat.messageActions.cancel')}
         </button>
-        <button type="button" className="btn-secondary compact active" onClick={() => void onCommitEdit(message)}>
+        <button type="button" className="btn-secondary compact" disabled={committing} onClick={() => void commit('save-only')}>
+          {t('chat.messageEdit.saveOnly')}
+        </button>
+        <button type="button" className="btn-secondary compact active" disabled={committing} onClick={() => void commit('retry')}>
           {t('chat.messageEdit.saveAndRetry')}
         </button>
       </div>

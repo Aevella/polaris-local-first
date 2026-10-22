@@ -24,7 +24,7 @@ import {
   type PersistedKvMutation,
   type PersistenceBackend
 } from '../infrastructure/persistence';
-import { commitDocumentRowChangesIfActive } from './documentLocalDataPersistence';
+import { commitDocumentRowChangesIfActive, readDocumentBodyIfActive } from './documentLocalDataPersistence';
 
 let commitCount = 0;
 
@@ -147,6 +147,16 @@ describe('commitDocumentRowChangesIfActive', () => {
 
   afterEach(() => {
     setPersistenceBackendForTesting(null);
+  });
+
+  it.each(['timedOut', 'unloaded'] as const)('does not turn a %s read into a missing body', async (state) => {
+    await promoteDocumentState([workspaceDocSeed({ id: 'doc-wait', content: 'retained' })]);
+    const row = await rawRow('workspace-reference-doc', 'doc-wait');
+    await kvSet(getLocalDataRowKey(getDocumentObjectLocalDataRef('workspace-reference-doc', 'doc-wait')), {
+      ...row, state, reason: 'temporarily unavailable'
+    });
+    await expect(readDocumentBodyIfActive('workspace-reference-doc', 'doc-wait'))
+      .rejects.toThrow('temporarily unreadable');
   });
 
   it('upserts one document body and counts it in the domain meta in a single commit', async () => {

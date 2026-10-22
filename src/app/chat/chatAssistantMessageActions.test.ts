@@ -341,3 +341,29 @@ describe('user message actions', () => {
     expect(chat.removePendingWorkspaceProposal).toHaveBeenCalledWith('proposal-1');
   });
 });
+
+describe('saved reply evidence', () => {
+  it('continues an interrupted answer with saved tool evidence instead of deleting its turn', async () => {
+    const partial = { ...message('a', 'assistant', 'partial', 2), replyIncomplete: true };
+    const tool = { ...message('tool', 'assistant', 'written', 3), toolInvocation: { id: 't', kind: 'createCodeCard', status: 'executed', title: 'Saved', summary: 'saved card' } } as ChatMessage;
+    const conversation: Conversation = { id: 'c', title: 'C', collaboratorId: 'pharos', messages: [message('u', 'user', 'continue work', 1), partial, tool], pinnedAt: null, updatedAt: 3 };
+    const { handlers, chat, runReply } = createHandlersForConversation({ conversation });
+    await handlers.retryLatestAssistant(partial);
+    expect(chat.replaceConversationMessages).not.toHaveBeenCalled();
+    expect(runReply).toHaveBeenCalledWith(expect.objectContaining({ messages: expect.arrayContaining([tool, expect.objectContaining({ id: 'a', content: 'partial' })]) }));
+  });
+
+  it('saves a user edit without regenerating or deleting later messages', async () => {
+    const user = message('u', 'user', 'before', 1);
+    const answer = message('a', 'assistant', 'answer', 2);
+    const conversation: Conversation = { id: 'c', title: 'C', collaboratorId: 'pharos', messages: [user, answer], pinnedAt: null, updatedAt: 2 };
+    const persistToDb = vi.fn(async () => undefined);
+    const { handlers, chat, runReply, ui } = createHandlersForConversation({ conversation, chat: { persistToDb }, ui: { editing: { messageId: 'u', draft: 'after', attachments: [] } } });
+    await handlers.commitMessageEdit(user, 'save-only');
+    expect(chat.updateMessage).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 'c' }), 'u', expect.objectContaining({ content: 'after' }));
+    expect(persistToDb).toHaveBeenCalledOnce();
+    expect(chat.replaceConversationMessages).not.toHaveBeenCalled();
+    expect(runReply).not.toHaveBeenCalled();
+    expect(ui.cancelEditingMessage).toHaveBeenCalledOnce();
+  });
+});

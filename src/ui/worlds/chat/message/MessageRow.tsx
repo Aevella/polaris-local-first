@@ -49,7 +49,7 @@ export type MessageRowState = {
 export type MessageRowActions = {
   removeEditingAttachment: (attachmentId: string) => void;
   updateEditingDraft: (value: string) => void;
-  commitEdit: (message: ChatMessage) => Promise<void>;
+  commitEdit: (message: ChatMessage, mode?: 'retry' | 'save-only') => Promise<void>;
   cancelEdit: () => void;
   toggleThinkingCollapsed: (messageId: string) => void;
   openThinkingSummary: (message: ChatMessage) => void;
@@ -62,6 +62,7 @@ export type MessageRowActions = {
   deleteUserMessage: (message: ChatMessage) => void;
   editAssistantMessage: (message: ChatMessage, content: string) => void;
   cacheAssistantSpeech: (message: ChatMessage, voiceCache: ChatMessageVoiceCache) => void;
+  setContextStart?: (message: ChatMessage) => void;
   forkFromMessage: (message: ChatMessage) => void;
   applyToolPreview: (message: ChatMessage) => void;
   saveToolPreview: (message: ChatMessage) => void;
@@ -241,10 +242,12 @@ function MessageRowComponent({
     && !state.editing
     && (!message.assistantReplyId || isTerminalAssistantInUserTurn) ? (
     <MessageActions
+      onSetContextStart={!isStreamingLike && isTerminalAssistantInUserTurn && actions.setContextStart ? () => actions.setContextStart?.(message) : undefined}
       canCopyAssistant={message.role === 'assistant' && !message.toolInvocation && !isStreamingLike && isTerminalAssistantInUserTurn && Boolean(message.content.trim())}
       canOpenThinkingSummary={showThinking && showChatAvatars && Boolean(message.thinkingText)}
       memoryEvidence={message.memoryEvidence ?? null}
       canRetryAssistant={state.canRetry}
+      retryAssistantLabel={message.replyIncomplete ? t('chat.messageActions.continueInterrupted') : undefined}
       canEditAssistant={state.canEditAssistant}
       canForkAssistant={state.canEditAssistant}
       taskReceiptAction={taskReceiptAction}
@@ -412,6 +415,9 @@ function MessageRowComponent({
             <Icon name="edit" size={14} />
             <span>{t('chat.messageActions.editAndRetry')}</span>
           </button>
+          {actions.setContextStart && <button type="button" className="user-bubble-action-btn" role="menuitem" onClick={() => { actions.setContextStart?.(message); setUserActionMenuOpen(false); }}>
+            <Icon name="chevron" size={14} /><span>{t('chat.messageActions.contextStart')}</span>
+          </button>}
           <button type="button" className="user-bubble-action-btn danger" role="menuitem" onClick={deleteUserMessage}>
             <Icon name="trash" size={14} />
             <span>{t('chat.messageActions.delete')}</span>
@@ -505,6 +511,14 @@ function MessageRowComponent({
                   ))}
                 </div>
               ) : null}
+              {message.replyIncomplete && !isStreamingLike && isTerminalAssistantInUserTurn ? (
+                <div className="system-inline-note message-interruption-note" role="status">
+                  {t('chat.messageActions.interrupted')}
+                  {state.canRetry ? <button type="button" onClick={() => void actions.retry(message)}>
+                    {t('chat.messageActions.continueInterrupted')}
+                  </button> : null}
+                </div>
+              ) : null}
               {messageActions}
             </div>
           </div>
@@ -538,7 +552,8 @@ function MessageRowComponent({
 
 function areMessageRowPropsEqual(previous: MessageRowProps, next: MessageRowProps) {
   return (
-    previous.message === next.message
+    previous.actions.setContextStart === next.actions.setContextStart
+    && previous.message === next.message
     && previous.fallbackAssistantName === next.fallbackAssistantName
     && previous.assistantAvatarUrl === next.assistantAvatarUrl
     && previous.assistantAvatarIconId === next.assistantAvatarIconId

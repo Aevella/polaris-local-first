@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { CodeCardActionMode, CodeCardMessageProgress } from '../../../../app/chat/chatDerivedState';
 import type { WorkspaceBannerState } from '../../../../engines/workspaceBannerState';
-import type { ChatAttachment, ChatCardReference, ChatMessage, ChatMessageVoiceCache, CodeCard, Conversation, Persona, ThemeToolMode } from '../../../../types/domain';
+import type { ConversationReasoningStrength, ChatAttachment, ChatCardReference, ChatMessage, ChatMessageVoiceCache, CodeCard, Conversation, Persona, ThemeToolMode } from '../../../../types/domain';
 import type { PolarisToolPromptGroup } from '../../../../engines/tool-protocol/assistantToolProtocolTypes';
 import type { ChatCommandStatus, ChatEditingState, ChatStreamingState, ChatSubmitFlightState } from './ChatUiState';
 import type { ChatConversationBodyStatus } from '../../../../stores/chatConversationBodyStatus';
@@ -37,6 +37,7 @@ export type ChatContextComposerValue = {
   taskModeEnabled: boolean;
   themeToolMode: ThemeToolMode;
   canReviveTheme: boolean;
+  reasoningStrength: ConversationReasoningStrength;
 };
 
 export type ChatContextUiValue = {
@@ -76,7 +77,7 @@ export type ChatContextActionsValue = {
   forkFromMessage: (message: ChatMessage) => void;
   updateEditingDraft: (value: string) => void;
   removeEditingAttachment: (attachmentId: string) => void;
-  commitEdit: (message: ChatMessage) => Promise<void>;
+  commitEdit: (message: ChatMessage, mode?: 'retry' | 'save-only') => Promise<void>;
   cancelEdit: () => void;
   toggleThinkingCollapsed: (messageId: string) => void;
   openThinkingSummary: (message: ChatMessage) => void;
@@ -95,6 +96,7 @@ export type ChatContextActionsValue = {
   codeCardAction: (message: ChatMessage) => void;
   setInputDraft: (value: string) => void;
   setConversationDraft: (conversationId: string, value: string) => void;
+  setConversationReasoningStrength: (strength: ConversationReasoningStrength) => void;
   setPendingCardReference: (reference: ChatCardReference | null) => void;
   setDragActive: (value: boolean) => void;
   setCommandStatus: (text: string, isError?: boolean) => void;

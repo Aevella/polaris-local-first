@@ -1,3 +1,4 @@
+import { normalizeConversationSettings } from '../engines/conversationContextSettings';
 import {
   recoverPendingAssetImportStage,
   stageAssetImportEntries,
@@ -184,7 +185,7 @@ function validateChatState(value: unknown): PersistedChatState {
     }
   }
   return {
-    conversations: payload.conversations,
+    conversations: payload.conversations.map(normalizeConversationSettings),
     activeConversationId:
       typeof payload.activeConversationId === 'string' || payload.activeConversationId === null
         ? payload.activeConversationId

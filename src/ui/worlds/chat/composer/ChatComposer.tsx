@@ -1,3 +1,5 @@
+import { useChatStore } from '../../../../stores/chatStore';
+import { shouldSendOnComposerReturn } from '../../../../engines/conversationWindowSettings';
 import { ImpactStyle } from '@capacitor/haptics';
 import type { ClipboardEvent, KeyboardEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -51,6 +53,7 @@ export function ChatComposer() {
   const [attachmentPickerOpen, setAttachmentPickerOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const activeConversationId = presentation.activeConversationId;
+  const returnKeyBehavior = useChatStore(state => state.conversations.find(item => item.id === activeConversationId)?.windowPreferences?.composerReturnKeyBehavior ?? 'automatic');
   const [localDraft, setLocalDraft] = useState(composer.inputDraft);
   const localDraftRef = useRef(composer.inputDraft);
   const draftConversationIdRef = useRef(activeConversationId);
@@ -170,7 +173,7 @@ export function ChatComposer() {
     const prefersTouchInput =
       typeof window !== 'undefined' &&
       (window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0);
-    if (prefersTouchInput || event.nativeEvent.isComposing) return;
+    if (!shouldSendOnComposerReturn({ behavior: returnKeyBehavior, touch: prefersTouchInput, shift: event.shiftKey, composing: event.nativeEvent.isComposing })) return;
     if (tryCastThemeReviveSpell()) {
       event.preventDefault();
       return;
@@ -246,12 +249,14 @@ export function ChatComposer() {
           hasUnsupportedPendingImages={hasUnsupportedPendingImages}
           taskToolsEnabled={composer.toolPromptPreferences.task}
           taskModeEnabled={composer.taskModeEnabled}
+          reasoningStrength={composer.reasoningStrength}
           pendingAttachments={attachments.pending}
           pendingCardReference={resolvedPendingCardReference}
           availableCards={composer.availableCards}
           onAddAttachments={handleAddAttachments}
           onRemoveAttachment={attachments.remove}
           onToggleTaskModeEnabled={actions.setTaskModeEnabled}
+          onSetReasoningStrength={actions.setConversationReasoningStrength}
           onOpenToolbox={actions.openToolbox}
           onSetPickerOpen={setAttachmentPickerOpen}
           onSetPendingCardReference={actions.setPendingCardReference}

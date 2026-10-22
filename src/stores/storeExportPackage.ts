@@ -1,11 +1,12 @@
+import { preparePersonaBackupDocuments } from './personaBackupDocuments';
 import packageJson from '../../package.json';
 import JSZip from 'jszip';
 import {
-  exportAssetEntries,
   getActiveAssetStorageKey,
   getAssetBlob,
   getAssetPreviewBlob,
   listAssetMeta,
+  listActiveAssetPreviewEntrySizes,
   type AssetExportEntry,
   type StoredAssetMeta
 } from '../infrastructure/assetStore';
@@ -14,13 +15,8 @@ import type { RuntimePayload } from './runtimeStorePersistence';
 import { normalizeRuntimePayload } from './runtimeStorePersistence';
 import { readRuntimePayloadFromLocalDataRepositoryIfActive } from './runtimeLocalDataPersistence';
 import {
-  buildPersonaMemoryDocContentPayload,
-  readPersonaMemoryDocContentPayload,
-  loadPersonaMemoryReferenceDocsContent,
-  stripPersonaMemoryDocContent,
   type PersonaMemoryDocContentPayload
 } from './personaMemoryReferenceDocPersistence';
-import { assertDocumentLocalDataStrictlyReadableIfActive } from './documentLocalDataPersistence';
 import { readPersonaStateFromLocalDataRepositoryIfActive } from './personaLocalDataPersistence';
 import type { PersistedCollectionState } from './collectionStorePersistence';
 import type { PersistedSpaceState } from './spaceStorePersistence';
@@ -75,6 +71,7 @@ export type AssetIndexEntry = {
 export type ExportReportIssue = {
   severity: 'warning' | 'error';
   kind:
+    | 'persona-doc-missing-body'
     | 'asset-missing-binary'
     | 'asset-preview-fallback'
     | 'asset-missing-preview'
@@ -122,6 +119,7 @@ export type StructuredExportSnapshot = {
 };
 
 type StructuredExportPackage = {
+  report: ExportReport;
   blob: Blob;
   fileName: string;
 };
@@ -245,7 +243,7 @@ async function readPersistedPersonaInputs(): Promise<ExportPersonaInputs> {
   if (repositoryPayload) {
     const state = {
       ...repositoryPayload,
-      personas: await loadPersonaMemoryReferenceDocsContent(repositoryPayload.personas)
+      personas: repositoryPayload.personas
     };
     return {
       state,
@@ -260,7 +258,7 @@ async function readPersistedPersonaInputs(): Promise<ExportPersonaInputs> {
       activeCollaboratorId: null,
       seededDefaultPersonaIds: []
     },
-    existingMemoryDocContent: await readPersonaMemoryDocContentPayload()
+    existingMemoryDocContent: null
   };
 }
 
@@ -276,7 +274,6 @@ async function readStructuredExportStores(
   snapshot: StructuredExportSnapshot = {},
   options: StructuredExportPackageOptions = {}
 ) {
-  await assertDocumentLocalDataStrictlyReadableIfActive();
   const now = new Date();
   const timestampLabel = buildExportTimestamp(now);
   options.onProgress?.({ message: '读取对话和设置' });
@@ -298,14 +295,10 @@ async function readStructuredExportStores(
     ? snapshot.personaMemoryDocContent
     : personaInputs.existingMemoryDocContent;
 
-  const exportPersonaMemoryDocContent = buildPersonaMemoryDocContentPayload(
-    personaInputs.state.personas,
-    personaMemoryDocContent ?? { version: 1, docs: {} }
-  );
-  const exportPersonaState = {
-    ...personaInputs.state,
-    personas: stripPersonaMemoryDocContent(personaInputs.state.personas)
-  };
+  const preparedDocuments = await preparePersonaBackupDocuments(personaInputs.state.personas,
+    snapshot.personaMemoryDocContent !== undefined ? snapshot.personaMemoryDocContent : undefined);
+  const exportPersonaMemoryDocContent = preparedDocuments.payload;
+  const exportPersonaState = { ...personaInputs.state, personas: preparedDocuments.personas };
 
   return {
     now,
@@ -313,6 +306,7 @@ async function readStructuredExportStores(
     spaceState,
     chatState,
     collectionState,
+    missingPersonaDocuments: preparedDocuments.missing,
     personaState: exportPersonaState,
     personaMemoryDocContent: exportPersonaMemoryDocContent,
     runtimeState
@@ -347,69 +341,19 @@ async function createStructuredExportZip(
   options: StructuredExportPackageOptions = {}
 ) {
   const zip = new JSZip();
-  const stores = await readStructuredExportStores(snapshot, options);
-  const assets = snapshot.assetEntries ? await Promise.resolve(snapshot.assetEntries) : await exportAssetEntries();
-
-  zip.file('stores/space.json', jsonEntry(stores.spaceState));
-  zip.file('stores/chat.json', jsonEntry(stores.chatState));
-  zip.file('stores/collection.json', jsonEntry(stores.collectionState));
-  zip.file('stores/persona.json', jsonEntry(stores.personaState));
-  zip.file(PERSONA_MEMORY_DOC_CONTENT_PATH, jsonEntry(stores.personaMemoryDocContent));
-  zip.file('stores/runtime.json', jsonEntry(stores.runtimeState));
-
-  const assetIndex: AssetIndexEntry[] = [];
-  options.onProgress?.({
-    message: assets.length > 0 ? '整理附件' : '准备压缩备份',
-    current: assets.length > 0 ? 0 : undefined,
-    total: assets.length > 0 ? assets.length : undefined
+  const result = await streamStructuredExportPackageEntries(snapshot, {
+    onProgress: options.onProgress,
+    onTextEntry: async (path, text) => { zip.file(path, text); },
+    onBinaryEntry: async (path, blob) => { zip.file(path, await blob.arrayBuffer()); }
   });
-  for (const asset of assets) {
-    const { filePath, previewPath } = buildAssetPaths(asset.meta);
-    assetIndex.push(assetIndexEntry(asset.meta, { filePath, previewPath }));
-    zip.file(filePath, await asset.blob.arrayBuffer());
-
-    if (asset.meta.kind === 'image') {
-      zip.file(previewPath!, await (asset.previewBlob ?? asset.blob).arrayBuffer());
-    }
-    options.onProgress?.({ message: '整理附件', current: assetIndex.length, total: assets.length });
-  }
-
-  const manifest: ExportManifest = {
-    format: 'polaris-export',
-    version: 1,
-    createdAt: stores.now.getTime(),
-    appVersion: packageJson.version,
-    stores: {
-      space: 'stores/space.json',
-      chat: 'stores/chat.json',
-      collection: 'stores/collection.json',
-      persona: 'stores/persona.json',
-      personaMemoryDocContent: PERSONA_MEMORY_DOC_CONTENT_PATH,
-      runtime: 'stores/runtime.json'
-    },
-    assets: {
-      count: assets.length,
-      imageCount: assets.filter((asset) => asset.meta.kind === 'image').length,
-      attachmentCount: assets.filter((asset) => asset.meta.kind === 'file').length,
-      index: ASSET_INDEX_PATH
-    }
-  };
-
-  zip.file('manifest.json', jsonEntry(manifest));
-  zip.file(ASSET_INDEX_PATH, jsonEntry(assetIndex));
-  options.onProgress?.({ message: '准备压缩备份' });
-
-  return {
-    zip,
-    fileName: `polaris-export-${stores.timestampLabel}.zip`
-  };
+  return { zip, ...result };
 }
 
 export async function buildStructuredExportPackage(
   snapshot: StructuredExportSnapshot = {},
   options: StructuredExportPackageOptions = {}
 ): Promise<StructuredExportPackage> {
-  const { zip, fileName } = await createStructuredExportZip(snapshot, options);
+  const { zip, fileName, report } = await createStructuredExportZip(snapshot, options);
   options.onProgress?.({ message: '压缩备份', current: 0, total: 100 });
   return {
     blob: await zip.generateAsync(
@@ -420,15 +364,15 @@ export async function buildStructuredExportPackage(
         total: 100
       })
     ),
-    fileName
+    fileName, report
   };
 }
 
 export async function streamStructuredExportPackage(
   snapshot: StructuredExportSnapshot = {},
   handlers: StructuredExportStreamHandlers
-): Promise<{ fileName: string }> {
-  const { zip, fileName } = await createStructuredExportZip(snapshot, { onProgress: handlers.onProgress });
+): Promise<{ fileName: string; report: ExportReport }> {
+  const { zip, fileName, report } = await createStructuredExportZip(snapshot, { onProgress: handlers.onProgress });
   await handlers.onStart?.({ fileName, mimeType: EXPORT_MIME_TYPE });
   handlers.onProgress?.({ message: '压缩备份', current: 0, total: 100 });
 
@@ -471,7 +415,7 @@ export async function streamStructuredExportPackage(
       .resume();
   });
 
-  return { fileName };
+  return { fileName, report };
 }
 
 async function writeBlobEntry(
@@ -582,12 +526,22 @@ async function streamPersistedAssets(
       });
     }
 
-    assetIndex.push(assetIndexEntry(asset, paths));
+    const usesPreview = !wroteBinary && !blob && (wrotePreviewAsBinary || Boolean(previewBlob));
+    const previewSize = usesPreview
+      ? previewBlob?.size ?? (await listActiveAssetPreviewEntrySizes()).find(entry => entry.key === asset.id)?.size
+      : undefined;
+    if (usesPreview && previewSize === undefined) throw new Error(`无法确认预览图 ${asset.id} 的导出大小。`);
+    assetIndex.push(assetIndexEntry(usesPreview ? {
+      ...asset, size: previewSize!, mimeType: previewBlob?.type || 'image/jpeg'
+    } : asset, paths));
     if (!wroteBinary && !wrotePreviewAsBinary && exportBlob) {
       await writeBlobEntry(handlers, paths.filePath, exportBlob);
     }
     if (paths.previewPath) {
       const wrotePreview = await writeStoredBinaryEntry(handlers, ASSET_PREVIEW_STORE, storageKey, paths.previewPath);
+      if (!wrotePreview && !previewBlob && shouldReadPersistedAssetBlob(handlers, asset, 'preview')) {
+        previewBlob = await getAssetPreviewBlob(asset.id);
+      }
       if (wrotePreview) {
         // NativePersistence streamed the preview directly into the ZIP.
       } else if (previewBlob) {
@@ -629,7 +583,7 @@ export async function streamStructuredExportPackageEntries(
   const report: ExportReport = {
     version: 1,
     createdAt: stores.now.getTime(),
-    issues: [],
+    issues: stores.missingPersonaDocuments.map(doc => ({ severity: 'warning' as const, kind: 'persona-doc-missing-body' as const, message: `长期资料正文缺失，已保留标题与摘要：${doc.title}` })),
     assets: {
       indexed: snapshot.assetEntries?.length ?? 0,
       exported: 0,

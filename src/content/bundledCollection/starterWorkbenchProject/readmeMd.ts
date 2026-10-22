@@ -1,6 +1,6 @@
 export const STARTER_WORKBENCH_PROJECT_README_MD = `# Polaris 小工作台
 
-这是小助手家的默认工作区。打开后，你会看到一份可以直接编辑、预览和复制的 Markdown 文档；它也展示了 Polaris 如何把页面、样式、交互逻辑和说明文档放在同一个工作区里维护。
+这是 Pharos 房间的默认工作区。打开后，你会看到一份可以直接编辑、预览和复制的 Markdown 文档；它也展示了 Polaris 如何把页面、样式、交互逻辑和说明文档放在同一个工作区里维护。
 
 ## 适合用它理解什么
 

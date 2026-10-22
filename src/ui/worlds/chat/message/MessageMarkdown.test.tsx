@@ -102,3 +102,19 @@ describe('MessageMarkdown', () => {
     expect(html).toContain('第二段');
   });
 });
+
+describe('MessageMarkdown ordered lists', () => {
+  it('preserves numbering across separately rendered reply segments', () => {
+    for (const number of [1, 2, 3]) {
+      const html = renderToStaticMarkup(<MessageMarkdown content={`${number}. 内容`} />);
+      expect(html).toContain(`start="${number}"`);
+    }
+  });
+
+  it('preserves the start after a paragraph interrupts the list', () => {
+    const html = renderToStaticMarkup(<MessageMarkdown content={'1. 第一项\n\n说明文字\n\n2. 第二项\n3. 第三项'} />);
+    expect(html).toContain('start="1"');
+    expect(html).toContain('start="2"');
+    expect(html.match(/<li>/g)).toHaveLength(3);
+  });
+});

@@ -1041,3 +1041,30 @@ describe('buildReplyToolContext', () => {
     expect(result.toolContext.visibleProjects?.map((project) => project.id)).toEqual(['workspace-1']);
   });
 });
+
+
+describe('conversation context request projection', () => {
+  it('carries the selected window override into the effective request persona', () => {
+    const source = createSnapshotSource();
+    const conversation: Conversation = { id: 'context-window', title: 'Window', collaboratorId: 'persona-1', messages: [], pinnedAt: null, updatedAt: 1, requestContext: { mode: 'recent' as const, messageCount: 500 } };
+    source.conversations = [conversation];
+    const snapshot = createChatReplyRequestSnapshot({ source, activeConversation: conversation });
+    expect(snapshot.requestContext).toEqual({ mode: 'recent', messageCount: 500 });
+    const result = buildReplyToolContext({ snapshot, collaboratorId: 'persona-1', messages: [] });
+    expect(result.collaboratorForReply?.advanced.contextMessageLimit).toBe('500');
+    expect(source.personas.find(persona => persona.id === 'persona-1')?.advanced.contextMessageLimit).not.toBe('500');
+  });
+});
+
+
+describe('window MCP scope projection', () => {
+  it('filters the real snapshot and tool context through the same selected set', () => {
+    const source = createSnapshotSource();
+    source.mcpServers = [{ id: 'allowed', name: 'Allowed' }, { id: 'other', name: 'Other' }] as typeof source.mcpServers;
+    const conversation: Conversation = { id: 'mcp-window', title: 'Window', collaboratorId: 'persona-1', messages: [], pinnedAt: null, updatedAt: 1, windowPreferences: { historicalImagePolicy: 'smart', composerReturnKeyBehavior: 'automatic', mcpScope: { mode: 'selected', serverIds: ['allowed', 'outside-collaborator-scope'] } } };
+    source.conversations = [conversation];
+    const snapshot = createChatReplyRequestSnapshot({ source, activeConversation: conversation });
+    expect(snapshot.mcpServers.map(server => server.id)).toEqual(['allowed']);
+    expect(buildReplyToolContext({ snapshot, collaboratorId: 'persona-1', messages: [] }).toolContext.mcpServers?.map(server => server.id)).toEqual(['allowed']);
+  });
+});

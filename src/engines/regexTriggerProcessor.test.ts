@@ -1,3 +1,4 @@
+import { buildTemplateContext } from './templateEngine';
 import { describe, expect, it } from 'vitest';
 import { buildRegexTriggerContext, parseRegexTriggers, parseWorldBookRegexTriggers, resolveRegexTriggerMatches } from './regexTriggerProcessor';
 import type { ChatMessage } from '../types/domain';
@@ -105,14 +106,14 @@ describe('parseWorldBookRegexTriggers', () => {
 });
 
 describe('resolveRegexTriggerMatches', () => {
-  it('matches only the latest user message', () => {
+  it('matches only the latest user message when scan depth is explicitly one', () => {
     const matches = resolveRegexTriggerMatches([
       userMessage('上一轮提到了白树'),
       { id: 'assistant-1', role: 'assistant', content: '继续。', timestamp: 2 },
       userMessage('这一轮说拉梅兰')
     ], [
-      { pattern: '白树', prompt: '带入白树设定' },
-      { pattern: '拉梅兰', prompt: '带入拉梅兰设定' }
+      { pattern: '白树', prompt: '带入白树设定', scanDepth: 1 },
+      { pattern: '拉梅兰', prompt: '带入拉梅兰设定', scanDepth: 1 }
     ]);
 
     expect(matches.map((match) => match.prompt)).toEqual(['带入拉梅兰设定']);
@@ -133,11 +134,28 @@ describe('resolveRegexTriggerMatches', () => {
       { id: 'assistant-1', role: 'assistant', content: '我记得白树。', timestamp: 2 },
       userMessage('这一轮只说继续')
     ], [
-      { pattern: '白树', prompt: '最新用户消息不会命中' },
+      { pattern: '白树', prompt: '最新用户消息不会命中', scanDepth: 1 },
       { pattern: '白树', prompt: '最近上下文命中', scanDepth: 3 }
     ]);
 
     expect(matches.map((match) => match.prompt)).toEqual(['最近上下文命中']);
+  });
+
+  it('uses the same four-message default for stored rules without scan depth', () => {
+    const messages = [
+      userMessage('已经超出范围的旧设定'),
+      { id: 'assistant-1', role: 'assistant' as const, content: '白树在这里。', timestamp: 2 },
+      userMessage('继续走'),
+      { id: 'assistant-2', role: 'assistant' as const, content: '往前走。', timestamp: 3 },
+      userMessage('现在呢')
+    ];
+    const rules = JSON.stringify([
+      { pattern: '白树', prompt: '带入白树设定' },
+      { pattern: '旧设定', prompt: '不应进入请求' }
+    ]);
+
+    expect(resolveRegexTriggerMatches(messages, rules).map((rule) => rule.prompt))
+      .toEqual(['带入白树设定']);
   });
 
   it('keeps always-on triggers and sorts by priority', () => {
@@ -156,9 +174,19 @@ describe('buildRegexTriggerContext', () => {
       { pattern: '白树', prompt: '带入白树设定' }
     ]);
 
-    expect(context).toContain('[正则触发]');
+    expect(context).toContain('[协作者世界书]');
+    expect(context).toContain('不需要用户再次要求读取');
+    expect(context).toContain('不是用户新发的消息');
     expect(context).toContain('不要改写用户原文');
     expect(context).toContain('/白树/：带入白树设定');
+  });
+
+  it('resolves user and character macros in keywords and contents for the current request', () => {
+    const rules = parseWorldBookRegexTriggers(JSON.stringify([{ keys: ['{{char}}'], content: '{{char}} 与 {{user}} 的设定' }])).rules;
+    const templateContext = buildTemplateContext({ modelId: 'test', assistantName: 'A.B', nickname: 'AA' });
+    expect(buildRegexTriggerContext([userMessage('A.B 来了')], rules, templateContext)).toContain('A.B 与 AA 的设定');
+    expect(buildRegexTriggerContext([userMessage('AxB 来了')], rules, templateContext)).toBe('');
+    expect(rules[0].prompt).toBe('{{char}} 与 {{user}} 的设定');
   });
 
   it('describes always-on world book entries without requiring a pattern', () => {

@@ -117,3 +117,20 @@ describe('chat conversation messages', () => {
     expect(first.messages.map((entry) => entry.id)).toEqual(['m-1', 'm-3']);
   });
 });
+
+describe('message edits preserve context and evidence', () => {
+  it('keeps ledger identity during text streaming and returns the original for no-op patches', () => {
+    const base = conversation({ messages: [message('m-1', 'one')], toolLedger: [] });
+    const updated = updateConversationMessage(base, 'm-1', { content: 'two' });
+    expect(updated.toolLedger).toBe(base.toolLedger);
+    expect(updateConversationMessage(updated, 'm-1', { content: 'two' })).toBe(updated);
+    expect(updateConversationMessage(base, 'missing', { content: 'two' })).toBe(base);
+  });
+
+  it('clears a context anchor when its message is removed or ceases to be a dialogue turn', () => {
+    const base = conversation({ messages: [message('m-1', 'one'), message('m-2', 'two')], requestContext: { mode: 'fromMessage', anchorMessageId: 'm-1' } });
+    expect(replaceConversationMessages(base, [base.messages[1]]).requestContext).toEqual({ mode: 'fromMessage', anchorMessageId: null });
+    expect(updateConversationMessage(base, 'm-1', { role: 'system' }).requestContext).toEqual({ mode: 'fromMessage', anchorMessageId: null });
+    expect(updateConversationMessage(base, 'm-1', { content: 'edited' }).requestContext).toEqual(base.requestContext);
+  });
+});

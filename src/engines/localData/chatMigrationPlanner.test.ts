@@ -60,6 +60,24 @@ describe('planChatMigrationFromLegacySnapshot', () => {
     ]);
   });
 
+  it('preserves durable chat context when planning complete source bodies', () => {
+    const source = sourceConversation('c-context', {
+      messages: [message('m-1', 10)], draft: '未发送草稿', reasoningStrength: 'high',
+      workspaceLedger: [{
+        id: 'scope-1', kind: 'workspace_scope_changed', change: 'entered',
+        previousProjectId: null, nextProjectId: 'project-1', summary: '进入工作区', createdAt: 1
+      }]
+    });
+    const plan = planChatMigrationFromLegacySnapshot({
+      snapshot: { activeConversationId: source.id, conversations: [source] },
+      version: 3, committedAt: 40
+    });
+    expect(plan.conversations[0].conversation).toMatchObject({
+      draft: source.draft, reasoningStrength: source.reasoningStrength,
+      workspaceLedger: source.workspaceLedger, activeProjectId: source.activeProjectId
+    });
+  });
+
   it('plans missing bodies as incomplete without inventing empty complete records', () => {
     const plan = planChatMigrationFromLegacySnapshot({
       snapshot: {

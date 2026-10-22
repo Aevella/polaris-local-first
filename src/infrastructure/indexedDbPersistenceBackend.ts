@@ -21,6 +21,9 @@ export function createIndexedDbPersistenceBackend(config: IndexedDbPersistenceBa
   let dbPromise: Promise<IDBDatabase> | null = null;
 
   const openDb = (): Promise<IDBDatabase> => {
+    if (typeof indexedDB === 'undefined') {
+      return Promise.reject(new Error('IndexedDB 存储不可用，无法读取或保存数据。'));
+    }
     if (dbPromise) return dbPromise;
 
     dbPromise = new Promise((resolve, reject) => {
@@ -111,7 +114,6 @@ export function createIndexedDbPersistenceBackend(config: IndexedDbPersistenceBa
         reject(error);
         return;
       }
-      const store = tx.objectStore(storeName);
       let settled = false;
       let result = undefined as T;
       const timeoutId = globalThis.setTimeout(() => {
@@ -147,16 +149,26 @@ export function createIndexedDbPersistenceBackend(config: IndexedDbPersistenceBa
         rejectTransaction(tx.error ?? new Error(`IndexedDB ${operation} 已中止`));
       };
 
-      executor(store, (value) => {
-        result = value;
-      }, tx);
+      try {
+        executor(tx.objectStore(storeName), (value) => {
+          result = value;
+        }, tx);
+      } catch (error) {
+        // A synchronous put/clone error does not automatically abort earlier
+        // queued writes (including clear). Reject the operation and roll it back.
+        rejectTransaction(error);
+        try {
+          tx.abort();
+        } catch {
+          // Preserve the original executor failure if the transaction is closed.
+        }
+      }
     }));
 
   return {
     localDataCommitMode: 'transactional',
 
     async dbStoreGet<T>(storeName: string, key: string): Promise<T | null> {
-      if (typeof indexedDB === 'undefined') return null;
       return await runIdbTransaction<T | null>(storeName, 'readonly', `${storeName}.get`, (store, setResult, tx) => {
         const req = store.get(key);
 
@@ -172,21 +184,18 @@ export function createIndexedDbPersistenceBackend(config: IndexedDbPersistenceBa
     },
 
     async dbStoreSet<T>(storeName: string, key: string, value: T): Promise<void> {
-      if (typeof indexedDB === 'undefined') return;
       await runIdbTransaction<void>(storeName, 'readwrite', `${storeName}.set`, (store) => {
         store.put(value, key);
       });
     },
 
     async dbStoreDelete(storeName: string, key: string): Promise<void> {
-      if (typeof indexedDB === 'undefined') return;
       await runIdbTransaction<void>(storeName, 'readwrite', `${storeName}.delete`, (store) => {
         store.delete(key);
       });
     },
 
     async dbStoreEntries<T>(storeName: string): Promise<PersistedDbEntry<T>[]> {
-      if (typeof indexedDB === 'undefined') return [];
       const entries: PersistedDbEntry<T>[] = [];
       await runIdbTransaction<void>(storeName, 'readonly', `${storeName}.entries`, (store, _setResult, tx) => {
         const req = store.openCursor();
@@ -212,7 +221,6 @@ export function createIndexedDbPersistenceBackend(config: IndexedDbPersistenceBa
     },
 
     async dbStoreEntrySizes(storeName: string) {
-      if (typeof indexedDB === 'undefined') return [];
       const entries: Array<{ key: string; size: number }> = [];
       await runIdbTransaction<void>(storeName, 'readonly', `${storeName}.entrySizes`, (store, _setResult, tx) => {
         const req = store.openCursor();
@@ -246,7 +254,6 @@ export function createIndexedDbPersistenceBackend(config: IndexedDbPersistenceBa
     },
 
     async dbStoreKeys(storeName: string): Promise<string[]> {
-      if (typeof indexedDB === 'undefined') return [];
       const keys: string[] = [];
       await runIdbTransaction<void>(storeName, 'readonly', `${storeName}.keys`, (store, _setResult, tx) => {
         const req = store.openKeyCursor();
@@ -269,7 +276,6 @@ export function createIndexedDbPersistenceBackend(config: IndexedDbPersistenceBa
     },
 
     async dbStoreKeysWithPrefix(storeName: string, prefix: string): Promise<string[]> {
-      if (typeof indexedDB === 'undefined') return [];
       const keys: string[] = [];
       const range = prefix.length > 0 ? IDBKeyRange.bound(prefix, `${prefix}\uffff`) : undefined;
       await runIdbTransaction<void>(storeName, 'readonly', `${storeName}.keysWithPrefix`, (store, _setResult, tx) => {
@@ -293,14 +299,13 @@ export function createIndexedDbPersistenceBackend(config: IndexedDbPersistenceBa
     },
 
     async dbStoreClear(storeName: string): Promise<void> {
-      if (typeof indexedDB === 'undefined') return;
       await runIdbTransaction<void>(storeName, 'readwrite', `${storeName}.clear`, (store) => {
         store.clear();
       });
     },
 
     async kvApplyMutations(mutations: PersistedKvMutation[]): Promise<void> {
-      if (typeof indexedDB === 'undefined' || mutations.length === 0) return;
+      if (mutations.length === 0) return;
       await runIdbTransaction<void>(config.kvStore, 'readwrite', `${config.kvStore}.applyMutations`, (store) => {
         for (const mutation of mutations) {
           if (mutation.type === 'set') {
@@ -313,7 +318,6 @@ export function createIndexedDbPersistenceBackend(config: IndexedDbPersistenceBa
     },
 
     async kvReplaceAll(entries: PersistedDbEntry[]): Promise<void> {
-      if (typeof indexedDB === 'undefined') return;
       await runIdbTransaction<void>(config.kvStore, 'readwrite', `${config.kvStore}.replaceAll`, (store) => {
         store.clear();
         for (const entry of entries) {

@@ -67,3 +67,13 @@ Tools make model-visible actions reliable across prompt visibility, parsing, exe
 - Desktop, MCP, and proactive execution contexts are composed by `chatToolExecutionContext.ts` instead of being implemented in its main return object.
 - Environment-directory execution is a separate context owner and preserves the same runtime, collaborator, collection, attachment, native-capability, and desktop-host facts.
 - Follow-up planning uses settled exchange fingerprints. It does not inject domain-specific system choreography, and the same exchange cannot schedule itself twice.
+
+## MCP Sessions
+
+`mcpRuntimeCatalog.ts` owns discovery, schema projection, and calls. `mcp-transport/` owns persistent
+HTTP/SSE sessions, handshake, call deadlines, closure, and revalidation. A call deadline does not
+limit the lifetime of an idle SSE connection. `useMcpSessionLifecycle` starts after runtime hydration
+and revalidates on foreground/network recovery. Native SSE bridges expose transport events only.
+
+Tool-preparation diagnostics contain structural receipts. Error text, request content, credentials,
+and storage summaries are excluded from this event category.

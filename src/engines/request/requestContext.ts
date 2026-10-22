@@ -56,6 +56,7 @@ export type AssistantContextToolResult = {
 };
 
 export type AssistantContextMessage = {
+  isToolTranscript?: boolean;
   role: AssistantContextRole;
   content: AssistantMessageContent;
   cachePrefixEligible?: boolean;
@@ -345,7 +346,8 @@ export function assembleAssistantContext(params: AssembleAssistantContextParams)
           if (resolvedTranscriptToolResult) {
             return [{
               role: 'user' as const,
-              content: buildTranscriptToolResultContent(resolvedTranscriptToolResult)
+              content: buildTranscriptToolResultContent(resolvedTranscriptToolResult),
+              isToolTranscript: true
             }];
           }
 

@@ -3,7 +3,8 @@ import { sanitizeToolsForGeminiFunctionDeclarations } from './providerRuntimeGem
 import {
   buildHistoricalToolCallNameMap,
   buildOrderedMessages,
-  extractTextPayload
+  extractTextPayload,
+  isStableSystemMessage
 } from './requestShared/messages';
 import { buildOpenAiCompatibleHeaders } from './requestShared/headers';
 import {
@@ -95,7 +96,12 @@ function resolveOpenAiCompatibleCacheControlIndexes(
   orderedMessages: OrderedContextMessage[]
 ) {
   let latestConversationIndex = -1;
-  for (let index = orderedMessages.length - 1; index >= 0; index -= 1) {
+  const dynamicBoundary = orderedMessages.findIndex((message) =>
+    message.promptPartName === 'runtime_clock_context'
+    || (message.role === 'system' && !isStableSystemMessage(message))
+  );
+  const historyEnd = dynamicBoundary < 0 ? orderedMessages.length : dynamicBoundary;
+  for (let index = historyEnd - 1; index >= 0; index -= 1) {
     const message = orderedMessages[index];
     if (
       message?.contextSegmentKind === 'conversation'
@@ -540,6 +546,7 @@ export function buildOpenAiCompatibleRequest(input: ProviderRuntimeRequestInput)
     body,
     customBody,
     bodyOverrides,
+    reasoningStrength: input.reasoningStrength,
     provider: 'openai-completions',
     compatibilityMode: providerCapability.route.compatibilityMode,
     capability: providerCapability,

@@ -280,6 +280,7 @@ export function buildDocumentLocalDataStateFromSources(args: {
     persona.memory.referenceDocs.forEach((doc) => {
       const docKey = encodeKey(persona.id, doc.id);
       declaredPersonaKeys.add(docKey);
+      if (doc.bodyStatus === 'missing') return;
       documents.push(personaDocSeed(
         persona,
         doc,

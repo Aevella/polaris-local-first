@@ -51,6 +51,7 @@ export type ProviderThinkingRequestTransport =
   | 'openai-anthropic-adaptive'
   | 'openrouter-reasoning'
   | 'responses-effort'
+  | 'deepseek-thinking'
   | 'gemini-budget';
 
 export type ResolvedProviderProfile = {
@@ -259,7 +260,7 @@ function resolveThinkingRequestTransport(args: {
     return 'gemini-budget';
   }
   if (args.protocol === 'openai-completions' && isDeepSeekHost(args.host)) {
-    return 'none';
+    return 'deepseek-thinking';
   }
 
   if (
@@ -426,7 +427,9 @@ export function resolveProviderProfile(
       modelId: api.model,
       protocol
     }),
-    sendThinkingBudget: thinkingRequestTransport !== 'none',
+    sendThinkingBudget:
+      thinkingRequestTransport !== 'none'
+      && thinkingRequestTransport !== 'deepseek-thinking',
     thinkingRequestTransport,
     geminiThoughtSignatureTransport,
     reasoningContentTransport,

@@ -158,6 +158,8 @@ describe('createStreamingSession', () => {
       });
 
       session.start();
+      expect(updateMessage).toHaveBeenCalledWith(expect.anything(), 'assistant_1', { replyIncomplete: true });
+      updateMessage.mockClear();
       expect(streamingState).toEqual({ messageId: 'assistant_1', phase: 'stage' });
 
       session.queueProgress({ content: '第一行字' });
@@ -223,6 +225,8 @@ describe('createStreamingSession', () => {
       });
 
       session.start();
+      expect(updateMessage).toHaveBeenCalledWith(expect.anything(), 'assistant_1', { replyIncomplete: true });
+      updateMessage.mockClear();
       session.queueProgress({ content: '开头' });
       const firstFrame = scheduledFrame as RafCallback | null;
       if (firstFrame) {

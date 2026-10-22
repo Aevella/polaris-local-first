@@ -2,6 +2,8 @@
 @import './help-hint.css';
 @import './app-error-boundary.css';
 @import './shell.css';
+@import './classic-topbar.css';
+@import './conversation-menu.css';
 @import './shell-theme-transition.css';
 @import './collection.css';
 @import './collection-cards.css';

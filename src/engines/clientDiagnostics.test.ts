@@ -234,3 +234,21 @@ describe('client diagnostics', () => {
     expect(normalized?.persistence).not.toHaveProperty('title');
   });
 });
+
+describe('tool preparation diagnostic boundary', () => {
+  it('keeps only structural evidence and rejects missing receipts', () => {
+    const base = { schemaVersion: 1, eventId: 'e', sessionId: 's', eventKind: 'tool-preparation', platform: 'ios' };
+    expect(normalizeClientDiagnosticsPayload(base)).toBeNull();
+    const result = normalizeClientDiagnosticsPayload({ ...base, error: { source: 'manual', message: 'SECRET' }, toolPreparation: {
+      attemptId: 'tool-diag-12345678-1234-1234-1234-123456789abc', status: 'parse_failed',
+      finishReason: 'private provider error', missingCardCode: true, rawArguments: 'SECRET',
+      calls: [{ tool: 'createCodeCard', source: 'native', argumentLength: 40, jsonValid: true,
+        fields: [{ field: 'code', type: 'string', length: 0, value: 'SECRET' }, { field: 'SECRET', type: 'string' }] },
+        { tool: 'SECRET', fields: [] }]
+    } });
+    expect(result?.toolPreparation).toMatchObject({ status: 'parse_failed', finishReason: 'unknown', missingCardCode: true,
+      calls: [{ tool: 'createCodeCard', fields: [{ field: 'code', type: 'string', length: 0 }] }, { tool: 'unknown' }] });
+    expect(JSON.stringify(result)).not.toContain('SECRET');
+    expect(JSON.stringify(result)).not.toContain('private provider error');
+  });
+});

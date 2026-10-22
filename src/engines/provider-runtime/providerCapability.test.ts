@@ -77,7 +77,7 @@ describe('resolveProviderCapability', () => {
     expect(capability.thinking).toEqual({
       sendBudget: false,
       effortMapping: 'none',
-      requestTransport: 'none'
+      requestTransport: 'deepseek-thinking'
     });
     expect(capability.output.reasoning).toEqual({
       mode: 'text',

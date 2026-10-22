@@ -1,5 +1,7 @@
 import type { ProviderCapability } from '../providerCapability';
 import type { ProviderHttpRequest } from '../providerRuntimeTypes';
+import type { ConversationReasoningStrength } from '../../../types/domain';
+import { applyConversationReasoningStrength } from '../providerRuntimeThinking';
 
 export function extractDataUrlParts(dataUrl: string): { mediaType: string; data: string } | null {
   const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -65,6 +67,7 @@ export function buildRequestResult(params: {
   provider: ProviderHttpRequest['provider'];
   compatibilityMode: ProviderHttpRequest['compatibilityMode'];
   capability: ProviderCapability;
+  reasoningStrength?: ConversationReasoningStrength;
   usesBuiltInTrial?: boolean;
 }): ProviderHttpRequest {
   const {
@@ -76,17 +79,21 @@ export function buildRequestResult(params: {
     provider,
     compatibilityMode,
     capability,
+    reasoningStrength,
     usesBuiltInTrial
   } = params;
+
+  const mergedBody = {
+    ...body,
+    ...customBody,
+    ...bodyOverrides
+  };
+  applyConversationReasoningStrength(mergedBody, capability, reasoningStrength);
 
   return {
     endpoint,
     headers,
-    body: sanitizeJsonTransportValue({
-      ...body,
-      ...customBody,
-      ...bodyOverrides
-    }) as Record<string, unknown>,
+    body: sanitizeJsonTransportValue(mergedBody) as Record<string, unknown>,
     provider,
     compatibilityMode,
     capability: {

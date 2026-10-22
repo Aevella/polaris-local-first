@@ -1,8 +1,6 @@
 import type { I18nTranslator } from '../../i18n';
 import type { ThemeToolMode } from '../../types/domain';
 
-const CREATIVE_MODE_WARNING_SEEN_KEY = 'polaris-theme-tool-mode-creative-warning-seen';
-
 type Translate = I18nTranslator['t'];
 
 function localizeThemeMode(
@@ -62,7 +60,7 @@ export function buildThemeToolModeSwitchFeedback(mode: ThemeToolMode, t?: Transl
   if (mode === 'stable') {
     return localizeThemeMode(t, 'theme.toolMode.feedback.stable', '已切回稳态：之后会更稳地换一版全局风格。');
   }
-  return localizeThemeMode(t, 'theme.toolMode.feedback.creative', '已切到开放：上限看 AI 能力，也可能有意想不到的后果，长按右侧侧边星星可复活。');
+  return localizeThemeMode(t, 'theme.toolMode.feedback.creative', '已切到开放：协作者可以自由设计主题。长按侧边星星可恢复上一版。');
 }
 
 export function buildThemeToolModePanelDescription(mode: ThemeToolMode, t?: Translate) {
@@ -72,15 +70,5 @@ export function buildThemeToolModePanelDescription(mode: ThemeToolMode, t?: Tran
   if (mode === 'stable') {
     return localizeThemeMode(t, 'theme.toolMode.panel.stable', '让协作者更稳定地更换整页全局风格，适合先拿到完整、协调、可继续精修的一版。');
   }
-  return localizeThemeMode(t, 'theme.toolMode.panel.creative', '把自由度完全交给 AI。上限看 AI 能力，也可能有意想不到的后果，长按右侧侧边星星可复活。');
-}
-
-export function shouldShowCreativeModeWarning() {
-  if (typeof window === 'undefined') return false;
-  return window.localStorage.getItem(CREATIVE_MODE_WARNING_SEEN_KEY) !== '1';
-}
-
-export function markCreativeModeWarningSeen() {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(CREATIVE_MODE_WARNING_SEEN_KEY, '1');
+  return localizeThemeMode(t, 'theme.toolMode.panel.creative', '让协作者自由设计主题。需要恢复上一版时，长按侧边星星。');
 }

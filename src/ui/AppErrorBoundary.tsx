@@ -98,7 +98,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
       const {
         exportPersistedCompleteBackup
       } = await import('../app/shell/persistedBackupExport');
-      await exportPersistedCompleteBackup({
+      const result = await exportPersistedCompleteBackup({
         downloadFile: this.downloadFile,
         onProgress: (progress) => {
           const suffix = typeof progress.current === 'number' && typeof progress.total === 'number'
@@ -107,7 +107,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
           this.setState({ backupStatus: `${progress.message}${suffix}` });
         }
       });
-      this.setState({ backupStatus: t('app.error.backupExported'), backupError: null });
+      this.setState({ backupStatus: result.saved ? t('app.error.backupExported') : null, backupError: null });
     } catch (error) {
       this.setState({
         backupStatus: null,
@@ -129,19 +129,28 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
           <small>{t('app.error.kicker')}</small>
           <h1>{t('app.error.title')}</h1>
           <p>{t('app.error.body')}</p>
-          <div className="app-error-code">{latestError.id}</div>
-          {backupStatus || backupError ? (
-            <div className={`app-error-backup-status${backupError ? ' is-error' : ''}`}>
-              {backupError ?? backupStatus}
-            </div>
-          ) : null}
           <div className="app-error-actions">
+            <button type="button" onClick={this.reload}>{t('app.error.reload')}</button>
             <button type="button" onClick={this.exportBackup} disabled={exportingBackup}>
               {exportingBackup ? t('app.error.exportingBackup') : t('app.error.exportBackup')}
             </button>
-            <button type="button" onClick={this.reload}>{t('app.error.reload')}</button>
-            <button type="button" onClick={this.copyDiagnostics}>{copied ? t('app.error.copied') : t('app.error.copyDiagnostics')}</button>
           </div>
+          {backupStatus || backupError ? <p>{backupError ?? backupStatus}</p> : null}
+          <details>
+            <summary>技术详情</summary>
+            <div className="app-error-code">{latestError.id}</div>
+            {backupStatus || backupError ? (
+              <div className={`app-error-backup-status${backupError ? ' is-error' : ''}`}>
+                {backupError ?? backupStatus}
+              </div>
+            ) : null}
+            <div className="app-error-actions">
+              <button type="button" onClick={this.exportBackup} disabled={exportingBackup}>
+                {exportingBackup ? '导出中...' : '导出本机数据'}
+              </button>
+              <button type="button" onClick={this.copyDiagnostics}>{copied ? '已复制' : '复制诊断'}</button>
+            </div>
+          </details>
         </section>
       </main>
     );

@@ -8,7 +8,7 @@ import type { AppLanguage } from '../../i18n';
 import { useDeveloperModeRuntime } from '../useDeveloperModeRuntime';
 import { useIosKeyboardAccessoryBar } from '../useIosKeyboardAccessoryBar';
 import { useCompanionRuntime } from '../useCompanionRuntime';
-import { useMcpCatalogHeartbeat } from '../useMcpCatalogHeartbeat';
+import { useMcpSessionLifecycle } from '../useMcpSessionLifecycle';
 import { useRequestDebugState } from '../useRequestDebugState';
 import { useScreenshotDebugOverlay } from '../useScreenshotDebugOverlay';
 import { useViewportShellVars } from '../useViewportShellVars';
@@ -51,7 +51,7 @@ export function useAppRuntime({
   useIosKeyboardAccessoryBar();
   useViewportShellVars();
   useCompanionRuntime({ enabled: backgroundRuntimeReady });
-  useMcpCatalogHeartbeat({ enabled: backgroundRuntimeReady });
+  useMcpSessionLifecycle({ enabled: backgroundRuntimeReady });
   useDesktopWorkspaceAutoSync();
   useAndroidApkUpdateRuntime({ enabled: backgroundRuntimeReady });
   useAutomaticConversationSummaryMemory({ startupReady: backgroundRuntimeReady });

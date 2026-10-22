@@ -6,7 +6,8 @@ Chat runs conversation workflows with collaborators, model providers, context, a
 
 ## Owns
 
-- Conversation submit, stop, retry, edit, full-turn deletion, fork, and continuation flows.
+- Conversation submit, stop, retry, save-only edit, full-turn deletion, fork, and continuation flows.
+- Per-window provider/model, reasoning, history scope, image policy, return-key behavior, and MCP selection. Persona defaults are copied only when a window is created.
 - Message timeline projection and body loading status.
 - Request lifecycle coordination, streaming state, tool invocation lifecycle, and task settlement.
 - Writable conversation-body intent before mutating messages.
@@ -27,7 +28,8 @@ Chat runs conversation workflows with collaborators, model providers, context, a
 - `src/app/group/`
 - `src/stores/chatStore.ts`
 - `src/stores/chatCurrentPersistence.ts`
-- `src/stores/chatLocalDataPersistence.ts`
+- `src/stores/chat/read.ts`
+- `src/stores/chat/rowWrite.ts`
 
 ## Data It Reads
 
@@ -44,6 +46,8 @@ Chat runs conversation workflows with collaborators, model providers, context, a
 - Provider reasoning state retained with assistant messages, including on-demand translation presented as a separate derived view.
 - Generated image and audio attachments projected from message and tool-result evidence.
 - Explicit assistant reply boundaries persisted as sibling bubbles while request preparation reconstructs one provider assistant turn.
+- Incomplete-reply checkpoints through the ordinary chat writer. Continuing an interrupted reply includes saved tool evidence and never replays side effects merely because their outcome is unknown.
+- Window settings in catalog and typed SQLite metadata projections, including unloaded-directory reads.
 
 ## Important Failure States
 
@@ -64,7 +68,7 @@ Chat runs conversation workflows with collaborators, model providers, context, a
 
 ## Known Cleanup Still Owed
 
-- `src/stores/chatStore.ts` is still a large control room and should be split by conversation directory, body loading, task state, runtime feedback, and hydration/persistence adapter responsibilities.
+- Conversation directory actions, writable body loading, runtime feedback, and persistence routing remain separate store owners.
 - `src/app/chat/chatReplyRuntime.ts` still owns request/session orchestration, but continuation state, follow-up planning, tool evidence staging, task settlement, and runtime audit are separate owners.
 
 ## Related Intent

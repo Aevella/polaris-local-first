@@ -19,15 +19,17 @@ export type TimelineWindowMetrics = {
   scrollTop: number;
   viewportHeight: number;
   rowHeights: Record<string, number>;
+  rowGap?: number;
   anchorMessageId?: string | null;
 };
 
 function rowHeightForItem(
   item: TimelineRenderItem,
   rowHeights: Record<string, number>,
-  fallbackHeight: number
+  fallbackHeight: number,
+  rowGap: number
 ) {
-  return Math.max(1, rowHeights[item.message.id] ?? fallbackHeight) + TIMELINE_ROW_GAP;
+  return Math.max(1, rowHeights[item.message.id] ?? fallbackHeight) + rowGap;
 }
 
 function sumHeights(heights: number[], start: number, end: number) {
@@ -69,10 +71,12 @@ export function resolveTimelineWindow(
   // Keep unmeasured rows on one stable estimate. Deriving this fallback from
   // the currently mounted rows lets one very tall reply multiply its height
   // across every offscreen row and move the whole virtual timeline.
+  const rowGap = metrics.rowGap ?? TIMELINE_ROW_GAP;
   const heights = items.map((item) => rowHeightForItem(
     item,
     metrics.rowHeights,
-    DEFAULT_TIMELINE_ROW_HEIGHT
+    DEFAULT_TIMELINE_ROW_HEIGHT,
+    rowGap
   ));
   if (sumHeights(heights, 0, heights.length) <= metrics.viewportHeight + (TIMELINE_WINDOW_OVERSCAN_PX * 2)) {
     return {
@@ -110,8 +114,17 @@ export function resolveTimelineWindow(
   if (anchorMessageId) {
     const anchorIndex = items.findIndex((item) => item.message.id === anchorMessageId);
     if (anchorIndex >= 0) {
-      start = Math.min(start, Math.max(0, anchorIndex - ANCHOR_OVERSCAN_ITEMS));
-      end = Math.max(end, Math.min(items.length, anchorIndex + ANCHOR_OVERSCAN_ITEMS + 1));
+      const anchorStart = Math.max(0, anchorIndex - ANCHOR_OVERSCAN_ITEMS);
+      const anchorEnd = Math.min(items.length, anchorIndex + ANCHOR_OVERSCAN_ITEMS + 1);
+      // A distant focus is a destination, not a request to render the entire
+      // interval from the old viewport. The scroll owner will align its row.
+      if (anchorEnd <= start || anchorStart >= end) {
+        start = anchorStart;
+        end = anchorEnd;
+      } else {
+        start = Math.min(start, anchorStart);
+        end = Math.max(end, anchorEnd);
+      }
     }
   }
 
@@ -123,7 +136,7 @@ export function resolveTimelineWindow(
     start,
     end,
     isWindowed: start > 0 || end < items.length,
-    topSpacerHeight: sumHeights(heights, 0, start),
-    bottomSpacerHeight: sumHeights(heights, end, items.length)
+    topSpacerHeight: start > 0 ? Math.max(0, sumHeights(heights, 0, start) - rowGap) : 0,
+    bottomSpacerHeight: end < items.length ? Math.max(0, sumHeights(heights, end, items.length) - rowGap) : 0
   };
 }
