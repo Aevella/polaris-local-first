@@ -507,12 +507,21 @@ export async function parseChatboxExportPayloadFromBlob(file: Blob): Promise<Cha
       return leftPreferred - rightPreferred || left.name.localeCompare(right.name);
     });
 
+  let firstInvalidCandidateError: Error | null = null;
   for (const candidate of candidates) {
-    const parsed = parseJson(await candidate.async('string'), candidate.name);
-    const normalized = normalizeTopLevelPayload(parsed);
+    const contents = await candidate.async('string');
+    let normalized: ChatboxRecord;
+    try {
+      normalized = normalizeTopLevelPayload(parseJson(contents, candidate.name));
+    } catch (error) {
+      firstInvalidCandidateError ??= error instanceof Error ? error : new Error(String(error));
+      continue;
+    }
+
     if (isLikelyChatboxPayload(normalized)) return normalized;
   }
 
+  if (firstInvalidCandidateError) throw firstInvalidCandidateError;
   throw new Error('压缩包里没有找到 Chatbox 导出的会话 JSON');
 }
 
