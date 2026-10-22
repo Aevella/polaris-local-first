@@ -126,4 +126,25 @@ describe('convertChatboxExportBlobToStructuredExportSnapshot', () => {
     expect(snapshot.chatState?.conversations[0]?.title).toBe('Zip Session');
     expect(snapshot.chatState?.conversations[0]?.messages[0]?.content).toBe('from zip');
   });
+
+  it('skips malformed and unrelated JSON entries when finding Chatbox data in a zip', async () => {
+    const zip = new JSZip();
+    zip.file('a-metadata.json', '{invalid metadata');
+    zip.file('b-index.json', JSON.stringify([]));
+    zip.file('conversations.json', JSON.stringify({
+      'chat-sessions': [
+        {
+          id: 'synthetic-session',
+          name: 'Synthetic Session',
+          messages: [{ id: 'synthetic-message', role: 'user', content: 'synthetic text' }]
+        }
+      ]
+    }));
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const { snapshot } = await convertChatboxExportBlobToStructuredExportSnapshot(blob);
+
+    expect(snapshot.chatState?.conversations[0]?.title).toBe('Synthetic Session');
+    expect(snapshot.chatState?.conversations[0]?.messages[0]?.content).toBe('synthetic text');
+  });
 });
