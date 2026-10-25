@@ -888,6 +888,15 @@
   align-content: start;
 }
 
+.room-project-fullscreen--wide .room-project-fullscreen-section--references .room-project-fullscreen-section-head {
+  flex-wrap: wrap;
+}
+
+.room-project-fullscreen--wide .room-project-fullscreen-section--references .room-project-fullscreen-section-tools {
+  width: 100%;
+  justify-content: flex-end;
+}
+
 .room-project-fullscreen--wide .room-project-fullscreen-section--preview-access {
   grid-area: preview;
   grid-template-columns: minmax(112px, 150px) minmax(0, 1fr);

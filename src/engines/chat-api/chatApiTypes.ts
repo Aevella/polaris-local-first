@@ -1,4 +1,4 @@
-import type { PersonaAdvancedSettings, ProviderProfile } from '../../types/domain';
+import type { ConversationReasoningStrength, PersonaAdvancedSettings, ProviderProfile } from '../../types/domain';
 import type { AssistantRequestContext } from '../request/requestContext';
 import type { OpenAiToolHistoryMode } from '../provider-runtime/providerRuntimeOpenAiToolHistory';
 import type {
@@ -21,6 +21,7 @@ export type RequestAssistantReplyParams = {
   context: AssistantRequestContext;
   sessionId?: string;
   advanced?: PersonaAdvancedSettings;
+  reasoningStrength?: ConversationReasoningStrength;
   preferredOpenAiToolHistoryMode?: OpenAiToolHistoryMode;
   signal?: AbortSignal;
   onProgress?: (reply: AssistantReplyProgress) => void;

@@ -27,6 +27,7 @@ export const DEFAULT_CUSTOM_FONT_SCOPE_ASSIGNMENTS: Record<CustomFontScope, stri
 
 export const DEFAULT_APP_CUSTOMIZATION: AppCustomization = {
   showChatAvatars: false,
+  showWorldSwitchHandle: true,
   starColor: null,
   starOpacity: 0.98,
   starGlow: 0.46,
@@ -87,6 +88,8 @@ export function normalizeAppCustomization(
 
   return {
     showChatAvatars: customization?.showChatAvatars ?? DEFAULT_APP_CUSTOMIZATION.showChatAvatars,
+    showWorldSwitchHandle:
+      customization?.showWorldSwitchHandle ?? DEFAULT_APP_CUSTOMIZATION.showWorldSwitchHandle,
     starColor: normalizeStarColor(customization?.starColor),
     starOpacity:
       typeof customization?.starOpacity === 'number'

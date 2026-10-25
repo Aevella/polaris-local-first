@@ -1,11 +1,9 @@
 import { useMemo } from 'react';
-import { extractCodeBlocksFromMessage } from '../../engines/codeCardEngine';
 import { resolveConversationCollaboratorName } from '../../engines/conversationOwnership';
 import {
   resolveImageUnderstandingProvider,
   resolveProviderImageUnderstandingSettings
 } from '../../engines/imageUnderstandingClient';
-import { isProductGuidePersona } from '../../engines/personaBuiltin';
 import { resolvePersonaProviderBinding } from '../../engines/personaProviderBinding';
 import { providerRuntimeSupportsImageInput } from '../../engines/provider-runtime';
 import { PERSONA_COLORS } from '../../config/persona/personaColors';
@@ -19,61 +17,8 @@ import type {
 } from '../../types/domain';
 import type { ChatStreamingState } from './chatStreamingDisplay';
 import { resolveChatStreamingPresentation } from './chatStreamingDisplay';
-import { hasOnlyThemeCssCodeBlocks, hasThemeCssProjectionToolCall } from './chatCodeBlockSemantics';
-import { resolveContinuationCodeBlockState } from './chatMessageCardReference';
-
-export type CodeCardActionMode = 'hidden' | 'save' | 'open';
-export type CodeCardMessageProgress = {
-  saved: number;
-  total: number;
-};
-
-type SavedCodeCardIndex = {
-  cardsById: ReadonlyMap<string, CodeCard>;
-  chatGeneratedCodes: ReadonlySet<string>;
-  exactOriginMatchesByMessageKey: ReadonlyMap<string, ReadonlySet<number>>;
-};
-
-function buildMessageOriginKey(conversationId: string, messageId: string) {
-  return `${conversationId}\n${messageId}`;
-}
-
-function buildSavedCodeCardIndex(collectionCards: CodeCard[]): SavedCodeCardIndex {
-  const cardsById = new Map<string, CodeCard>();
-  const chatGeneratedCodes = new Set<string>();
-  const exactOriginMatchesByMessageKey = new Map<string, Set<number>>();
-
-  collectionCards.forEach((card) => {
-    cardsById.set(card.id, card);
-
-    const code = card.code.trim();
-    if (card.source === 'chat-generated' && code) {
-      chatGeneratedCodes.add(code);
-    }
-
-    if (!card.originConversationId || !card.originMessageId) return;
-    const key = buildMessageOriginKey(card.originConversationId, card.originMessageId);
-    const blockIndexes = exactOriginMatchesByMessageKey.get(key) ?? new Set<number>();
-    blockIndexes.add(card.originBlockIndex ?? 0);
-    exactOriginMatchesByMessageKey.set(key, blockIndexes);
-  });
-
-  return {
-    cardsById,
-    chatGeneratedCodes,
-    exactOriginMatchesByMessageKey
-  };
-}
-
-function isCodeBlockSaved(
-  savedCodeCardIndex: SavedCodeCardIndex,
-  conversationId: string,
-  messageId: string,
-  candidate: ReturnType<typeof extractCodeBlocksFromMessage>[number]
-) {
-  const blockIndexes = savedCodeCardIndex.exactOriginMatchesByMessageKey.get(buildMessageOriginKey(conversationId, messageId));
-  return Boolean(blockIndexes?.has(candidate.blockIndex)) || savedCodeCardIndex.chatGeneratedCodes.has(candidate.code.trim());
-}
+import { createCodeCardProjectionReader } from './chatCodeCardProjection';
+export type { CodeCardActionMode, CodeCardMessageProgress } from './chatCodeCardProjection';
 
 type ChatDerivedArgs = {
   startupReady: boolean;
@@ -151,9 +96,11 @@ export function useChatDerived({
   const effectiveApi = resolvePersonaProviderBinding({
     globalApi: api,
     providers,
-    persona: currentCollaborator
+    persona: currentCollaborator,
+    windowBinding: activeConversation?.windowPreferences?.modelBinding
   }).api;
-  const apiImagesEnabled = providerRuntimeSupportsImageInput(effectiveApi, currentCollaborator?.advanced);
+  const effectiveAdvanced = activeConversation?.windowPreferences?.modelBinding?.providerId === effectiveApi.id && currentCollaborator ? { ...currentCollaborator.advanced, modelOverride: effectiveApi.model } : currentCollaborator?.advanced;
+  const apiImagesEnabled = providerRuntimeSupportsImageInput(effectiveApi, effectiveAdvanced);
   const effectiveImageUnderstanding = resolveProviderImageUnderstandingSettings({
     api: effectiveApi
   });
@@ -165,9 +112,7 @@ export function useChatDerived({
   const imageUnderstandingEnabled = Boolean(
     imageUnderstandingApi && providerRuntimeSupportsImageInput(imageUnderstandingApi)
   );
-  const showThinking = isProductGuidePersona(currentCollaborator)
-    ? false
-    : currentCollaborator?.advanced.showThinking ?? true;
+  const showThinking = currentCollaborator?.advanced.showThinking ?? true;
   const streamingPresentation = useMemo(() => resolveChatStreamingPresentation({
     showThinking,
     sending,
@@ -186,8 +131,8 @@ export function useChatDerived({
     pendingAttachments.some((attachment) => attachment.kind === 'image')
     && !apiImagesEnabled
     && !imageUnderstandingEnabled;
-  const savedCodeCardIndex = useMemo(
-    () => buildSavedCodeCardIndex(collectionCards),
+  const readCodeCardProjection = useMemo(
+    () => createCodeCardProjectionReader(collectionCards),
     [collectionCards]
   );
   const showLiveThinking = streamingPresentation.showLiveThinking;
@@ -199,70 +144,10 @@ export function useChatDerived({
     () => [...messages].reverse().find((message) => message.role === 'assistant' && !message.toolInvocation)?.id ?? null,
     [messages]
   );
-  const codeCardActionModeByMessageId = useMemo(() => {
-    if (!activeConversation) return {};
-
-    return messages.reduce<Record<string, CodeCardActionMode>>((acc, message) => {
-      if (message.role !== 'assistant' || message.toolInvocation) return acc;
-      if (hasOnlyThemeCssCodeBlocks(message.content) && hasThemeCssProjectionToolCall(message.nativeToolCalls)) {
-        acc[message.id] = 'hidden';
-        return acc;
-      }
-      const codeBlocks = extractCodeBlocksFromMessage(message.content);
-      if (codeBlocks.length === 0) return acc;
-
-      const continuation = resolveContinuationCodeBlockState({
-        messages,
-        assistantMessageId: message.id,
-        cards: collectionCards,
-        cardsById: savedCodeCardIndex.cardsById,
-        codeBlocks
-      });
-      if (continuation) {
-        acc[message.id] = continuation.isSynced ? 'open' : 'save';
-        return acc;
-      }
-
-      acc[message.id] = codeBlocks.every(
-        (candidate) => isCodeBlockSaved(savedCodeCardIndex, activeConversation.id, message.id, candidate)
-      )
-        ? 'open'
-        : 'save';
-      return acc;
-    }, {});
-  }, [activeConversation, collectionCards, messages, savedCodeCardIndex]);
-  const codeCardProgressByMessageId = useMemo(() => {
-    if (!activeConversation) return {};
-
-    return messages.reduce<Record<string, CodeCardMessageProgress>>((acc, message) => {
-      if (message.role !== 'assistant' || message.toolInvocation) return acc;
-      const codeBlocks = extractCodeBlocksFromMessage(message.content);
-      if (codeBlocks.length === 0) return acc;
-
-      const continuation = resolveContinuationCodeBlockState({
-        messages,
-        assistantMessageId: message.id,
-        cards: collectionCards,
-        cardsById: savedCodeCardIndex.cardsById,
-        codeBlocks
-      });
-      if (continuation) {
-        acc[message.id] = {
-          saved: continuation.isSynced ? 1 : 0,
-          total: 1
-        };
-        return acc;
-      }
-
-      acc[message.id] = {
-        saved: codeBlocks.filter(
-          (candidate) => isCodeBlockSaved(savedCodeCardIndex, activeConversation.id, message.id, candidate)
-        ).length,
-        total: codeBlocks.length
-      };
-      return acc;
-    }, {});
-  }, [activeConversation, collectionCards, messages, savedCodeCardIndex]);
+  const { codeCardActionModeByMessageId, codeCardProgressByMessageId } = useMemo(
+    () => readCodeCardProjection(activeConversationId ?? '', messages),
+    [activeConversationId, messages, readCodeCardProjection]
+  );
 
   return {
     activeConversation,

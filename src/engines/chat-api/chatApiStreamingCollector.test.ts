@@ -77,6 +77,77 @@ describe('chatApiStreamingCollector', () => {
     }]);
   });
 
+  it('accepts a complete OpenAI-compatible tool message returned to a streaming request', () => {
+    const collector = createStreamingReplyCollector('deepseek-v4-flash');
+
+    collector.pushTextChunk(JSON.stringify({
+      model: 'deepseek-v4-flash',
+      choices: [{
+        finish_reason: 'tool_calls',
+        message: {
+          role: 'assistant',
+          content: null,
+          tool_calls: [{
+            index: 9,
+            id: 'call_read_1',
+            function: {
+              name: 'readMemoryDoc',
+              arguments: { docId: 'memory-doc-1' }
+            }
+          }]
+        }
+      }]
+    }), false);
+
+    const reply = collector.finish();
+    expect(reply.finishReason).toBe('tool_calls');
+    expect(reply.nativeToolCalls).toEqual([{
+      id: 'call_read_1',
+      name: 'readMemoryDoc',
+      argumentsText: '{"docId":"memory-doc-1"}'
+    }]);
+  });
+
+  it('accepts flattened relay tool calls and normalizes empty arguments', () => {
+    const collector = createStreamingReplyCollector('deepseek-v4-flash');
+
+    collector.pushTextChunk(JSON.stringify({
+      choices: [{
+        finish_reason: 'tool_calls',
+        message: {
+          content: '',
+          tool_calls: [{
+            id: 'call_read_2',
+            name: 'readProjectFile',
+            arguments: ''
+          }]
+        }
+      }]
+    }), false);
+
+    expect(collector.finish().nativeToolCalls).toEqual([{
+      id: 'call_read_2',
+      name: 'readProjectFile',
+      argumentsText: '{}'
+    }]);
+  });
+
+  it('surfaces a missing tool body as a relay schema failure instead of an empty API response', () => {
+    const collector = createStreamingReplyCollector('deepseek-v4-flash');
+
+    collector.pushTextChunk(JSON.stringify({
+      choices: [{
+        finish_reason: 'tool_calls',
+        message: {
+          role: 'assistant',
+          content: null
+        }
+      }]
+    }), false);
+
+    expect(() => collector.finish()).toThrow('中转是否完整转发 tool_calls');
+  });
+
   it('falls back to responses-style payloads at finish', () => {
     const collector = createStreamingReplyCollector('fallback-model');
 
@@ -280,6 +351,32 @@ describe('chatApiStreamingCollector', () => {
     expect(collector.finish().content).toBe('补全正文。');
   });
 
+  it.each([false, true])('keeps every completed Responses message without duplicating aggregate output_text (%s)', (withAggregate) => {
+    const progress: string[] = [];
+    const collector = createStreamingReplyCollector('test-model', reply => progress.push(reply.content));
+    const narration = '已经完成规则修改，具体结果如下。'.repeat(200);
+    const fullText = narration + '…';
+    const push = (payload: unknown) => collector.pushTextChunk(`data: ${JSON.stringify(payload)}\n\n`, true);
+    push({ type: 'response.output_text.delta', delta: narration });
+    push({ type: 'response.output_text.delta', delta: '…' });
+    push({
+      type: 'response.completed',
+      response: {
+        ...(withAggregate ? { output_text: fullText } : {}),
+        output: [
+          { type: 'message', content: [{ type: 'output_text', text: narration }] },
+          { type: 'function_call', call_id: 'call-rule', name: 'listProactiveMessageRules', arguments: '{}' },
+          { type: 'message', content: [{ type: 'output_text', text: '…' }] }
+        ]
+      }
+    });
+    const reply = collector.finish();
+    expect(progress[progress.length - 2]).toBe(fullText);
+    expect(progress[progress.length - 1]).toBe(fullText);
+    expect(reply.content).toBe(fullText);
+    expect(reply.nativeToolCalls).toEqual([{ id: 'call-rule', name: 'listProactiveMessageRules', argumentsText: '{}' }]);
+  });
+
   it('does not prepend {} when responses tool streaming starts from an empty object', () => {
     const collector = createStreamingReplyCollector('fallback-model');
 
@@ -344,6 +441,140 @@ describe('chatApiStreamingCollector', () => {
       name: 'readCodeCard',
       argumentsText: '{"target":"card-1","targetLabel":"top_p 配置卡 1"}'
     }]);
+  });
+
+  it('keeps a complete Anthropic tool input and its tool-use finish reason', () => {
+    const collector = createStreamingReplyCollector('claude-opus-4-6');
+
+    collector.pushTextChunk(
+      'data: ' + JSON.stringify({
+        type: 'content_block_start',
+        index: 2,
+        content_block: {
+          type: 'tool_use',
+          id: 'toolu_complete_1',
+          name: 'readMemoryDoc',
+          input: { docId: 'memory-doc-1' }
+        }
+      }) + '\n\n',
+      true
+    );
+    collector.pushTextChunk(
+      'data: ' + JSON.stringify({
+        type: 'message_delta',
+        delta: { stop_reason: 'tool_use' }
+      }) + '\n\n',
+      true
+    );
+    collector.pushTextChunk(
+      'data: ' + JSON.stringify({ type: 'message_stop' }) + '\n\n',
+      true
+    );
+
+    const reply = collector.finish();
+    expect(reply.finishReason).toBe('tool_use');
+    expect(reply.transportIncomplete).toBeUndefined();
+    expect(reply.nativeToolCalls).toEqual([{
+      id: 'toolu_complete_1',
+      name: 'readMemoryDoc',
+      argumentsText: '{"docId":"memory-doc-1"}'
+    }]);
+  });
+
+  it('replaces an OpenAI-compatible empty argument snapshot with later deltas', () => {
+    const collector = createStreamingReplyCollector('deepseek-v4-flash');
+
+    collector.pushTextChunk(JSON.stringify({
+      choices: [{
+        delta: {
+          tool_calls: [{
+            index: 0,
+            id: 'call_snapshot_1',
+            function: { name: 'readMemoryDoc', arguments: {} }
+          }]
+        }
+      }]
+    }) + '\n', false);
+    collector.pushTextChunk(JSON.stringify({
+      choices: [{
+        delta: {
+          tool_calls: [{
+            index: 0,
+            id: 'call_snapshot_1',
+            function: { arguments: '{"docId":"memory-doc-1"}' }
+          }]
+        },
+        finish_reason: 'tool_calls'
+      }]
+    }) + '\n', false);
+
+    expect(collector.finish().nativeToolCalls).toEqual([{
+      id: 'call_snapshot_1',
+      name: 'readMemoryDoc',
+      argumentsText: '{"docId":"memory-doc-1"}'
+    }]);
+  });
+
+  it('collects structured OpenRouter reasoning and native Anthropic signatures for replay', () => {
+    const openRouterCollector = createStreamingReplyCollector('anthropic/claude-sonnet-4.6');
+    openRouterCollector.pushTextChunk(JSON.stringify({
+      choices: [{
+        delta: {
+          reasoning_details: [{
+            type: 'reasoning.text',
+            text: '先检查',
+            signature: 'sig-openrouter-a',
+            index: 0
+          }]
+        }
+      }]
+    }) + '\n', false);
+    openRouterCollector.pushTextChunk(JSON.stringify({
+      choices: [{
+        delta: {
+          reasoning_details: [{
+            type: 'reasoning.text',
+            text: '约束。',
+            index: 0
+          }],
+          content: '结论。'
+        }
+      }]
+    }) + '\n', false);
+
+    const openRouterReply = openRouterCollector.finish();
+    expect(openRouterReply.thinkingText).toBe('先检查约束。');
+    expect(openRouterReply.providerReasoning).toEqual({
+      protocol: 'openai-completions',
+      items: [{
+        type: 'reasoning.text',
+        text: '先检查约束。',
+        signature: 'sig-openrouter-a',
+        index: 0
+      }]
+    });
+
+    const anthropicCollector = createStreamingReplyCollector('claude-sonnet-4-6');
+    anthropicCollector.pushTextChunk(JSON.stringify({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'thinking_delta', thinking: '先检查。' }
+    }) + '\n', false);
+    anthropicCollector.pushTextChunk(JSON.stringify({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'signature_delta', signature: 'sig-anthropic-a' }
+    }) + '\n', false);
+
+    expect(anthropicCollector.finish().providerReasoning).toEqual({
+      protocol: 'anthropic-messages',
+      items: [{
+        type: 'thinking',
+        thinking: '先检查。',
+        signature: 'sig-anthropic-a',
+        index: 0
+      }]
+    });
   });
 
   it('treats repeated OpenAI-compatible argument snapshots as replacements instead of concatenating JSON objects', () => {

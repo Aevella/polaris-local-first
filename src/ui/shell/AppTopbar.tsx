@@ -9,9 +9,11 @@ import type { CollectionShelf, World } from '../../types/domain';
 import { Icon } from '../Icon';
 import { runSelectionAction } from '../haptics';
 import { WorldAnchor } from './WorldAnchor';
+import { ConversationMenu } from './conversation/ConversationMenu';
 import { useI18n } from '../../i18n';
 
 export type AppTopbarState = {
+  topbarLayout?: 'centered' | 'leading';
   activeWorld: World;
   title: string;
   titleTone: 'brand' | 'collaborator';
@@ -121,7 +123,7 @@ export function AppTopbar({
   }
 
   return (
-    <header className="topbar chat-topbar-shell topbar--mirrored topbar--centered-context">
+    <header className={`topbar chat-topbar-shell ${state.topbarLayout === 'leading' ? 'topbar--leading-context' : 'topbar--mirrored topbar--centered-context'}`}>
       <div className="topbar-surface">
         <div className="topbar-main">
           <WorldAnchor
@@ -168,15 +170,7 @@ export function AppTopbar({
             )}
 
             {state.activeWorld === 'chat' && (
-              <button
-                type="button"
-                className="action-btn icon-btn topbar-new-chat-btn"
-                onClick={(event) => handleSelectionAction(actions.onCreateConversation, event.currentTarget)}
-                title={t('common.newConversation')}
-                aria-label={t('common.newConversation')}
-              >
-                <Icon name="plus" size={18} />
-              </button>
+              <ConversationMenu onCreateConversation={actions.onCreateConversation} />
             )}
 
             {canOpenCollectionSearch && (

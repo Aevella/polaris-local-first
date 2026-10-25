@@ -60,6 +60,7 @@ export async function requestAssistantReply(params: RequestAssistantReplyParams)
     context,
     sessionId,
     advanced,
+    reasoningStrength,
     preferredOpenAiToolHistoryMode = 'native',
     signal,
     onProgress,
@@ -85,6 +86,7 @@ export async function requestAssistantReply(params: RequestAssistantReplyParams)
     let request = buildApiRequest({
       api,
       advanced,
+      reasoningStrength,
       context: retryContext,
       sessionId,
       bodyOverrides: disableStreamingFallback ? { stream: false } : undefined,
@@ -95,6 +97,7 @@ export async function requestAssistantReply(params: RequestAssistantReplyParams)
       request = buildApiRequest({
         api,
         advanced,
+        reasoningStrength,
         context: retryContext,
         sessionId,
         bodyOverrides: disableStreamingFallback ? { stream: false } : undefined,

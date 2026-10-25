@@ -1,30 +1,24 @@
-// Legacy SSE transport for the MCP runtime.
-//
-// The older two-channel transport: a long-lived GET stream delivers an `endpoint`
-// event and then server→client JSON-RPC messages, while requests are POSTed to that
-// endpoint and correlated back by id. Owns the persistent connection and its pending
-// map; no catalog, no cache. The streamable HTTP transport lives separately.
-
+import { canUseNativeMcpSse, openNativeMcpSse } from '../../native/mcpSse';
+import { buildMcpServerHeaders, getMcpFetchImpl, requestMcpHttp } from './http';
 import {
   createRpcId,
+  createTimeoutError,
   ensureSuccessMessage,
   findResponseMessage,
-  parseJsonRpcMessage
-} from './mcpRuntimeJsonRpc';
-import type {
-  JsonRpcMessage,
-  JsonRpcNotification,
-  JsonRpcRequest
-} from './mcpRuntimeJsonRpc';
-import { createTimeoutError, withTimeout } from './mcpRuntimeTiming';
-import {
-  buildServerHeaders,
-  getFetchImpl,
   MCP_CLIENT_INFO,
   MCP_PROTOCOL_VERSION,
-  parseSseEvents
-} from './mcpRuntimeTransport';
-import type { InitializeResult, McpTransportOptions } from './mcpRuntimeTransport';
+  parseJsonRpcMessage,
+  parseSseEvents,
+  withTimeout
+} from './protocol';
+import type {
+  InitializeResult,
+  JsonRpcMessage,
+  JsonRpcNotification,
+  JsonRpcRequest,
+  McpSessionConnection,
+  McpTransportOptions
+} from './types';
 
 type PendingSseResponse = {
   resolve: (value: JsonRpcMessage) => void;
@@ -32,14 +26,12 @@ type PendingSseResponse = {
 };
 
 type LegacySseConnection = {
-  endpoint: string;
-  request: (payload: JsonRpcRequest | JsonRpcNotification, expectsResponse: boolean) => Promise<JsonRpcMessage | null>;
+  request: (
+    payload: JsonRpcRequest | JsonRpcNotification,
+    expectsResponse: boolean
+  ) => Promise<JsonRpcMessage | null>;
   close: () => void;
 };
-
-function decodeText(bytes: Uint8Array) {
-  return new TextDecoder().decode(bytes);
-}
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -49,6 +41,10 @@ function createDeferred<T>() {
     reject = nextReject;
   });
   return { promise, resolve, reject };
+}
+
+function decodeText(bytes: Uint8Array) {
+  return new TextDecoder().decode(bytes);
 }
 
 async function consumeSseStream(
@@ -85,30 +81,16 @@ async function consumeSseStream(
   }
 }
 
-async function openLegacySseConnection(options: McpTransportOptions): Promise<LegacySseConnection> {
-  const fetchImpl = getFetchImpl(options.fetchImpl);
+async function openLegacySseConnection(
+  options: McpTransportOptions
+): Promise<LegacySseConnection> {
   const streamController = new AbortController();
-  const endpointDeferred = createDeferred<string>();
+  let endpointDeferred: ReturnType<typeof createDeferred<string>> | undefined;
   const pending = new Map<string, PendingSseResponse>();
-
-  const response = await fetchImpl(options.server.url, {
-    method: 'GET',
-    headers: (() => {
-      const headers = buildServerHeaders(options.server, {
-        Accept: 'text/event-stream'
-      });
-      return headers;
-    })(),
-    signal: streamController.signal
-  });
-
-  if (!response.ok || !response.body) {
-    throw new Error(`连接 MCP SSE 服务失败：HTTP ${response.status}`);
-  }
-
-  void consumeSseStream(response.body, (eventName, data) => {
+  let connectionFailure: Error | null = null;
+  const dispatchEvent = (eventName: string, data: string) => {
     if (eventName === 'endpoint') {
-      endpointDeferred.resolve(new URL(data.trim(), options.server.url).toString());
+      endpointDeferred?.resolve(new URL(data.trim(), options.server.url).toString());
       return;
     }
     if (eventName !== 'message') return;
@@ -135,42 +117,98 @@ async function openLegacySseConnection(options: McpTransportOptions): Promise<Le
       return;
     }
     dispatch(parsed);
-  }).catch((error) => {
+  };
+  const dispatchError = (error: unknown) => {
     const message = error instanceof Error ? error : new Error('SSE 连接中断。');
+    connectionFailure = message;
+    endpointDeferred?.reject(message);
     pending.forEach((entry) => entry.reject(message));
     pending.clear();
-  });
+  };
+  let endpoint: string;
+  let closeStream: () => void;
 
-  const endpoint = await withTimeout(
-    endpointDeferred.promise,
-    options.timeoutMs,
-    `等待 MCP SSE 服务 ${options.server.name} 下发 endpoint`
-  );
+  if (!options.fetchImpl && canUseNativeMcpSse()) {
+    const nativeConnection = await openNativeMcpSse({
+      url: options.server.url,
+      headers: Object.fromEntries(buildMcpServerHeaders(options.server, {
+        Accept: 'text/event-stream'
+      }).entries()),
+      timeoutMs: options.timeoutMs,
+      onEvent: dispatchEvent,
+      onError: dispatchError
+    });
+    endpoint = nativeConnection.endpoint;
+    closeStream = () => {
+      void nativeConnection.close();
+    };
+  } else {
+    endpointDeferred = createDeferred<string>();
+    const fetchImpl = getMcpFetchImpl(options.fetchImpl);
+    const connectTimeoutId = globalThis.setTimeout(
+      () => streamController.abort(createTimeoutError(`连接 MCP SSE 服务 ${options.server.name}`, options.timeoutMs)),
+      options.timeoutMs
+    );
+    let response: Response;
+    try {
+      response = await fetchImpl(options.server.url, {
+        method: 'GET',
+        headers: buildMcpServerHeaders(options.server, {
+          Accept: 'text/event-stream'
+        }),
+        signal: streamController.signal
+      });
+    } finally {
+      globalThis.clearTimeout(connectTimeoutId);
+    }
+
+    if (!response.ok || !response.body) {
+      throw new Error(`连接 MCP SSE 服务失败：HTTP ${response.status}`);
+    }
+
+    void consumeSseStream(response.body, dispatchEvent)
+      .then(() => dispatchError(new Error('MCP SSE 连接已结束。')))
+      .catch(dispatchError);
+    try {
+      endpoint = await withTimeout(
+        endpointDeferred.promise,
+        options.timeoutMs,
+        `等待 MCP SSE 服务 ${options.server.name} 下发 endpoint`
+      );
+    } catch (error) {
+      streamController.abort();
+      throw error;
+    }
+    closeStream = () => streamController.abort();
+  }
 
   const request = async (
     payload: JsonRpcRequest | JsonRpcNotification,
     expectsResponse: boolean
   ): Promise<JsonRpcMessage | null> => {
+    if (connectionFailure) throw connectionFailure;
     const controller = new AbortController();
     const timeoutId = globalThis.setTimeout(
       () => controller.abort(createTimeoutError(`调用 MCP SSE 服务 ${options.server.name}`, options.timeoutMs)),
       options.timeoutMs
     );
-    const deferred = expectsResponse && 'id' in payload ? createDeferred<JsonRpcMessage>() : null;
+    const deferred = expectsResponse && 'id' in payload
+      ? createDeferred<JsonRpcMessage>()
+      : null;
 
     if (expectsResponse && deferred && 'id' in payload) {
       pending.set(String(payload.id), deferred);
     }
 
     try {
-      const postResponse = await fetchImpl(endpoint, {
+      const postResponse = await requestMcpHttp(endpoint, {
         method: 'POST',
-        headers: buildServerHeaders(options.server, {
+        headers: buildMcpServerHeaders(options.server, {
           'Content-Type': 'application/json'
         }),
         body: JSON.stringify(payload),
         signal: controller.signal
-      });
+      }, options);
 
       if (!postResponse.ok) {
         const errorText = await postResponse.text().catch(() => '');
@@ -180,7 +218,10 @@ async function openLegacySseConnection(options: McpTransportOptions): Promise<Le
       const contentType = postResponse.headers.get('content-type')?.toLowerCase() ?? '';
       if (expectsResponse && contentType.includes('application/json')) {
         const parsed = await postResponse.json().catch(() => null);
-        return ensureSuccessMessage(findResponseMessage(parsed, (payload as JsonRpcRequest).id), `调用 MCP SSE 服务 ${options.server.name}`);
+        return ensureSuccessMessage(
+          findResponseMessage(parsed, (payload as JsonRpcRequest).id),
+          `调用 MCP SSE 服务 ${options.server.name}`
+        );
       }
 
       if (!expectsResponse || !deferred) {
@@ -188,7 +229,11 @@ async function openLegacySseConnection(options: McpTransportOptions): Promise<Le
       }
 
       return ensureSuccessMessage(
-        await withTimeout(deferred.promise, options.timeoutMs, `等待 MCP SSE 服务 ${options.server.name} 返回结果`),
+        await withTimeout(
+          deferred.promise,
+          options.timeoutMs,
+          `等待 MCP SSE 服务 ${options.server.name} 返回结果`
+        ),
         `调用 MCP SSE 服务 ${options.server.name}`
       );
     } finally {
@@ -200,17 +245,16 @@ async function openLegacySseConnection(options: McpTransportOptions): Promise<Le
   };
 
   return {
-    endpoint,
     request,
     close: () => {
-      streamController.abort();
+      closeStream();
       pending.forEach((entry) => entry.reject(new Error('MCP SSE 连接已关闭。')));
       pending.clear();
     }
   };
 }
 
-export async function initializeLegacySseConnection(options: McpTransportOptions) {
+async function initializeLegacySseConnection(options: McpTransportOptions) {
   const connection = await openLegacySseConnection(options);
   try {
     const initializeResponse = ensureSuccessMessage(
@@ -243,4 +287,19 @@ export async function initializeLegacySseConnection(options: McpTransportOptions
     connection.close();
     throw error;
   }
+}
+
+export async function openLegacySseSession(
+  options: McpTransportOptions
+): Promise<McpSessionConnection> {
+  const { connection } = await initializeLegacySseConnection(options);
+  return {
+    request: async (payload, label) => ensureSuccessMessage(
+      await connection.request(payload, true),
+      label
+    ),
+    close: async () => {
+      connection.close();
+    }
+  };
 }

@@ -108,12 +108,19 @@ export function updateConversationMessage(
   messageId: string,
   patch: Partial<ChatMessage>
 ): Conversation {
-  return syncConversationToolLedger({
-    ...conversation,
-    messages: conversation.messages.map((message) =>
-      message.id === messageId ? { ...message, ...patch } : message
-    )
-  });
+  const index = conversation.messages.findIndex(message => message.id === messageId);
+  if (index < 0) return conversation;
+  const previous = conversation.messages[index];
+  if (!(Object.keys(patch) as Array<keyof ChatMessage>).some(key => !Object.is(previous[key], patch[key]))) return conversation;
+  const next = { ...previous, ...patch };
+  const messages = conversation.messages.slice();
+  messages[index] = next;
+  const updated = { ...conversation, messages,
+    requestContext: conversation.requestContext?.mode === 'fromMessage' && conversation.requestContext.anchorMessageId === messageId
+      && (next.id !== messageId || (next.role !== 'user' && next.role !== 'assistant') || next.toolInvocation)
+      ? { mode: 'fromMessage' as const, anchorMessageId: null } : conversation.requestContext };
+  return previous.id !== next.id || previous.role !== next.role || previous.nativeToolCalls !== next.nativeToolCalls || previous.toolInvocation !== next.toolInvocation
+    ? syncConversationToolLedger(updated) : updated;
 }
 
 export function updateConversationMessageInRecords(
@@ -134,6 +141,8 @@ export function replaceConversationMessages(conversation: Conversation, messages
     ...conversation,
     updatedAt: Date.now(),
     title: resolveConversationTitle(conversation.title, conversation.messages, messages),
+    requestContext: conversation.requestContext?.mode === 'fromMessage' && !messages.some(message => conversation.requestContext?.mode === 'fromMessage' && message.id === conversation.requestContext.anchorMessageId && (message.role === 'user' || message.role === 'assistant') && !message.toolInvocation)
+      ? { mode: 'fromMessage', anchorMessageId: null } : conversation.requestContext,
     messages
   });
 }

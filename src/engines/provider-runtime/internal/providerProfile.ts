@@ -6,6 +6,7 @@ import {
 } from '../../providerProtocol';
 import {
   isAnthropicHost,
+  isClaudeAdaptiveThinkingModel,
   isClaude46Model,
   isClaudeModel,
   isDeepSeekHost,
@@ -38,9 +39,20 @@ export type ProviderRouteLabelKey =
   | 'provider.route.miniMax'
   | 'provider.route.customDirect';
 export type GeminiThoughtSignatureTransport = 'native' | 'openai-extra-content' | 'unsupported';
-export type ReasoningContentTransport = 'openai-reasoning-content' | 'unsupported';
+export type ReasoningContentTransport = 'openai-reasoning-content' | 'openai-reasoning-details' | 'unsupported';
 export type ReasoningContentReplayPolicy = 'omit' | 'omit-empty' | 'send-empty';
 export type OpenAiToolHistoryReplayPolicy = 'native' | 'transcript-when-continuity-unsupported';
+export type ProviderThinkingRequestTransport =
+  | 'none'
+  | 'anthropic-manual'
+  | 'anthropic-adaptive'
+  | 'openai-compatible-budget'
+  | 'openai-anthropic-manual'
+  | 'openai-anthropic-adaptive'
+  | 'openrouter-reasoning'
+  | 'responses-effort'
+  | 'deepseek-thinking'
+  | 'gemini-budget';
 
 export type ResolvedProviderProfile = {
   host: string;
@@ -50,6 +62,7 @@ export type ResolvedProviderProfile = {
   compatibilityMode: ProviderCompatibilityMode;
   collapseSystemMessages: boolean;
   sendThinkingBudget: boolean;
+  thinkingRequestTransport: ProviderThinkingRequestTransport;
   geminiThoughtSignatureTransport: GeminiThoughtSignatureTransport;
   reasoningContentTransport: ReasoningContentTransport;
   reasoningContentReplayPolicy: ReasoningContentReplayPolicy;
@@ -191,6 +204,12 @@ function resolveReasoningContentTransport(args: {
   ) {
     return 'openai-reasoning-content';
   }
+  if (args.protocol === 'openai-completions' && isOpenRouterHost(args.host)) {
+    return 'openai-reasoning-details';
+  }
+  if (args.protocol === 'openai-completions' && isClaudeModel(args.modelId)) {
+    return 'openai-reasoning-content';
+  }
 
   return 'unsupported';
 }
@@ -224,13 +243,24 @@ function resolveOpenAiToolHistoryReplayPolicy(args: {
   return 'native';
 }
 
-function shouldSendThinkingBudget(args: {
+function resolveThinkingRequestTransport(args: {
   host: string;
   modelId: string | undefined;
   protocol: ReturnType<typeof inferProviderProtocol>;
-}) {
+}): ProviderThinkingRequestTransport {
+  if (args.protocol === 'anthropic-messages') {
+    return isClaudeAdaptiveThinkingModel(args.modelId)
+      ? 'anthropic-adaptive'
+      : 'anthropic-manual';
+  }
+  if (args.protocol === 'openai-responses') {
+    return 'responses-effort';
+  }
+  if (args.protocol === 'gemini-generate-content') {
+    return 'gemini-budget';
+  }
   if (args.protocol === 'openai-completions' && isDeepSeekHost(args.host)) {
-    return false;
+    return 'deepseek-thinking';
   }
 
   if (
@@ -238,10 +268,17 @@ function shouldSendThinkingBudget(args: {
     && isMoonshotHost(args.host)
     && isKimiK2Model(args.modelId)
   ) {
-    return false;
+    return 'none';
   }
-
-  return true;
+  if (args.protocol === 'openai-completions' && isOpenRouterHost(args.host)) {
+    return 'openrouter-reasoning';
+  }
+  if (args.protocol === 'openai-completions' && isClaudeModel(args.modelId)) {
+    return isClaudeAdaptiveThinkingModel(args.modelId)
+      ? 'openai-anthropic-adaptive'
+      : 'openai-anthropic-manual';
+  }
+  return 'openai-compatible-budget';
 }
 
 function describeProviderRoute(baseUrl: string, host: string): {
@@ -373,6 +410,11 @@ export function resolveProviderProfile(
     path: api.path,
     protocol
   });
+  const thinkingRequestTransport = resolveThinkingRequestTransport({
+    host,
+    modelId: api.model,
+    protocol
+  });
 
   return {
     host,
@@ -385,11 +427,10 @@ export function resolveProviderProfile(
       modelId: api.model,
       protocol
     }),
-    sendThinkingBudget: shouldSendThinkingBudget({
-      host,
-      modelId: api.model,
-      protocol
-    }),
+    sendThinkingBudget:
+      thinkingRequestTransport !== 'none'
+      && thinkingRequestTransport !== 'deepseek-thinking',
+    thinkingRequestTransport,
     geminiThoughtSignatureTransport,
     reasoningContentTransport,
     reasoningContentReplayPolicy: resolveReasoningContentReplayPolicy({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractPolarisAssetIds } from './assetReferences';
+import { extractPolarisAssetIds, remapAssetReferences } from './assetReferences';
 
 describe('extractPolarisAssetIds', () => {
   it('extracts CSS and markup asset references without exposing surrounding text', () => {
@@ -40,5 +40,16 @@ describe('extractPolarisAssetIds', () => {
       'url(polaris-asset://asset-repeat)',
       'polaris-asset://asset-other'
     ].join('\n'))).toEqual(['asset-repeat', 'asset-other']);
+  });
+});
+
+
+describe('remapAssetReferences', () => {
+  it('shares reference rewriting across overlay and structured imports without changing source values', () => {
+    const source = { assetId: 'old id', content: '<img src="polaris-asset://old%20id">', nested: [{ backgroundAssetId: 'old id' }], text: 'ordinary text' };
+    expect(remapAssetReferences(source, new Map([['old id', 'new-id']]))).toEqual({
+      assetId: 'new-id', content: '<img src="polaris-asset://new-id">', nested: [{ backgroundAssetId: 'new-id' }], text: 'ordinary text'
+    });
+    expect(source.assetId).toBe('old id');
   });
 });

@@ -2,6 +2,52 @@ import { describe, expect, it } from 'vitest';
 import { prepareConversationMessages } from './requestConversationPreparation';
 
 describe('requestConversationPreparation', () => {
+  it('reconstructs segmented persisted bubbles as one assistant provider turn', () => {
+    const { messages } = prepareConversationMessages([
+      {
+        id: 'assistant-prefix',
+        role: 'assistant',
+        content: '第一条。',
+        timestamp: 1,
+        assistantReplyId: 'assistant-anchor',
+        assistantReplySegmentIndex: 0
+      },
+      {
+        id: 'assistant-anchor',
+        role: 'assistant',
+        content: '第二条。',
+        timestamp: 2,
+        assistantReplyId: 'assistant-anchor',
+        assistantReplySegmentIndex: 1,
+        nativeToolCalls: [{ id: 'call-1', name: 'web_search', argumentsText: '{}' }]
+      },
+      {
+        id: 'tool-result',
+        role: 'system',
+        content: '搜索完成',
+        timestamp: 3,
+        origin: 'tool-runtime',
+        toolInvocation: {
+          id: 'tool-result',
+          kind: 'webSearch',
+          status: 'executed',
+          title: '联网搜索',
+          summary: '搜索完成',
+          originMessageId: 'assistant-anchor'
+        }
+      }
+    ], null);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toEqual(expect.objectContaining({
+      id: 'assistant-anchor',
+      role: 'assistant',
+      content: '第一条。\n\n第二条。',
+      nativeToolCalls: [expect.objectContaining({ id: 'call-1' })]
+    }));
+    expect(messages[1]?.id).toBe('tool-result');
+  });
+
   it('materializes user card references into request-visible system messages', () => {
     const { messages } = prepareConversationMessages([
       {

@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { recordClientError } from '../../app/bootstrap/clientErrorLog';
 import type { World } from '../../types/domain';
 import { createTranslator, useI18n, type I18nTranslator } from '../../i18n';
@@ -25,37 +25,8 @@ function createWorldFrameTranslator() {
   return createTranslator(useSpaceStore.getState().appLanguage);
 }
 
-const WORLD_FRAME_PENDING_NOTICE_DELAY_MS = 12000;
-
-export function WorldFrameFallback({ world }: { world: World }) {
-  const { t } = useI18n();
-  const [showFallbackNotice, setShowFallbackNotice] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const timeoutId = window.setTimeout(() => {
-      setShowFallbackNotice(true);
-    }, WORLD_FRAME_PENDING_NOTICE_DELAY_MS);
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, []);
-
-  if (!showFallbackNotice) {
-    return <div className="world-frame-loading" aria-hidden="true" />;
-  }
-
-  return (
-    <div className="world-frame-fallback" role="alert">
-      <div className="world-frame-fallback-panel">
-        <strong>{t('app.world.loadingTitle', { world: worldFrameLabel(world, t) })}</strong>
-        <p>{t('app.world.loadingBody')}</p>
-        <div className="world-frame-fallback-actions single">
-          <button type="button" className="primary" onClick={() => window.location.reload()}>{t('app.world.reload')}</button>
-        </div>
-      </div>
-    </div>
-  );
+export function WorldFrameFallback() {
+  return <div className="world-frame-loading" aria-hidden="true" />;
 }
 
 export class WorldFrameBoundary extends Component<WorldFrameBoundaryProps, WorldFrameBoundaryState> {

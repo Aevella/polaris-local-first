@@ -1,3 +1,5 @@
+import { selectConversationRequestMessages } from '../../engines/conversationContextSettings';
+import { reportChatToolPreparation } from './chatToolPreparationDiagnostics';
 import { createUid } from '../../engines/id';
 import type { OpenAiToolHistoryMode } from '../../engines/provider-runtime/providerRuntimeOpenAiToolHistory';
 import {
@@ -71,6 +73,7 @@ import {
   ChatReplyPersistenceError,
   persistChatReplyBoundary
 } from './chatReplyPersistence';
+import { buildAssistantReplySegmentContent } from '../../engines/assistantReplySegments';
 
 type RequestReplyArgs = {
   ui: Pick<
@@ -116,6 +119,7 @@ type RequestReplyArgs = {
 };
 
 type ChatReplyContinuationState = {
+  toolDiagnosticAttemptId?: string;
   toolExchangeDepth: number;
   seenToolExchangeFingerprints: readonly string[];
   lengthRecoveryDepth: number;
@@ -348,6 +352,7 @@ async function requestReplyRound({
     activeProjectId: activeRequestSnapshot.activeProjectId,
     allowCreativeCssRecovery: toolContextWithMcp.toolEnforcementScope === 'theme-only',
     mcpTools: toolContextWithMcp.mcpTools,
+    segmentedRepliesEnabled: activeRequestSnapshot.chatAvatarLayoutEnabled,
     onFirstProgressFlushed: () => {
       recordChatSendPerformanceMark(conversationId, '聊天发送 · 首个回复已渲染');
     }
@@ -368,10 +373,12 @@ async function requestReplyRound({
       globalApi: activeRequestSnapshot.globalApi,
       memoryVectorRetrieval: activeRequestSnapshot.memoryVectorRetrieval,
       imageUnderstanding: activeRequestSnapshot.imageUnderstanding,
+      historicalImagePolicy: activeRequestSnapshot.windowPreferences?.historicalImagePolicy,
       persona: collaboratorForReply,
+      reasoningStrength: activeRequestSnapshot.reasoningStrength,
       personas: activeRequestSnapshot.personas,
       semanticRecallEnabled: activeRequestSnapshot.semanticRecallEnabled,
-      messages: requestMessages,
+      messages: selectConversationRequestMessages(requestMessages, activeRequestSnapshot.requestContext),
       semanticRecallConversations: activeRequestSnapshot.semanticRecallConversations ?? activeRequestSnapshot.conversations,
       loadSemanticRecallConversations,
       activeConversationId: conversationId,
@@ -415,7 +422,9 @@ async function requestReplyRound({
     throwIfAborted(streaming.controller.signal);
 
     const latestPlaceholder = chat.findConversationMessage(conversationId, placeholderId);
-    const finalContent = reply.content.trim() ? reply.content : latestPlaceholder?.content ?? reply.content;
+    const finalContent = reply.content.trim()
+      ? reply.content
+      : streaming.getLatestProgress()?.content ?? latestPlaceholder?.content ?? reply.content;
     const { parsed, visibleContent, isToolOnlyTurn, taskUpdate } = parseAssistantReplyContent(
       finalContent,
       modelTier,
@@ -495,7 +504,7 @@ async function requestReplyRound({
       nativeToolCalls: reply.nativeToolCalls ?? []
     });
 
-    chat.updateMessage(writableConversation, placeholderId, buildAssistantMessagePatch({
+    streaming.commitFinalReply(visibleContent, buildAssistantMessagePatch({
       messageId: placeholderId,
       assistantName,
       speakerCollaboratorId: collaboratorId,
@@ -532,6 +541,15 @@ async function requestReplyRound({
       chat.setConversationTask(conversationId, nextTask);
     }
     throwIfAborted(streaming.controller.signal);
+
+    if (toolOutcome.status !== 'ready' || continuation.toolDiagnosticAttemptId) {
+      try {
+        const attemptId = continuation.toolDiagnosticAttemptId ?? `tool-diag-${crypto.randomUUID()}`;
+        continuation = { ...continuation, toolDiagnosticAttemptId: attemptId };
+        reportChatToolPreparation(toolOutcome, attemptId, preparationRetryDepth, lengthRecoveryDepth);
+      } catch { /* A diagnostic failure must never stop the user's tool flow. */ }
+      if (toolOutcome.status === 'ready') continuation = { ...continuation, toolDiagnosticAttemptId: undefined };
+    }
 
     if (toolOutcome.status !== 'ready') {
       if (shouldRequestLengthFollowup({
@@ -861,9 +879,11 @@ async function requestReplyRound({
     streaming.scheduleLifecycleRelease(320);
     preserveStreamingLifecycle = true;
     finishChatSendPerformanceTrace(conversationId, 'completed');
+    if (!reply.transportIncomplete) streaming.markCompleted();
     return { status: 'completed' };
   } catch (error) {
     if (error instanceof ChatReplyContinuation) {
+      streaming.markCompleted();
       throw error;
     }
     streaming.commitQueuedProgress();
@@ -882,9 +902,14 @@ async function requestReplyRound({
 
     if (isAbortError(error)) {
       const latestPlaceholder = chat.findConversationMessage(conversationId, placeholderId);
+      const partialVisibleContent = buildAssistantReplySegmentContent(
+        chat.getConversationMessages(conversationId),
+        placeholderId
+      );
 
-      if (!latestPlaceholder?.content.trim() && !latestPlaceholder?.thinkingText?.trim()) {
-        chat.replaceConversationMessages(writableConversation, messages);
+      if (!partialVisibleContent.trim() && !latestPlaceholder?.thinkingText?.trim() && !latestPlaceholder?.nativeToolCalls?.length) {
+        chat.replaceConversationMessages(writableConversation,
+          chat.getConversationMessages(conversationId).filter(message => message.id !== placeholderId));
       } else {
         streaming.scheduleLifecycleRelease(220);
         preserveStreamingLifecycle = true;
@@ -896,9 +921,9 @@ async function requestReplyRound({
         collaboratorId,
         assistantName,
         messages,
-        visibleReply: latestPlaceholder?.content ?? '',
+        visibleReply: partialVisibleContent,
         reply: {
-          content: latestPlaceholder?.content ?? '',
+          content: partialVisibleContent,
           model: latestPlaceholder?.model,
           tokenCount: latestPlaceholder?.tokenCount
         }
@@ -912,9 +937,9 @@ async function requestReplyRound({
         assistantMessageId: placeholderId,
         messages,
         audit: requestAudit,
-        visibleReply: latestPlaceholder?.content ?? '',
+        visibleReply: partialVisibleContent,
         reply: {
-          content: latestPlaceholder?.content ?? '',
+          content: partialVisibleContent,
           model: latestPlaceholder?.model,
           tokenCount: latestPlaceholder?.tokenCount,
           tokenUsage: latestPlaceholder?.tokenUsage,
@@ -930,8 +955,12 @@ async function requestReplyRound({
     const text = error instanceof Error ? error.message : '请求失败';
     const normalized = normalizeProviderErrorMessage(text);
     const latestPlaceholder = chat.findConversationMessage(conversationId, placeholderId);
+    const partialVisibleContent = buildAssistantReplySegmentContent(
+      chat.getConversationMessages(conversationId),
+      placeholderId
+    );
 
-    if (latestPlaceholder?.content.trim() || latestPlaceholder?.thinkingText?.trim()) {
+    if (latestPlaceholder && (partialVisibleContent.trim() || latestPlaceholder.thinkingText?.trim())) {
       const latestProgress = streaming.getLatestProgress();
       const hasWorkspaceDraftShape = hasInterruptedWorkspaceDraftShape({
         activeProjectId: activeRequestSnapshot.activeProjectId,
@@ -942,7 +971,7 @@ async function requestReplyRound({
       let recoveryOutcomes: ToolActionRunOutcome[] = [];
       let recoveryFailure: unknown;
 
-      if (latestPlaceholder.content.trim() || (latestPlaceholder.nativeToolCalls?.length ?? 0) > 0) {
+      if (partialVisibleContent.trim() || (latestPlaceholder.nativeToolCalls?.length ?? 0) > 0) {
         try {
           recoveryOutcomes = await executeInterruptedWorkspaceDraftActions({
             executeToolActions,

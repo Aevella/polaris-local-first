@@ -1,6 +1,7 @@
+import { normalizeConversationSettings } from '../../engines/conversationContextSettings';
 import { listAssetMeta } from '../../infrastructure/assetStore';
 import { kvGet, kvKeysWithPrefix } from '../../infrastructure/persistence';
-import { BUNDLED_DEFAULT_PERSONA_IDS } from '../../config/persona/personaBuilder';
+import { KNOWN_BUNDLED_PERSONA_IDS } from '../../config/persona/personaBuilder';
 import {
   buildChatMigrationDryRunProjectionFromReadback,
   buildChatMigrationDryRunReport,
@@ -218,7 +219,7 @@ async function readCurrentPersonaIds() {
     kvGet<{ companionConnections?: Array<{ collaboratorId?: unknown }> }>('runtime-providers-v2')
   ]);
   const collaboratorIds = [
-    ...BUNDLED_DEFAULT_PERSONA_IDS,
+    ...KNOWN_BUNDLED_PERSONA_IDS,
     ...(personaPayload?.personas ?? []).map((persona) => persona.id),
     ...(runtimePayload?.companionConnections ?? []).map((connection) => connection.collaboratorId)
   ];
@@ -317,10 +318,12 @@ async function readVisibleMigrationSource(
     const id = readString(conversation.id);
     if (!id || deletedConversationIds.has(id) || quarantinedConversationIds.has(id)) continue;
     const baseline = baselineConversationFromRecord(conversation, id, sourceKind);
-    const messages = await readMigrationMessages(conversation, id, sourceKind, baseline.expectedMessageCount ?? 0);
+    const body = await readMigrationBody(conversation, id, sourceKind, baseline.expectedMessageCount ?? 0);
+    const messages = body?.messages;
     conversations.set(id, messages
       ? {
         ...baseline,
+        ...(body?.conversation ? baselineConversationFromRecord(body.conversation, id, sourceKind) : {}),
         messages,
         expectedMessageCount: messages.length,
         expectedLatestMessageTimestamp: latestMessageTimestamp(messages)
@@ -373,7 +376,7 @@ function uniqueSortedIds(values: string[]) {
   return Array.from(new Set(values.filter((value) => value.trim().length > 0))).sort();
 }
 
-async function readMigrationMessages(
+async function readMigrationBody(
   conversation: Record<string, unknown>,
   id: string,
   sourceKind: ChatMigrationSourceKind,
@@ -384,14 +387,14 @@ async function readMigrationMessages(
     const selfContainedRecord = await kvGet<unknown>(recordKey);
     if (isSelfContainedConversationRecordPayload(selfContainedRecord, id)) {
       const messages = acceptMigrationMessages(selfContainedRecord.messages, expectedMessageCount);
-      if (messages) return messages;
+      if (messages) return { messages, conversation: selfContainedRecord.conversation };
     }
   }
   for (const messageKey of await resolveMigrationMessageKeys(conversation, id)) {
     const rawMessages = await kvGet<unknown>(messageKey);
     if (!Array.isArray(rawMessages)) continue;
     const messages = acceptMigrationMessages(rawMessages as ChatMessage[], expectedMessageCount);
-    if (messages) return messages;
+    if (messages) return { messages };
   }
   return null;
 }
@@ -500,7 +503,7 @@ function isMigrationEnvelopePayload(
 function isSelfContainedConversationRecordPayload(
   payload: unknown,
   conversationId: string
-): payload is { messages: ChatMessage[] } {
+): payload is { messages: ChatMessage[]; conversation: Record<string, unknown> } {
   return Boolean(
     payload
     && typeof payload === 'object'
@@ -518,6 +521,9 @@ function toConversationFromMigrationSource(
     title: source.title,
     collaboratorId: source.collaboratorId,
     activeProjectId: source.activeProjectId ?? null,
+    reasoningStrength: source.reasoningStrength,
+    requestContext: source.requestContext,
+    windowPreferences: source.windowPreferences,
     messages: source.messages,
     workspaceLedger: source.workspaceLedger ?? [],
     task: source.task ?? null,
@@ -532,6 +538,7 @@ function baselineConversationFromRecord(
   id: string,
   sourceKind: ChatMigrationSourceKind
 ): ChatMigrationLegacyConversationSnapshot {
+  const settings = normalizeConversationSettings(conversation);
   const title = readString(conversation.title) ?? 'Untitled conversation';
   const updatedAt = readNonNegativeNumber(conversation.updatedAt) ?? 0;
   const messageCount = readNonNegativeNumber(conversation.messageCount) ?? (
@@ -548,6 +555,9 @@ function baselineConversationFromRecord(
     title,
     collaboratorId: readNullableString(conversation.collaboratorId),
     activeProjectId: readNullableString(conversation.activeProjectId),
+    reasoningStrength: settings.reasoningStrength,
+    requestContext: settings.requestContext,
+    windowPreferences: settings.windowPreferences,
     pinnedAt: readNullableNumber(conversation.pinnedAt),
     updatedAt: updatedAt || latestMessageTimestamp,
     expectedMessageCount: messageCount,

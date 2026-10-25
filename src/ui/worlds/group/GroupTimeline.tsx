@@ -3,11 +3,12 @@ import { useI18n } from '../../../i18n';
 import { Icon } from '../../Icon';
 import { useAssetObjectUrl } from '../../useAssetObjectUrl';
 import { MessageMarkdown } from '../chat/message/MessageMarkdown';
-import { messageGeneratedImageAttachments, type GroupActivityKey } from '../../../app/group/groupActivity';
+import { messageGeneratedAudioAttachments, messageGeneratedImageAttachments, type GroupActivityKey } from '../../../app/group/groupActivity';
 import { splitFencedCode } from '../../../app/group/groupMessageCode';
 import type { ChatAttachment, ChatMessage, Persona } from '../../../types/domain';
 import { GroupAvatar } from './GroupAvatar';
 import type { GroupController } from './groupController';
+import { MessageAudioAttachments } from '../../media/MessageAudioAttachments';
 
 type GroupTimelineProps = {
   controller: GroupController;
@@ -264,9 +265,10 @@ export function GroupTimeline({ controller }: GroupTimelineProps) {
         const invocation = message.toolInvocation;
         const succeeded = invocation && invocation.status !== 'failed' && invocation.status !== 'running';
         const hasImages = messageGeneratedImageAttachments(message).length > 0;
+        const hasAudio = messageGeneratedAudioAttachments(message).length > 0;
         // MCP 是真实世界的副作用：留一条公开痕迹，别的成员才知道这事已经做过了
         const isMcp = invocation?.kind === 'invokeMcpTool';
-        if (message.speakerCollaboratorId && succeeded && (invocation?.cardId || hasImages || isMcp)) {
+        if (message.speakerCollaboratorId && succeeded && (invocation?.cardId || hasImages || hasAudio || isMcp)) {
           items.push({ kind: 'result', message });
         }
         continue;
@@ -361,6 +363,25 @@ export function GroupTimeline({ controller }: GroupTimelineProps) {
               ?? null
             : null;
           if (kind === 'result') {
+            const resultAudio = messageGeneratedAudioAttachments(message);
+            if (resultAudio.length > 0) {
+              return (
+                <div className="group-msg-audio-result" key={message.id}>
+                  <button
+                    type="button"
+                    className="group-msg-audio-source"
+                    onClick={() => {
+                      if (message.speakerCollaboratorId) controller.setLaneMemberId(message.speakerCollaboratorId);
+                    }}
+                  >
+                    {speaker ? <GroupAvatar persona={speaker} size={18} /> : null}
+                    <Icon name="voice" size={13} />
+                    <span>{message.toolInvocation?.toolName || message.toolInvocation?.title || t('group.lane.tool')}</span>
+                  </button>
+                  <MessageAudioAttachments attachments={resultAudio} />
+                </div>
+              );
+            }
             if (message.toolInvocation?.kind === 'invokeMcpTool') {
               // 外部工具的公开痕迹：谁用了什么，点开去这位成员的私域看过程
               return (

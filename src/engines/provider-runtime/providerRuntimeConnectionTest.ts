@@ -5,6 +5,7 @@ const OUTPUT_TOKEN_FIELDS = ['max_completion_tokens', 'max_output_tokens', 'max_
 function removeConnectionTestReasoningBudget(request: ProviderHttpRequest) {
   delete request.body.thinking;
   delete request.body.reasoning;
+  delete request.body.output_config;
 
   const generationConfig = request.body.generationConfig;
   if (generationConfig && typeof generationConfig === 'object' && !Array.isArray(generationConfig)) {

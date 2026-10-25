@@ -1,3 +1,4 @@
+import type { ToolPreparationDiagnostic } from '../../engines/toolPreparationDiagnostics';
 import { Capacitor } from '@capacitor/core';
 import packageJson from '../../../package.json';
 import {
@@ -585,4 +586,11 @@ export function installClientDiagnosticsReporter() {
   subscribeLatestPersistenceError((entry) => {
     if (entry) void reportPersistenceDiagnostic(entry);
   });
+}
+
+export async function reportToolPreparationDiagnostics(toolPreparation: ToolPreparationDiagnostic) {
+  try {
+    if (!isClientDiagnosticsEnabled()) return;
+    await sendDiagnosticsPayload({ ...await basePayload('tool-preparation'), toolPreparation });
+  } catch { /* Reporting is best effort and never blocks a reply. */ }
 }

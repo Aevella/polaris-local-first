@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@capacitor/core', () => ({
+  registerPlugin: vi.fn(() => ({})),
   Capacitor: {
     isNativePlatform: vi.fn(() => false),
     getPlatform: vi.fn(() => 'web')
@@ -49,12 +50,126 @@ function createNativeResponse(data: unknown, init?: { status?: number; headers?:
 }
 
 describe('mcpRuntime', () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false);
     vi.mocked(Capacitor.getPlatform).mockReturnValue('web');
     vi.mocked(CapacitorHttp.request).mockReset();
-    clearMcpToolCatalogCacheForTests();
+    await clearMcpToolCatalogCacheForTests();
     vi.unstubAllGlobals();
+  });
+
+  it('reuses one initialized session for catalog discovery and tool calls', async () => {
+    let initializeCount = 0;
+    let listCount = 0;
+    let callCount = 0;
+    let deleteCount = 0;
+    let callArguments: unknown;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+
+      if (body?.method === 'initialize') {
+        initializeCount += 1;
+        return createJsonResponse({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: { protocolVersion: '2025-03-26', capabilities: { tools: {} } }
+        }, {
+          headers: {
+            'content-type': 'application/json',
+            'Mcp-Session-Id': 'session-reused'
+          }
+        });
+      }
+      if (body?.method === 'notifications/initialized') {
+        return new Response(null, { status: 202 });
+      }
+      if (body?.method === 'tools/list') {
+        listCount += 1;
+        return createJsonResponse({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: {
+            tools: [{ name: 'get_weather', description: 'Get weather' }]
+          }
+        });
+      }
+      if (body?.method === 'tools/call') {
+        callCount += 1;
+        callArguments = body.params?.arguments;
+        return createJsonResponse({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: { content: [{ type: 'text', text: 'sunny' }] }
+        });
+      }
+      if (init?.method === 'DELETE') {
+        deleteCount += 1;
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`Unexpected fetch call: ${init?.method ?? 'GET'}`);
+    });
+
+    const catalog = await resolveMcpToolCatalog({
+      servers: [createServer()],
+      timeoutSeconds: 5,
+      fetchImpl: fetchMock as typeof fetch,
+      retryDelaysMs: []
+    });
+    const tool = catalog.tools[0];
+    expect(tool).toBeDefined();
+    await invokeMcpTool({
+      tool: tool!,
+      argumentsObject: {
+        command: 'help',
+        args: {
+          path: 'account'
+        }
+      },
+      timeoutSeconds: 5,
+      fetchImpl: fetchMock as typeof fetch
+    });
+
+    expect(initializeCount).toBe(1);
+    expect(listCount).toBe(1);
+    expect(callCount).toBe(1);
+    expect(callArguments).toEqual({
+      command: 'help',
+      args: {
+        path: 'account'
+      }
+    });
+    expect(deleteCount).toBe(0);
+  });
+
+  it('uses the actual transport even when the WebView reports offline', async () => {
+    vi.stubGlobal('navigator', { onLine: false });
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+      if (body?.method === 'notifications/initialized') return new Response(null, { status: 202 });
+      return createJsonResponse({ jsonrpc: '2.0', id: body.id, result: body.method === 'initialize'
+        ? { protocolVersion: '2025-03-26', capabilities: { tools: {} } }
+        : { content: [{ type: 'text', text: 'connected' }] } });
+    });
+
+    const result = await invokeMcpTool({
+      tool: {
+        schemaName: 'mcp__weather__get_weather',
+        serverId: 'server-1',
+        serverName: 'Weather MCP',
+        serverHandle: 'weather',
+        transport: 'streamable-http',
+        url: 'https://mcp.example.com',
+        toolName: 'get_weather',
+        description: 'Get weather',
+        inputSchema: { type: 'object' }
+      },
+      argumentsObject: {},
+      timeoutSeconds: 5,
+      fetchImpl: fetchMock as typeof fetch
+    });
+
+    expect(result).toMatchObject({ ok: true, detailText: 'connected' });
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it('lists streamable-http MCP tools into Polaris tool definitions', async () => {
@@ -417,7 +532,11 @@ describe('mcpRuntime', () => {
   it('supports legacy SSE transport when the POST endpoint returns JSON-RPC responses', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'GET') {
-        return new Response('event: endpoint\ndata: /messages\n\n', {
+        const stream = new ReadableStream<Uint8Array>({ start(controller) {
+          controller.enqueue(new TextEncoder().encode('event: endpoint\ndata: /messages\n\n'));
+          init.signal?.addEventListener('abort', () => controller.error(new Error('closed')));
+        } });
+        return new Response(stream, {
           status: 200,
           headers: {
             'content-type': 'text/event-stream'

@@ -3,7 +3,8 @@ import { sanitizeToolsForGeminiFunctionDeclarations } from './providerRuntimeGem
 import {
   buildHistoricalToolCallNameMap,
   buildOrderedMessages,
-  extractTextPayload
+  extractTextPayload,
+  isStableSystemMessage
 } from './requestShared/messages';
 import { buildOpenAiCompatibleHeaders } from './requestShared/headers';
 import {
@@ -34,6 +35,8 @@ import {
   parseProviderHost
 } from './internal/providerMatching';
 import { resolveOpenRouterSessionId } from './providerRuntimeOpenRouterSession';
+import { buildProviderThinkingRequest } from './providerRuntimeThinking';
+import { reasoningItemsForReplay } from './providerRuntimeReasoningState';
 
 const OPENAI_COMPATIBLE_CHAT_ADAPTER_ID = 'openai-compatible-chat';
 type OpenAiCompatibleCacheControl = { type: 'ephemeral'; ttl?: '1h' };
@@ -61,6 +64,14 @@ function buildOpenAiReasoningContent(
   message: ProviderRuntimeRequestInput['context']['segments'][number]['messages'][number],
   capability: ProviderCapability
 ) {
+  if (
+    capability.output.reasoning.transport === 'openai-reasoning-details'
+    && message.role === 'assistant'
+    && message.providerReasoning?.protocol === 'openai-completions'
+  ) {
+    const reasoningDetails = reasoningItemsForReplay(message.providerReasoning);
+    return reasoningDetails.length ? { reasoning_details: reasoningDetails } : {};
+  }
   if (capability.output.reasoning.replay === 'omit') {
     return {};
   }
@@ -85,7 +96,12 @@ function resolveOpenAiCompatibleCacheControlIndexes(
   orderedMessages: OrderedContextMessage[]
 ) {
   let latestConversationIndex = -1;
-  for (let index = orderedMessages.length - 1; index >= 0; index -= 1) {
+  const dynamicBoundary = orderedMessages.findIndex((message) =>
+    message.promptPartName === 'runtime_clock_context'
+    || (message.role === 'system' && !isStableSystemMessage(message))
+  );
+  const historyEnd = dynamicBoundary < 0 ? orderedMessages.length : dynamicBoundary;
+  for (let index = historyEnd - 1; index >= 0; index -= 1) {
     const message = orderedMessages[index];
     if (
       message?.contextSegmentKind === 'conversation'
@@ -500,9 +516,7 @@ export function buildOpenAiCompatibleRequest(input: ProviderRuntimeRequestInput)
     }
   }
 
-  if (thinkingBudget !== undefined && providerCapability.thinking.sendBudget) {
-    body.thinking = { budget_tokens: thinkingBudget };
-  }
+  Object.assign(body, buildProviderThinkingRequest(providerCapability, thinkingBudget));
   if (
     providerCapability.streaming.text &&
     !(providerCapability.streaming.disableWhenToolsPresent && (context.tools?.length ?? 0) > 0)
@@ -532,6 +546,7 @@ export function buildOpenAiCompatibleRequest(input: ProviderRuntimeRequestInput)
     body,
     customBody,
     bodyOverrides,
+    reasoningStrength: input.reasoningStrength,
     provider: 'openai-completions',
     compatibilityMode: providerCapability.route.compatibilityMode,
     capability: providerCapability,

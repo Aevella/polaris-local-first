@@ -28,6 +28,7 @@ import {
   resolveProviderCapability,
   type ProviderCapability
 } from './providerCapability';
+import { buildProviderThinkingRequest } from './providerRuntimeThinking';
 
 const OPENAI_RESPONSES_ADAPTER_ID = 'openai-responses';
 
@@ -116,12 +117,6 @@ function buildResponsesInput(
   });
 }
 
-function resolveResponsesReasoningEffort(thinkingBudget: number) {
-  if (thinkingBudget <= 1024) return 'low';
-  if (thinkingBudget <= 4096) return 'medium';
-  return 'high';
-}
-
 export function buildResponsesRequest(input: ProviderRuntimeRequestInput) {
   const { api, context, sessionId, advanced, bodyOverrides } = input;
   const endpoint = buildApiEndpoint(api.baseUrl, api.path);
@@ -156,11 +151,7 @@ export function buildResponsesRequest(input: ProviderRuntimeRequestInput) {
   if (maxTokens !== undefined) {
     body.max_output_tokens = maxTokens;
   }
-  if (thinkingBudget !== undefined && providerCapability.thinking.sendBudget) {
-    body.reasoning = {
-      effort: resolveResponsesReasoningEffort(thinkingBudget)
-    };
-  }
+  Object.assign(body, buildProviderThinkingRequest(providerCapability, thinkingBudget));
   if (providerCapability.streaming.text) {
     body.stream = true;
   }
@@ -187,6 +178,7 @@ export function buildResponsesRequest(input: ProviderRuntimeRequestInput) {
     body,
     customBody,
     bodyOverrides,
+    reasoningStrength: input.reasoningStrength,
     provider: 'openai-responses',
     compatibilityMode: providerCapability.route.compatibilityMode,
     capability: providerCapability,

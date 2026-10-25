@@ -1,3 +1,6 @@
+import { preserveExistingBodiesForMissingImports } from './personaBackupDocuments';
+import { restorePersonaMemoryDocContent } from './personaMemoryReferenceDocPersistence';
+import { normalizeConversationSettings } from '../engines/conversationContextSettings';
 import {
   recoverPendingAssetImportStage,
   stageAssetImportEntries,
@@ -184,7 +187,7 @@ function validateChatState(value: unknown): PersistedChatState {
     }
   }
   return {
-    conversations: payload.conversations,
+    conversations: payload.conversations.map(normalizeConversationSettings),
     activeConversationId:
       typeof payload.activeConversationId === 'string' || payload.activeConversationId === null
         ? payload.activeConversationId
@@ -555,6 +558,12 @@ export async function importStructuredExportSnapshot(
   options.onProgress?.({ message: '收束未保存数据' });
   await flushPageLifecycleHandlers();
 
+  // Resolve optional destination bodies before staging assets or changing UI storage.
+  // An unavailable read must leave the destination untouched.
+  const preparedPersonaState = { ...personaState, personas: await preserveExistingBodiesForMissingImports(
+    restorePersonaMemoryDocContent(personaState.personas, personaMemoryDocContent)
+  ) };
+
   const failures: StoreImportDomainFailure[] = [];
   const skipDomains: Array<'space' | 'asset'> = [];
   const importCommittedAt = Date.now();
@@ -609,7 +618,7 @@ export async function importStructuredExportSnapshot(
   const restoreResult = await restoreStructuredImportToLocalDataRepository({
     chatState,
     collectionState,
-    personaState,
+    personaState: preparedPersonaState,
     personaMemoryDocContent,
     runtimeState,
     spaceState,
@@ -675,6 +684,7 @@ export async function importStructuredExportSnapshot(
   return {
     status: failures.length === 0 ? 'complete' : 'partial',
     importedDomains,
-    retainedDomains: failures
+    retainedDomains: failures,
+    ...(restoreResult.missingDocumentBodies?.length ? { missingDocumentBodies: restoreResult.missingDocumentBodies } : {})
   };
 }

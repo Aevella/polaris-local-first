@@ -1,3 +1,9 @@
+import { createPersonaTemplate } from '../../config/persona/personaBuilder';
+import { rebuildConversationToolLedger } from '../../engines/toolLedger';
+import { assembleAssistantContext } from '../../engines/request/requestContext';
+import { prepareConversationMessages } from '../../engines/request/requestConversationPreparation';
+import { createStreamingReplyCollector } from '../../engines/chat-api/chatApiStreamingCollector';
+import type { ToolInvocation } from '../../types/domain';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatMessage, ConversationTaskState, ToolLedgerEntry } from '../../types/domain';
 import { createConversationTaskShell } from '../../engines/conversationTask';
@@ -1435,5 +1441,145 @@ describe('requestReply task activation', () => {
       message.role === 'system'
       && message.content.includes('流式连接提前结束')
     )).toBe(true);
+  });
+});
+
+
+describe('window settings request projection', () => {
+  it.each(['user', 'assistant'] as const)('sends only %s-anchored history and the selected image policy without deleting stored history', async (role) => {
+    requestCollaboratorReplyMock.mockReset();
+    requestCollaboratorReplyMock.mockResolvedValueOnce({ content: 'done', finishReason: 'stop' });
+    const messages: ChatMessage[] = [
+      { id: 'old', role: 'user', content: 'before anchor', timestamp: 1 },
+      { id: 'anchor', role, content: 'after anchor', timestamp: 2 }
+    ];
+    const stored: ChatMessage[] = [...messages];
+    const persona = createPersonaTemplate({ id: 'pharos', name: 'Pharos', description: '' });
+    persona.advanced.modelOverride = 'old-role-model';
+    const snapshot = buildRequestSnapshot(null, {
+      activeCollaborator: persona, personas: [persona],
+      requestContext: { mode: 'fromMessage', anchorMessageId: 'anchor' },
+      windowPreferences: { modelBinding: { providerId: 'provider-1', model: 'test-model' }, historicalImagePolicy: 'currentTurnOnly', composerReturnKeyBehavior: 'automatic', mcpScope: { mode: 'inherit' } }
+    });
+    await requestReply({
+      ui: { abortControllerRef: { current: null }, setSending: vi.fn(), setStreaming: vi.fn(), streamingLifecycleReleaseRef: { current: null } },
+      chat: {
+        addMessage: (_id, message) => { stored.push(message); },
+        appendRuntimeFeedbackEvent: vi.fn(),
+        findConversation: () => ({ id: 'window', title: 'Window', collaboratorId: 'pharos' }),
+        insertMessageBefore: vi.fn(),
+        findConversationMessage: (_id, messageId) => stored.find(message => message.id === messageId),
+        getConversationMessages: () => stored,
+        replaceConversationMessages: vi.fn(),
+        getConversationTask: () => null,
+        setConversationTask: vi.fn(),
+        updateMessage: (_id, messageId, patch) => { const item = stored.find(message => message.id === messageId); if (item) Object.assign(item, patch); },
+        persistToDb: async () => {}
+      },
+      executeToolActions: async () => [], writableConversation: buildWritableConversation(messages), conversationId: 'window', collaboratorId: 'pharos', messages, requestSnapshot: snapshot
+    });
+    expect(requestCollaboratorReplyMock.mock.calls[0][0]).toMatchObject({ messages: [messages[1]], historicalImagePolicy: 'currentTurnOnly' });
+    expect(requestCollaboratorReplyMock.mock.calls[0][0].persona.advanced.modelOverride).toBe('test-model');
+    expect(persona.advanced.modelOverride).toBe('old-role-model');
+    expect(stored[0].id).toBe('old');
+  });
+});
+
+
+describe('reply history continuity', () => {
+  function setup() {
+    vi.stubGlobal('window', {
+      setTimeout, clearTimeout,
+      requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(() => callback(0), 0),
+      cancelAnimationFrame: (id: number) => clearTimeout(id)
+    });
+    requestCollaboratorReplyMock.mockReset();
+    resolveMcpToolCatalogMock.mockResolvedValue({ tools: [], errors: [] });
+    const ui: Parameters<typeof requestReply>[0]['ui'] = {
+      abortControllerRef: { current: null }, setSending: vi.fn(), setStreaming: vi.fn(),
+      streamingLifecycleReleaseRef: { current: null }
+    };
+    let stored: ChatMessage[] = [{ id: 'user-continuity', role: 'user', content: '保存执行结果', timestamp: 1 }];
+    let persisted: ChatMessage[] = [];
+    const chat: Parameters<typeof requestReply>[0]['chat'] = {
+      addMessage: (_id, message) => { stored = [...stored, message]; },
+      appendRuntimeFeedbackEvent: vi.fn(),
+      findConversation: () => ({ id: 'continuity', title: 'Continuity', collaboratorId: 'pharos', toolLedger: rebuildConversationToolLedger(stored) }),
+      insertMessageBefore: (_id, beforeId, message) => {
+        const index = stored.findIndex(item => item.id === beforeId);
+        stored = [...stored.slice(0, index), message, ...stored.slice(index)];
+      },
+      findConversationMessage: (_id, messageId) => stored.find(message => message.id === messageId),
+      getConversationMessages: () => stored,
+      replaceConversationMessages: (_id, messages) => { stored = messages; },
+      getConversationTask: () => null,
+      setConversationTask: vi.fn(),
+      updateMessage: (_id, messageId, patch) => { stored = stored.map(item => item.id === messageId ? { ...item, ...patch } : item); },
+      persistToDb: async () => { persisted = structuredClone(stored); }
+    };
+    const run = (executeToolActions: Parameters<typeof requestReply>[0]['executeToolActions'] = async () => []) => requestReply({
+      ui, chat, executeToolActions, writableConversation: buildWritableConversation(stored), conversationId: 'continuity', collaboratorId: 'pharos',
+      messages: stored, requestSnapshot: buildRequestSnapshot(null, { enabledToolGroups: { ...buildRequestSnapshot(null).enabledToolGroups, proactive: true } })
+    });
+    const context = () => assembleAssistantContext({
+      messages: prepareConversationMessages(persisted, null).messages,
+      toolLedger: rebuildConversationToolLedger(persisted)
+    }).segments.find(segment => segment.kind === 'conversation')?.messages ?? [];
+    return { ui, chat, run, context, stored: () => stored, persisted: () => persisted };
+  }
+
+  it('persists all Responses message items and replays the full reply on the next turn', async () => {
+    const harness = setup();
+    const narration = '这是一段已经显示出来的长回复。'.repeat(200);
+    requestCollaboratorReplyMock.mockImplementationOnce(async ({ onProgress }) => {
+      const collector = createStreamingReplyCollector('test-model', onProgress);
+      const push = (payload: unknown) => collector.pushTextChunk(`data: ${JSON.stringify(payload)}\n\n`, true);
+      push({ type: 'response.output_text.delta', delta: narration });
+      await new Promise(resolve => setTimeout(resolve, 5));
+      expect(harness.stored().find(message => message.role === 'assistant')?.content).toBe(narration);
+      push({ type: 'response.output_text.delta', delta: '…' });
+      push({ type: 'response.completed', response: { output: [
+        { type: 'message', content: [{ type: 'output_text', text: narration }] },
+        { type: 'message', content: [{ type: 'output_text', text: '…' }] }
+      ] } });
+      return collector.finish();
+    });
+    expect(await harness.run()).toEqual({ status: 'completed' });
+    expect(harness.persisted().find(message => message.role === 'assistant')?.content).toBe(narration + '…');
+    expect(harness.context().find(message => message.role === 'assistant')?.content).toBe(narration + '…');
+  });
+
+  it('keeps executed tool calls and receipts when stopped after a tool-only reply', async () => {
+    const harness = setup();
+    requestCollaboratorReplyMock.mockResolvedValueOnce({
+      content: '', finishReason: 'tool_calls',
+      nativeToolCalls: [{ id: 'call-rules', name: 'listProactiveMessageRules', argumentsText: '{}' }]
+    });
+    const execute = vi.fn<Parameters<typeof requestReply>[0]['executeToolActions']>(async (_id, actions, options) => {
+      const toolInvocation: ToolInvocation = {
+        id: 'receipt-rules', kind: 'listProactiveMessageRules', status: 'executed', title: '查看主动消息规则', summary: '已查看主动消息规则 · 3 条',
+        originMessageId: options?.beforeMessageId, toolCallId: options?.toolCallIds?.[0]
+      };
+      harness.chat.addMessage(buildWritableConversation(harness.stored()), { id: toolInvocation.id, role: 'system', content: toolInvocation.summary, timestamp: Date.now(), toolInvocation });
+      harness.ui.abortControllerRef.current?.abort();
+      return [{ action: actions[0], status: 'executed', path: 'direct', toolInvocation }];
+    });
+    expect(await harness.run(execute)).toEqual({ status: 'aborted' });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(harness.persisted().some(message => message.toolInvocation?.id === 'receipt-rules')).toBe(true);
+    const replay = harness.context();
+    expect(replay.find(message => message.role === 'assistant')?.toolCalls?.[0]?.name).toBe('listProactiveMessageRules');
+    expect(replay.find(message => message.role === 'tool')?.toolResult).toMatchObject({ toolCallId: 'call-rules', status: 'executed' });
+  });
+
+  it('removes only its empty placeholder when stopped, preserving messages added during the request', async () => {
+    const harness = setup();
+    requestCollaboratorReplyMock.mockImplementationOnce(async () => {
+      harness.chat.addMessage(buildWritableConversation(harness.stored()), { id: 'concurrent-user', role: 'user', content: '另一条真实消息', timestamp: Date.now() });
+      harness.ui.abortControllerRef.current?.abort();
+      const error = new Error('Stopped'); error.name = 'AbortError'; throw error;
+    });
+    expect(await harness.run()).toEqual({ status: 'aborted' });
+    expect(harness.persisted().map(message => message.id)).toEqual(['user-continuity', 'concurrent-user']);
   });
 });

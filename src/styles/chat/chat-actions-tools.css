@@ -23,10 +23,6 @@
   margin-top: 12px;
 }
 
-.chat-flow.chat-flow--message-editing-text-interaction {
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: auto;
-}
 .message-edit-panel {
   display: flex;
   flex-direction: column;

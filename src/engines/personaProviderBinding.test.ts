@@ -1,11 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import {
-  DEFAULT_PERSONAS,
-  POLARIS_ASSISTANT_DEFAULT_MODEL,
-  POLARIS_ASSISTANT_DEFAULT_PROVIDER_ID,
-  POLARIS_ASSISTANT_PERSONA_ID
-} from '../config/persona/personaBuilder';
 import { POLARIS_PUBLIC_PROVIDER } from './freeProvider';
+import { describe, expect, it } from 'vitest';
 import { resolvePersonaProviderBinding } from './personaProviderBinding';
 import type { Persona, ProviderProfile } from '../types/domain';
 
@@ -149,18 +143,19 @@ describe('resolvePersonaProviderBinding', () => {
     expect(result.api.model).toBe('global-model');
   });
 
-  it('pins Xiao Assistant to the built-in Polaris product guide model', () => {
-    const assistant = DEFAULT_PERSONAS.find((persona) => persona.id === POLARIS_ASSISTANT_PERSONA_ID);
-    expect(assistant).toBeDefined();
-
-    const result = resolvePersonaProviderBinding({
-      globalApi,
-      providers: [POLARIS_PUBLIC_PROVIDER, globalApi],
-      persona: assistant
-    });
-
-    expect(result.fixedProviderId).toBe(POLARIS_ASSISTANT_DEFAULT_PROVIDER_ID);
-    expect(result.api.id).toBe(POLARIS_ASSISTANT_DEFAULT_PROVIDER_ID);
-    expect(result.api.model).toBe(POLARIS_ASSISTANT_DEFAULT_MODEL);
+  it('uses a window route and model without changing the collaborator or global provider', () => {
+    const persona = createPersona({ providerId: 'global', modelOverride: 'role-model' });
+    const args = { globalApi, providers: [globalApi, kimiApi], persona };
+    expect(resolvePersonaProviderBinding({ ...args, windowBinding: { providerId: 'kimi', model: 'window-model' } }).api).toMatchObject({ id: 'kimi', model: 'window-model' });
+    expect(resolvePersonaProviderBinding({ ...args, windowBinding: { providerId: 'global', model: '' } }).api.model).toBe('global-model');
+    expect(resolvePersonaProviderBinding({ ...args, windowBinding: { providerId: 'missing', model: 'bad' } }).api.model).toBe('role-model');
+    expect(resolvePersonaProviderBinding(args).api.model).toBe('role-model');
+    expect(persona.advanced.modelOverride).toBe('role-model');
+    expect(globalApi.model).toBe('global-model');
   });
+  it('keeps the built-in route model authoritative', () => {
+    const result = resolvePersonaProviderBinding({ globalApi, providers: [POLARIS_PUBLIC_PROVIDER], windowBinding: { providerId: POLARIS_PUBLIC_PROVIDER.id, model: 'unsupported' } });
+    expect(result.api.model).toBe(POLARIS_PUBLIC_PROVIDER.model);
+  });
+
 });

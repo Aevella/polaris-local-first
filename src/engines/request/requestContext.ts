@@ -1,5 +1,6 @@
 import type {
   ChatNativeToolCall,
+  ChatProviderReasoningState,
   PersonaMemoryReferenceDoc,
   ToolLedgerEntry,
   ToolInvocationStatus,
@@ -55,10 +56,12 @@ export type AssistantContextToolResult = {
 };
 
 export type AssistantContextMessage = {
+  isToolTranscript?: boolean;
   role: AssistantContextRole;
   content: AssistantMessageContent;
   cachePrefixEligible?: boolean;
   thinkingText?: string;
+  providerReasoning?: ChatProviderReasoningState;
   toolCalls?: AssistantContextToolCall[];
   toolResult?: AssistantContextToolResult;
   promptPartName?: AssistantPromptPartName;
@@ -343,7 +346,8 @@ export function assembleAssistantContext(params: AssembleAssistantContextParams)
           if (resolvedTranscriptToolResult) {
             return [{
               role: 'user' as const,
-              content: buildTranscriptToolResultContent(resolvedTranscriptToolResult)
+              content: buildTranscriptToolResultContent(resolvedTranscriptToolResult),
+              isToolTranscript: true
             }];
           }
 
@@ -362,6 +366,9 @@ export function assembleAssistantContext(params: AssembleAssistantContextParams)
             thinkingText: message.role === 'assistant' && message.thinkingText?.trim()
               ? message.thinkingText
               : undefined,
+            ...(message.role === 'assistant' && message.providerReasoning
+              ? { providerReasoning: message.providerReasoning }
+              : {}),
             toolCalls: message.role === 'assistant' ? resolvedToolCalls : undefined
           };
           return message.id === latestUserMessageId && latestUserContextMessages.length

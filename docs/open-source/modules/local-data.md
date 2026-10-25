@@ -57,8 +57,9 @@ LocalData is the durable facts contract for app data.
   the active row. Current rows must pass strict hydration and coherence validation before the
   repository advances the pointer; failure preserves the prior pointer and rows and reports
   degraded integrity without content.
-- Strict backup reads reject any incomplete active row. Ordinary hydration isolates an optional damaged
-  row, loads healthy rows, and records a degraded integrity event without projecting a failed body as empty.
+- Strict backup reads reject incomplete active rows except confirmed missing persona document bodies,
+  which retain an explicit directory marker and archive report. Ordinary hydration isolates an optional
+  damaged row, loads healthy rows, and never projects a failed body as a successful empty read.
 
 ## Tests And Verification
 

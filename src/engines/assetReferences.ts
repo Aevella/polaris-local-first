@@ -20,3 +20,31 @@ export function extractPolarisAssetIds(text: string | undefined | null) {
   }
   return Array.from(ids);
 }
+
+function replacePolarisAssetUrls(value: string, assetIdMap: ReadonlyMap<string, string>) {
+  return value.replace(POLARIS_ASSET_URL_PATTERN, (match, rawId: string) => {
+    const nextId = assetIdMap.get(decodeAssetId(rawId));
+    return nextId ? `polaris-asset://${encodeURIComponent(nextId)}` : match;
+  });
+}
+
+export function remapAssetReferences(value: unknown, assetIdMap: ReadonlyMap<string, string>, seen = new Map<object, unknown>()): unknown {
+  if (typeof value === 'string') {
+    return assetIdMap.get(value) ?? replacePolarisAssetUrls(value, assetIdMap);
+  }
+  if (!value || typeof value !== 'object') return value;
+  const cached = seen.get(value);
+  if (cached) return cached;
+  if (Array.isArray(value)) {
+    const next: unknown[] = [];
+    seen.set(value, next);
+    value.forEach((item) => next.push(remapAssetReferences(item, assetIdMap, seen)));
+    return next;
+  }
+  const next: Record<string, unknown> = {};
+  seen.set(value, next);
+  for (const [key, item] of Object.entries(value)) {
+    next[key] = remapAssetReferences(item, assetIdMap, seen);
+  }
+  return next;
+}

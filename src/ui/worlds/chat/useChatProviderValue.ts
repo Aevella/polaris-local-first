@@ -36,6 +36,8 @@ import { useChatStore } from '../../../stores/chatStore';
 import { createChatSlashCommandHandler } from '../../../app/chat/chatSlashCommands';
 import { setTaskModeEnabledForConversations } from '../../../app/chat/taskModeToggle';
 import { useI18n, type I18nTranslator } from '../../../i18n';
+import { resolvePersonaProviderBinding } from '../../../engines/personaProviderBinding';
+import { requestThinkingTranslation } from '../../../engines/thinkingTranslation';
 
 type UseChatProviderValueArgs = {
   ui: ChatUiState;
@@ -101,7 +103,8 @@ function buildComposerSection(args: {
     toolPromptPreferences: args.store.runtime.toolPromptPreferences,
     taskModeEnabled: args.store.runtime.taskModeEnabled,
     themeToolMode: args.store.space.theme.toolMode,
-    canReviveTheme: args.store.space.theme.skinHistory.length > 0
+    canReviveTheme: args.store.space.theme.skinHistory.length > 0,
+    reasoningStrength: activeConversation?.reasoningStrength ?? 'automatic'
   };
 }
 
@@ -150,6 +153,7 @@ function buildActionsSection(args: {
   }) => Promise<ChatReplyRunResult>;
   openToolbox: () => void;
   themeSession: ReturnType<typeof useThemeSessionActions>;
+  persona: ChatDerivedState['persona'];
   t: Translate;
 }): ChatContextActionsValue {
   return {
@@ -161,6 +165,7 @@ function buildActionsSection(args: {
     },
     retry: args.chatActions.retryLatestAssistant,
     editMessage: args.ui.startEditingMessage,
+    deleteUserMessage: args.chatActions.deleteUserMessage,
     editAssistantMessage: args.chatActions.updateAssistantMessage,
     cacheAssistantSpeech: args.chatActions.cacheAssistantSpeech,
     forkFromMessage: args.chatActions.forkConversationFromMessage,
@@ -178,6 +183,20 @@ function buildActionsSection(args: {
     openThinkingSummary: (message: ChatMessage) => {
       args.ui.setCollapsedThinkingMessageIds((current) => current.includes(message.id) ? current : [...current, message.id]);
       args.ui.setThinkingSummaryMessageId(message.id);
+    },
+    translateThinking: (sections, targetLanguage, signal) => {
+      const binding = resolvePersonaProviderBinding({
+        globalApi: args.store.runtime.api,
+        providers: args.store.runtime.providers,
+        persona: args.persona
+      });
+      return requestThinkingTranslation({
+        api: binding.api,
+        advanced: args.persona?.advanced,
+        sections,
+        targetLanguage,
+        signal
+      });
     },
     toggleCodeExpanded: (messageId: string) =>
       args.ui.setExpandedCodeMessageIds((current) =>
@@ -209,6 +228,12 @@ function buildActionsSection(args: {
     codeCardAction: args.toolActions.handleCodeCardAction,
     setInputDraft: args.store.chat.setInputDraft,
     setConversationDraft: args.store.chat.setConversationDraft,
+    setConversationReasoningStrength: (strength) => {
+      const activeConversationId = args.store.chat.activeConversationId;
+      if (!activeConversationId) return;
+      args.store.chat.setConversationReasoningStrength(activeConversationId, strength);
+      args.ui.setCommandStatus(args.t('chat.reasoning.changed'));
+    },
     setPendingCardReference: (reference) => {
       args.store.space.setPendingCardReference(reference);
       if (reference) {
@@ -419,7 +444,8 @@ export function useChatProviderValue({
     derived,
     runReply,
     submitToolCommand: submitSlashCommand,
-    activeSubmitFingerprintRef
+    activeSubmitFingerprintRef,
+    t
   });
   return useMemo(() => {
     const activeConversation = derived.activeConversation;
@@ -439,6 +465,7 @@ export function useChatProviderValue({
       runReply,
       openToolbox,
       themeSession,
+      persona: derived.persona,
       t
     });
 

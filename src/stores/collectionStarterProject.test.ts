@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { POLARIS_ASSISTANT_PERSONA_ID } from '../config/persona/personaBuilder';
+import { RETIRED_POLARIS_ASSISTANT_PERSONA_ID } from '../config/persona/personaBuilder';
 import { checkRoomProjectPreview } from '../engines/roomProjectPreview';
 import { reconcileRoomProjects } from '../engines/roomProjects';
 import type { ProjectFile, RoomProject } from '../types/domain';
@@ -10,15 +10,15 @@ import {
 } from './collectionStarterProject';
 
 describe('createStarterWorkbenchProjectBundle', () => {
-  it('builds a stable runnable assistant-owned workbench workspace', () => {
+  it('builds a stable runnable Pharos-owned workbench workspace', () => {
     const bundle = createStarterWorkbenchProjectBundle(1000);
 
     expect(bundle.project.id).toBe(STARTER_WORKBENCH_PROJECT_ID);
     expect(bundle.project.title).toBe('Polaris 小工作台');
     expect(bundle.project.slug).toBe('polaris-workbench');
-    expect(bundle.project.ownerCollaboratorId).toBe(POLARIS_ASSISTANT_PERSONA_ID);
-    expect(bundle.project.coverNote).toContain('小助手家的默认工作区');
-    expect(bundle.project.tags).toEqual(['工作区', '小助手', 'starter']);
+    expect(bundle.project.ownerCollaboratorId).toBe('pharos');
+    expect(bundle.project.coverNote).toContain('Pharos 房间的默认工作区');
+    expect(bundle.project.tags).toEqual(['工作区', 'Pharos', 'starter']);
     expect(bundle.project.source).toBe('chat-generated');
     expect(bundle.project.createdAt).toBe(1000);
     expect(bundle.project.updatedAt).toBe(1000);
@@ -28,7 +28,7 @@ describe('createStarterWorkbenchProjectBundle', () => {
       'app.js',
       'README.md'
     ]);
-    expect(bundle.files.every((file) => file.ownerCollaboratorId === POLARIS_ASSISTANT_PERSONA_ID)).toBe(true);
+    expect(bundle.files.every((file) => file.ownerCollaboratorId === 'pharos')).toBe(true);
   });
 
   it('keeps the workspace extension path obvious and review-safe', () => {
@@ -58,7 +58,7 @@ describe('createStarterWorkbenchProjectBundle', () => {
     expect(app?.content).toContain('复制文档');
     expect(app?.content).toContain('buildMarkdown');
     expect(readme?.content).toContain('# Polaris 小工作台');
-    expect(readme?.content).toContain('这是小助手家的默认工作区');
+    expect(readme?.content).toContain('这是 Pharos 房间的默认工作区');
     expect(readme?.content).toContain('可以直接编辑、预览和复制');
 
     const combined = bundle.files.map((file) => file.content).join('\n');
@@ -94,7 +94,7 @@ describe('includeDefaultCollectionProjects', () => {
 
     expect(result.roomProjects).toHaveLength(1);
     expect(result.roomProjects[0].id).toBe(STARTER_WORKBENCH_PROJECT_ID);
-    expect(result.roomProjects[0].ownerCollaboratorId).toBe(POLARIS_ASSISTANT_PERSONA_ID);
+    expect(result.roomProjects[0].ownerCollaboratorId).toBe('pharos');
     expect(result.projectFiles).toHaveLength(4);
     expect(result.projectFiles.every((file) => file.projectId === STARTER_WORKBENCH_PROJECT_ID)).toBe(true);
   });
@@ -138,7 +138,7 @@ describe('includeDefaultCollectionProjects', () => {
     ]));
   });
 
-  it('migrates the untouched Pharos phone starter into the assistant workbench', () => {
+  it('migrates the untouched Pharos phone starter into the current workbench', () => {
     const bundle = createStarterWorkbenchProjectBundle(1000);
     const legacyProject: RoomProject = {
       ...bundle.project,
@@ -154,10 +154,10 @@ describe('includeDefaultCollectionProjects', () => {
     expect(result.roomProjects[0]).toMatchObject({
       title: 'Polaris 小工作台',
       slug: 'polaris-workbench',
-      ownerCollaboratorId: POLARIS_ASSISTANT_PERSONA_ID,
-      tags: ['工作区', '小助手', 'starter']
+      ownerCollaboratorId: 'pharos',
+      tags: ['工作区', 'Pharos', 'starter']
     });
-    expect(result.roomProjects[0].coverNote).toContain('小助手家的默认工作区');
+    expect(result.roomProjects[0].coverNote).toContain('Pharos 房间的默认工作区');
     expect(result.roomProjects[0].createdAt).toBe(1000);
     expect(result.roomProjects[0].updatedAt).toBe(2000);
   });
@@ -175,7 +175,7 @@ describe('includeDefaultCollectionProjects', () => {
     expect(result.projectFiles.find((file) => file.id === editedFile.id)?.content).toBe('console.log("user edited");');
   });
 
-  it('refreshes old phone starter files into the assistant workbench', () => {
+  it('refreshes old phone starter files into the current workbench', () => {
     const bundle = createStarterWorkbenchProjectBundle(1000);
     const staleIndex = {
       ...bundle.files.find((file) => file.filePath === 'index.html')!,
@@ -212,11 +212,11 @@ describe('includeDefaultCollectionProjects', () => {
       2000
     );
 
-    expect(result.projectFiles.every((file) => file.ownerCollaboratorId === POLARIS_ASSISTANT_PERSONA_ID)).toBe(true);
+    expect(result.projectFiles.every((file) => file.ownerCollaboratorId === 'pharos')).toBe(true);
     expect(result.projectFiles.find((file) => file.filePath === 'index.html')?.content).toContain('Polaris 小工作台');
     expect(result.projectFiles.find((file) => file.filePath === 'styles.css')?.content).toContain('.workbench-shell');
     expect(result.projectFiles.find((file) => file.filePath === 'app.js')?.content).toContain('polaris-starter-workbench-state');
-    expect(result.projectFiles.find((file) => file.filePath === 'README.md')?.content).toContain('小助手家的默认工作区');
+    expect(result.projectFiles.find((file) => file.filePath === 'README.md')?.content).toContain('Pharos 房间的默认工作区');
     expect(result.projectFiles.every((file) => file.updatedAt === 2000)).toBe(true);
   });
 });

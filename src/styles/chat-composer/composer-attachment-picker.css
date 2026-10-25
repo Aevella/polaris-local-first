@@ -187,3 +187,75 @@
   font-weight: 520;
   color: var(--text);
 }
+.conversation-reasoning-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+.conversation-reasoning-picker-heading {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.conversation-reasoning-picker-heading span {
+  max-width: 42rem;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.conversation-reasoning-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.conversation-reasoning-option {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 34%, transparent);
+  border-radius: 17px;
+  background: color-mix(in srgb, var(--surface) 54%, transparent);
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+.conversation-reasoning-option:hover,
+.conversation-reasoning-option:focus-visible {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--border-hover) 70%, transparent);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+}
+.conversation-reasoning-option.selected {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-hover) 60%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent-soft) 22%, var(--surface-solid) 78%), color-mix(in srgb, var(--surface) 82%, transparent));
+  color: var(--accent);
+}
+.conversation-reasoning-mark {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--accent) 72%, var(--text-muted) 28%);
+  background: color-mix(in srgb, var(--accent-soft) 20%, transparent);
+}
+.conversation-reasoning-mark.strength-off { color: var(--text-muted); background: color-mix(in srgb, var(--border) 18%, transparent); }
+.conversation-reasoning-mark.strength-light { opacity: 0.68; }
+.conversation-reasoning-mark.strength-medium { opacity: 0.80; }
+.conversation-reasoning-mark.strength-high { opacity: 0.92; }
+.conversation-reasoning-mark.strength-extreme { opacity: 1; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 30%, transparent)); }
+.conversation-reasoning-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.conversation-reasoning-copy strong { color: var(--text); font-size: 13px; font-weight: 560; }
+.conversation-reasoning-copy span { color: var(--text-muted); font-size: 11px; line-height: 1.4; }

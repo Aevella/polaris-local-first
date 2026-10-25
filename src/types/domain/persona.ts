@@ -1,3 +1,4 @@
+import type { ConversationWindowDefaults } from './chat';
 import type { AvatarDisplaySize, AvatarIconId, AvatarShape, PersonaAttachmentId, PersonaBaseId, PersonaCuriosityId, PersonaDisagreementId, PersonaExpressionId, PersonaGeneratedPromptMode, PersonaHumorId, PersonaInitiativeId, PersonaMemoryStyleId, PersonaRelationshipId, PersonaSelfDisclosureId, PersonaSilenceId, PersonaTagSelection } from './primitives';
 
 export interface PersonaDeepDefinition {
@@ -186,6 +187,7 @@ export interface PersonaMemoryReferenceDoc {
   content: string;
   charCount?: number;
   contentLoaded?: boolean;
+  bodyStatus?: 'missing';
   source: PersonaMemoryReferenceDocSource;
   updatedAt: number;
 }
@@ -213,6 +215,7 @@ export interface PersonaMcpSettings {
 }
 
 export interface Persona {
+  conversationDefaults?: ConversationWindowDefaults;
   id: string;
   systemRole: 'default' | null;
   name: string;

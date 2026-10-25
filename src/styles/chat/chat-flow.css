@@ -74,3 +74,7 @@
   font-size: 12.5px;
   line-height: 1.72;
 }
+
+.chat-context-start-divider { display: flex; align-items: center; gap: 12px; margin: 12px 0 20px; color: var(--cool-text-muted); font-size: 11px; opacity: .65; }
+.chat-context-start-divider::before, .chat-context-start-divider::after { content: ''; flex: 1; border-top: 1px dashed currentColor; }
+.chat-context-start-divider span { white-space: nowrap; }

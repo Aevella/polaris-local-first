@@ -109,6 +109,14 @@
   outline: none;
   transform: translateY(-1px);
 }
+.user-bubble-action-btn.danger {
+  color: #bd5a5a;
+}
+.user-bubble-action-btn.danger:hover,
+.user-bubble-action-btn.danger:focus-visible {
+  background: rgba(220, 101, 101, 0.1);
+  color: #a84444;
+}
 .bubble-frame.assistant.streaming-stage .message-rich-text { animation: streamingCopyIn 140ms ease both; }
 .bubble-frame.assistant.streaming-live .bubble.assistant {
   padding-bottom: 10px;

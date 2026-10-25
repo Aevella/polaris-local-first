@@ -271,4 +271,24 @@ describe('systemBackupFiles availability', () => {
     });
     expect(mocks.systemFile.addZipTextEntry).not.toHaveBeenCalled();
   });
+
+  it.each(['ios', 'android'])('keeps surrogate pairs intact at %s ZIP text chunk boundaries', async (platform) => {
+    capacitorState.isNativePlatform = true;
+    capacitorState.platform = platform;
+    mocks.systemFile.beginZipExport.mockResolvedValue({ exportId: 'zip-export' });
+    const text = `${'a'.repeat(128 * 1024 - 1)}😀tail`;
+
+    const exportId = await beginZipExportViaSystemFiles('polaris-export.zip');
+    await addZipTextEntryViaSystemFiles(exportId, 'stores/chat.json', text);
+
+    const chunks = mocks.systemFile.appendZipTextChunk.mock.calls.map(([options]) => options.text);
+    expect(chunks).toHaveLength(2);
+    expect(chunks.join('')).toBe(text);
+    expect(chunks[0]).toBe('a'.repeat(128 * 1024 - 1));
+    expect(chunks[1]).toBe('😀tail');
+    for (const chunk of chunks) {
+      expect(chunk).not.toMatch(/[\uD800-\uDBFF]$/u);
+      expect(chunk).not.toMatch(/^[\uDC00-\uDFFF]/u);
+    }
+  });
 });

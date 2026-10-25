@@ -19,6 +19,8 @@ import { MessageContent } from './MessageContent';
 import { MessageEditInline } from './MessageEditInline';
 import { MessageMeta } from './MessageMeta';
 import { MessageGeneratedImages } from './MessageGeneratedImages';
+import { MessageAudioAttachments } from '../../../media/MessageAudioAttachments';
+import { isPlayableAudioAttachment } from '../../../../engines/attachmentMedia';
 import { MessageToolEvent } from './MessageToolEvent';
 import { isProjectedCodeToolName } from './projectedCodeTools';
 import { buildAssistantSpeechText } from './messageSpeechText';
@@ -47,7 +49,7 @@ export type MessageRowState = {
 export type MessageRowActions = {
   removeEditingAttachment: (attachmentId: string) => void;
   updateEditingDraft: (value: string) => void;
-  commitEdit: (message: ChatMessage) => Promise<void>;
+  commitEdit: (message: ChatMessage, mode?: 'retry' | 'save-only') => Promise<void>;
   cancelEdit: () => void;
   toggleThinkingCollapsed: (messageId: string) => void;
   openThinkingSummary: (message: ChatMessage) => void;
@@ -57,8 +59,10 @@ export type MessageRowActions = {
   codeCardAction: (message: ChatMessage) => void;
   retry: (message: ChatMessage) => Promise<void>;
   editMessage: (message: ChatMessage) => void;
+  deleteUserMessage: (message: ChatMessage) => void;
   editAssistantMessage: (message: ChatMessage, content: string) => void;
   cacheAssistantSpeech: (message: ChatMessage, voiceCache: ChatMessageVoiceCache) => void;
+  setContextStart?: (message: ChatMessage) => void;
   forkFromMessage: (message: ChatMessage) => void;
   applyToolPreview: (message: ChatMessage) => void;
   saveToolPreview: (message: ChatMessage) => void;
@@ -91,6 +95,7 @@ type MessageRowProps = {
   userBubbleIndex?: number;
   isAssistantContinuation?: boolean;
   isTerminalAssistantInUserTurn?: boolean;
+  assistantReplyContent?: string;
   taskReceiptAction?: MessageTaskReceiptAction | null;
 };
 
@@ -116,6 +121,7 @@ function MessageRowComponent({
   userBubbleIndex,
   isAssistantContinuation = false,
   isTerminalAssistantInUserTurn = true,
+  assistantReplyContent = message.content,
   taskReceiptAction = null
 }: MessageRowProps) {
   const { t } = useI18n();
@@ -165,8 +171,8 @@ function MessageRowComponent({
     [toolMessages]
   );
   const speechContent = useMemo(
-    () => (isAssistantReply ? buildAssistantSpeechText(message.content) : ''),
-    [isAssistantReply, message.content]
+    () => (isAssistantReply ? buildAssistantSpeechText(assistantReplyContent) : ''),
+    [assistantReplyContent, isAssistantReply]
   );
   const currentInteractionTimeMs = () => (
     typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -192,11 +198,17 @@ function MessageRowComponent({
     const generatedImages = tool && tool.status !== 'failed' && tool.status !== 'running'
       ? (toolMessage.attachments ?? []).filter((attachment) => attachment.kind === 'image')
       : [];
+    const generatedAudio = tool && tool.status !== 'failed' && tool.status !== 'running'
+      ? (toolMessage.attachments ?? []).filter(isPlayableAudioAttachment)
+      : [];
     const imagesNode = generatedImages.length > 0 ? (
       <MessageGeneratedImages
         attachments={generatedImages}
         onSave={(attachment) => actions.saveImageAttachment(toolMessage, attachment)}
       />
+    ) : null;
+    const audioNode = generatedAudio.length > 0 ? (
+      <MessageAudioAttachments attachments={generatedAudio} />
     ) : null;
 
     const cardNode = (() => {
@@ -217,20 +229,25 @@ function MessageRowComponent({
       );
     })();
 
-    if (!imagesNode && !cardNode) return null;
+    if (!imagesNode && !audioNode && !cardNode) return null;
     return (
       <>
         {imagesNode}
+        {audioNode}
         {cardNode}
       </>
     );
   };
-  const messageActions = isAssistantReply && !state.editing ? (
+  const messageActions = isAssistantReply
+    && !state.editing
+    && (!message.assistantReplyId || isTerminalAssistantInUserTurn) ? (
     <MessageActions
+      onSetContextStart={!isStreamingLike && isTerminalAssistantInUserTurn && actions.setContextStart ? () => actions.setContextStart?.(message) : undefined}
       canCopyAssistant={message.role === 'assistant' && !message.toolInvocation && !isStreamingLike && isTerminalAssistantInUserTurn && Boolean(message.content.trim())}
       canOpenThinkingSummary={showThinking && showChatAvatars && Boolean(message.thinkingText)}
       memoryEvidence={message.memoryEvidence ?? null}
       canRetryAssistant={state.canRetry}
+      retryAssistantLabel={message.replyIncomplete ? t('chat.messageActions.continueInterrupted') : undefined}
       canEditAssistant={state.canEditAssistant}
       canForkAssistant={state.canEditAssistant}
       taskReceiptAction={taskReceiptAction}
@@ -238,7 +255,7 @@ function MessageRowComponent({
       codeCardActionMode={state.codeCardActionMode}
       codeCardProgressLabel={codeCardProgressLabel}
       isThinkingActive={isStreamingLike}
-      messageContent={message.content}
+      messageContent={assistantReplyContent}
       speechContent={speechContent}
       speechCache={message.voiceCache ?? null}
       role={message.role === 'assistant' ? 'assistant' : 'user'}
@@ -293,6 +310,13 @@ function MessageRowComponent({
     runSelectionAction(() => {
       setUserActionMenuOpen(false);
       actions.editMessage(message);
+    }, { settle: 'none' });
+  };
+
+  const deleteUserMessage = () => {
+    runSelectionAction(() => {
+      setUserActionMenuOpen(false);
+      actions.deleteUserMessage(message);
     }, { settle: 'none' });
   };
 
@@ -391,6 +415,13 @@ function MessageRowComponent({
             <Icon name="edit" size={14} />
             <span>{t('chat.messageActions.editAndRetry')}</span>
           </button>
+          {actions.setContextStart && <button type="button" className="user-bubble-action-btn" role="menuitem" onClick={() => { actions.setContextStart?.(message); setUserActionMenuOpen(false); }}>
+            <Icon name="chevron" size={14} /><span>{t('chat.messageActions.contextStart')}</span>
+          </button>}
+          <button type="button" className="user-bubble-action-btn danger" role="menuitem" onClick={deleteUserMessage}>
+            <Icon name="trash" size={14} />
+            <span>{t('chat.messageActions.delete')}</span>
+          </button>
         </div>
       ) : null}
     </div>
@@ -480,6 +511,14 @@ function MessageRowComponent({
                   ))}
                 </div>
               ) : null}
+              {message.replyIncomplete && !isStreamingLike && isTerminalAssistantInUserTurn ? (
+                <div className="system-inline-note message-interruption-note" role="status">
+                  {t('chat.messageActions.interrupted')}
+                  {state.canRetry ? <button type="button" onClick={() => void actions.retry(message)}>
+                    {t('chat.messageActions.continueInterrupted')}
+                  </button> : null}
+                </div>
+              ) : null}
               {messageActions}
             </div>
           </div>
@@ -513,7 +552,8 @@ function MessageRowComponent({
 
 function areMessageRowPropsEqual(previous: MessageRowProps, next: MessageRowProps) {
   return (
-    previous.message === next.message
+    previous.actions.setContextStart === next.actions.setContextStart
+    && previous.message === next.message
     && previous.fallbackAssistantName === next.fallbackAssistantName
     && previous.assistantAvatarUrl === next.assistantAvatarUrl
     && previous.assistantAvatarIconId === next.assistantAvatarIconId
@@ -531,6 +571,7 @@ function areMessageRowPropsEqual(previous: MessageRowProps, next: MessageRowProp
     && previous.userBubbleIndex === next.userBubbleIndex
     && previous.isAssistantContinuation === next.isAssistantContinuation
     && previous.isTerminalAssistantInUserTurn === next.isTerminalAssistantInUserTurn
+    && previous.assistantReplyContent === next.assistantReplyContent
     && previous.taskReceiptAction === next.taskReceiptAction
     && previous.message.memoryEvidence === next.message.memoryEvidence
     && previous.state.editing === next.state.editing

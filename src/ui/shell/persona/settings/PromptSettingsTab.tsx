@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { isProductGuidePersona } from '../../../../engines/personaBuiltin';
 import { Icon, type IconName } from '../../../Icon';
 import { type PersonaTabProps } from '../personaUiShared';
 import { PromptCoreSettingsPage } from './PromptCoreSettingsPage';
@@ -34,10 +33,6 @@ export function PromptSettingsTab({
   useEffect(() => {
     setActivePromptPage('prompt');
   }, [activeCollaboratorId]);
-
-  if (isProductGuidePersona(activePersona)) {
-    return null;
-  }
 
   return (
     <div className="prompt-settings-flow">

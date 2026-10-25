@@ -1,13 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_PERSONAS,
-  BUNDLED_DEFAULT_PERSONA_IDS,
-  POLARIS_ASSISTANT_DEFAULT_MODEL,
-  POLARIS_ASSISTANT_DEFAULT_PROVIDER_ID,
-  POLARIS_ASSISTANT_PERSONA_ID,
+  KNOWN_BUNDLED_PERSONA_IDS,
+  RETIRED_POLARIS_ASSISTANT_PERSONA_ID,
+  RETIRED_POLARIS_ASSISTANT_PROVIDER_ID,
   createPersonaTemplate
 } from '../config/persona/personaBuilder';
-import { migratePersistedPersonaPayload, migratePersistedPersonas, usePersonaStore } from './personaStore';
+import { normalizePersona, migratePersistedPersonaPayload, migratePersistedPersonas, usePersonaStore } from './personaStore';
 import * as personaMemoryDocPersistence from './personaMemoryReferenceDocPersistence';
 
 describe('migratePersistedPersonas', () => {
@@ -34,7 +33,7 @@ describe('migratePersistedPersonas', () => {
     expect(pharos?.compiledPrompt).toBe('用户改过的 Pharos 提示词');
   });
 
-  it('seeds Xiao Assistant into legacy persisted collaborators without restoring Pharos', () => {
+  it('does not seed retired bundled collaborators into persisted data', () => {
     const customPersona = createPersonaTemplate({
       id: 'persona-custom',
       name: '自定义',
@@ -43,20 +42,8 @@ describe('migratePersistedPersonas', () => {
 
     const personas = migratePersistedPersonas([customPersona]);
 
-    expect(personas.map((persona) => persona.id)).toEqual([POLARIS_ASSISTANT_PERSONA_ID, 'persona-custom']);
-    expect(personas.some((persona) => persona.id === 'pharos')).toBe(false);
-  });
-
-  it('does not restore Xiao Assistant after the seed marker exists', () => {
-    const customPersona = createPersonaTemplate({
-      id: 'persona-custom',
-      name: '自定义',
-      description: '用户创建的角色'
-    });
-
-    const personas = migratePersistedPersonas([customPersona], [POLARIS_ASSISTANT_PERSONA_ID]);
-
     expect(personas.map((persona) => persona.id)).toEqual(['persona-custom']);
+    expect(personas.some((persona) => persona.id === 'pharos')).toBe(false);
   });
 
   it('preserves valid avatar logo choices and drops unknown persisted values', () => {
@@ -74,7 +61,7 @@ describe('migratePersistedPersonas', () => {
       userAvatarIconId: 'not-a-logo'
     } as unknown as typeof customPersona;
 
-    const personas = migratePersistedPersonas([customPersona, invalidPersona], [POLARIS_ASSISTANT_PERSONA_ID]);
+    const personas = migratePersistedPersonas([customPersona, invalidPersona]);
 
     expect(personas.find((persona) => persona.id === 'persona-custom')).toMatchObject({
       assistantAvatarIconId: 'claude',
@@ -86,109 +73,84 @@ describe('migratePersistedPersonas', () => {
     });
   });
 
-  it('records Xiao Assistant as seeded when persisted collaborators already contain it', () => {
-    const assistant = DEFAULT_PERSONAS.find((persona) => persona.id === POLARIS_ASSISTANT_PERSONA_ID);
-    expect(assistant).toBeDefined();
-
-    const migrated = migratePersistedPersonaPayload({ personas: [assistant!] });
-
-    expect(migrated.personas.map((persona) => persona.id)).toEqual([POLARIS_ASSISTANT_PERSONA_ID]);
-    expect(migrated.seededDefaultPersonaIds).toEqual([POLARIS_ASSISTANT_PERSONA_ID]);
-  });
-
-  it('updates existing Xiao Assistant to the fixed product guide model and latest prompt', () => {
+  it('keeps an existing Xiao Assistant as ordinary user data and retires its fixed product route', () => {
     const staleAssistant = createPersonaTemplate({
-      id: POLARIS_ASSISTANT_PERSONA_ID,
+      id: RETIRED_POLARIS_ASSISTANT_PERSONA_ID,
+      name: '旧小助手',
+      description: '旧描述',
+      compiledPrompt: '旧提示',
+      advanced: {
+        providerId: RETIRED_POLARIS_ASSISTANT_PROVIDER_ID,
+        modelOverride: 'Polaris',
+        showThinking: false
+      }
+    });
+
+    const personas = migratePersistedPersonas([staleAssistant]);
+    const assistant = personas.find((persona) => persona.id === RETIRED_POLARIS_ASSISTANT_PERSONA_ID);
+
+    expect(assistant).toMatchObject({
       name: '旧小助手',
       description: '旧描述',
       compiledPrompt: '旧提示',
       advanced: {
         providerId: '',
-        modelOverride: ''
-      }
-    });
-
-    const personas = migratePersistedPersonas([staleAssistant], [POLARIS_ASSISTANT_PERSONA_ID]);
-    const assistant = personas.find((persona) => persona.id === POLARIS_ASSISTANT_PERSONA_ID);
-
-    expect(assistant).toMatchObject({
-      name: '小助手',
-      description: 'Polaris 使用向导',
-      purpose: '带你认识这个房间。有问题时，可以问北极星小助手。',
-      compiledPrompt: expect.stringContaining('彩色圆形轨道'),
-      advanced: {
-        providerId: POLARIS_ASSISTANT_DEFAULT_PROVIDER_ID,
-        modelOverride: POLARIS_ASSISTANT_DEFAULT_MODEL,
+        modelOverride: '',
         showThinking: false
       }
     });
-    expect(assistant?.compiledPrompt).toContain('readPolarisKnowledge');
-    expect(assistant?.compiledPrompt).toContain('设置 → 工具箱 → 产品知识');
-    expect(assistant?.compiledPrompt).toContain('不是回形针');
-    expect(assistant?.compiledPrompt).toContain('思路摘要入口');
-    expect(assistant?.compiledPrompt).toContain('结构化换肤工具');
-    expect(assistant?.compiledPrompt).toContain('读写 theme.css');
-    expect(assistant?.compiledPrompt).toContain('气泡变成渐变彩色');
-    expect(assistant?.compiledPrompt).toContain('上手陪练');
-    expect(assistant?.compiledPrompt).toContain('给一个低风险的小示范');
-    expect(assistant?.compiledPrompt).toContain('我先给你写张小卡片试试');
-    expect(assistant?.compiledPrompt).toContain('用户正在输入框里和你说话时，通常是在聊天世界');
-    expect(assistant?.compiledPrompt).toContain('房间世界是点顶栏切换过去的收藏空间');
-    expect(assistant?.compiledPrompt).toContain('一个协作者对应一个房间');
-    expect(assistant?.compiledPrompt).toContain('Pharos（灯塔）');
-    expect(assistant?.compiledPrompt).toContain('任务模式。原理是给当前对话挂一个任务面板和持续工作状态');
-    expect(assistant?.compiledPrompt).toContain('原理是粒度不同');
-    expect(assistant?.compiledPrompt).toContain('API / 供应商是模型线路配置');
-    expect(assistant?.compiledPrompt).toContain('工具箱是内置工具开关');
-    expect(assistant?.compiledPrompt).toContain('MCP 是外部工具接入');
-    expect(assistant?.compiledPrompt).toContain('产品知识工具默认适合小助手使用');
-    expect(assistant?.compiledPrompt).toContain('供应商负责“哪个模型来回答”');
-    expect(assistant?.compiledPrompt).not.toContain('精修');
+  });
+
+  it('preserves a user-selected provider on an existing Xiao Assistant', () => {
+    const assistant = createPersonaTemplate({
+      id: RETIRED_POLARIS_ASSISTANT_PERSONA_ID,
+      name: '小助手',
+      description: '用户留下的角色',
+      advanced: { providerId: 'provider-custom', modelOverride: 'custom-model' }
+    });
+
+    const personas = migratePersistedPersonas([assistant]);
+
+    expect(personas[0].advanced).toMatchObject({
+      providerId: 'provider-custom',
+      modelOverride: 'custom-model'
+    });
   });
 
   it('removes bundled defaults from native app persona hydration', () => {
-    const assistant = DEFAULT_PERSONAS.find((persona) => persona.id === POLARIS_ASSISTANT_PERSONA_ID);
+    const assistant = createPersonaTemplate({
+      id: RETIRED_POLARIS_ASSISTANT_PERSONA_ID,
+      name: '小助手',
+      description: '旧内置角色'
+    });
     const pharos = DEFAULT_PERSONAS.find((persona) => persona.id === 'pharos');
     const customPersona = createPersonaTemplate({
       id: 'persona-custom',
       name: '自定义',
       description: '用户创建的角色'
     });
-    expect(assistant).toBeDefined();
     expect(pharos).toBeDefined();
 
     const migrated = migratePersistedPersonaPayload({
-      personas: [assistant!, pharos!, customPersona],
+      personas: [assistant, pharos!, customPersona],
       seededDefaultPersonaIds: []
     }, {
       includeBundledDefaultPersonas: false
     });
 
     expect(migrated.personas.map((persona) => persona.id)).toEqual(['persona-custom']);
-    expect(migrated.seededDefaultPersonaIds).toEqual([...BUNDLED_DEFAULT_PERSONA_IDS]);
+    expect(migrated.seededDefaultPersonaIds).toEqual([...KNOWN_BUNDLED_PERSONA_IDS]);
   });
 
-  it('starts fresh installs with Xiao Assistant before Pharos', () => {
+  it('starts fresh installs with Pharos only', () => {
     usePersonaStore.setState(usePersonaStore.getInitialState(), true);
 
     const state = usePersonaStore.getState();
 
-    expect(state.activeCollaboratorId).toBe('polaris-assistant');
-    expect(state.seededDefaultPersonaIds).toEqual([POLARIS_ASSISTANT_PERSONA_ID]);
-    expect(state.personas.map((persona) => persona.id)).toEqual(['polaris-assistant', 'pharos']);
+    expect(state.activeCollaboratorId).toBe('pharos');
+    expect(state.seededDefaultPersonaIds).toEqual([]);
+    expect(state.personas.map((persona) => persona.id)).toEqual(['pharos']);
     expect(state.personas[0]).toMatchObject({
-      name: '小助手',
-      description: 'Polaris 使用向导',
-      purpose: '带你认识这个房间。有问题时，可以问北极星小助手。',
-      systemRole: null,
-      compiledPrompt: expect.stringContaining('Polaris 的默认产品向导和上手陪练'),
-      advanced: {
-        providerId: POLARIS_ASSISTANT_DEFAULT_PROVIDER_ID,
-        modelOverride: POLARIS_ASSISTANT_DEFAULT_MODEL,
-        showThinking: false
-      }
-    });
-    expect(state.personas[1]).toMatchObject({
       id: 'pharos',
       systemRole: 'default'
     });
@@ -273,8 +235,17 @@ describe('migratePersistedPersonas', () => {
       description: '留在后面'
     });
 
-    const personas = migratePersistedPersonas([regular, pinned], [POLARIS_ASSISTANT_PERSONA_ID]);
+    const personas = migratePersistedPersonas([regular, pinned]);
 
     expect(personas.map((persona) => persona.id)).toEqual(['persona-pinned', 'persona-regular']);
+  });
+});
+
+it('normalizes incomplete imported window defaults at the persona boundary', () => {
+  const imported = { ...createPersonaTemplate({id: 'p', name: 'P', description: ''}),
+    conversationDefaults: {reasoningStrength: 'invalid'} };
+  const normalized = normalizePersona(imported as unknown as Parameters<typeof normalizePersona>[0]);
+  expect(normalized.conversationDefaults).toMatchObject({
+    requestContext: {mode: 'inherit'}, reasoningStrength: 'automatic'
   });
 });

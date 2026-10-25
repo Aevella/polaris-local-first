@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ChatMessage } from '../../../../types/domain';
-import { MessageContent, shouldSmoothStreamingMessageContent } from './MessageContent';
+import {
+  buildSmoothStreamingSliceOffsets,
+  MessageContent,
+  shouldSmoothStreamingMessageContent
+} from './MessageContent';
 
 function createAssistantMessage(content: string, extra?: Partial<ChatMessage>): ChatMessage {
   return {
@@ -18,6 +22,11 @@ describe('MessageContent', () => {
     expect(shouldSmoothStreamingMessageContent('普通回复', true)).toBe(true);
     expect(shouldSmoothStreamingMessageContent('```tsx\nconst active = true;', true)).toBe(false);
     expect(shouldSmoothStreamingMessageContent('普通回复', false)).toBe(false);
+  });
+
+  it('does not segment settled message text for streaming animation', () => {
+    expect(buildSmoothStreamingSliceOffsets('很长的旧消息'.repeat(1000), false)).toBeNull();
+    expect(buildSmoothStreamingSliceOffsets('A😀B', true)).toEqual([0, 1, 3, 4]);
   });
 
   it('keeps ordinary narrated code blocks inline in the message body', () => {

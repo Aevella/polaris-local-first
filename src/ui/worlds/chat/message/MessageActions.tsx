@@ -44,6 +44,7 @@ export type MessageTaskReceiptAction = {
 };
 
 type MessageActionsProps = {
+  onSetContextStart?: () => void;
   canCopyAssistant: boolean;
   canEditAssistant: boolean;
   canForkAssistant: boolean;
@@ -70,6 +71,7 @@ type MessageActionsProps = {
 };
 
 export function MessageActions({
+  onSetContextStart,
   canCopyAssistant,
   canEditAssistant,
   canForkAssistant,
@@ -109,7 +111,7 @@ export function MessageActions({
   const showCodeCardAction = codeCardActionMode !== 'hidden';
   const hasMemoryEvidence = role === 'assistant' && Boolean(memoryEvidence?.items.length);
   const hasSpeechCache = role === 'assistant' && Boolean(speechCache?.assetId);
-  const hasAssistantMore = role === 'assistant' && (canEditAssistant || canForkAssistant || canRetryAssistant || hasMemoryEvidence || hasSpeechCache);
+  const hasAssistantMore = role === 'assistant' && (canEditAssistant || canForkAssistant || canRetryAssistant || onSetContextStart || hasMemoryEvidence || hasSpeechCache);
   const speakableContent = speechContent.trim();
   const canUseConfiguredSpeech = voiceGeneration.enabled && Boolean(voiceGeneration.baseUrl?.trim() && voiceGeneration.apiKey?.trim());
   const canSpeakAssistant = role === 'assistant' && Boolean(speakableContent) && (hasSpeechCache || canUseConfiguredSpeech || nativeSpeechAvailable);
@@ -356,6 +358,9 @@ export function MessageActions({
                 <span>{t('chat.messageActions.edit')}</span>
               </button>
             ) : null}
+            {onSetContextStart && <button type="button" className="assistant-message-action-btn" onClick={() => { onSetContextStart(); closeAssistantSheet(); }}>
+              <Icon name="chevron" size={18} /><span>{t('chat.messageActions.contextStart')}</span>
+            </button>}
             {canForkAssistant ? (
               <button
                 type="button"

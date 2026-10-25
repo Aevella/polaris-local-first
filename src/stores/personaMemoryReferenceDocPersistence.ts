@@ -262,8 +262,9 @@ function restorePersonaMemoryReferenceDocContent(
       persistedContent,
       `Persona memory document content is missing: ${personaId}:${doc.id}`
     );
+    const { bodyStatus: _missing, ...available } = doc;
     return {
-      ...doc,
+      ...available,
       content: persistedContent,
       charCount: persistedContent.length,
       contentLoaded: true
@@ -424,6 +425,7 @@ async function writePersonaMemoryDocBodiesToDocumentRowsActivating(personas: Per
   for (const persona of personas) {
     for (const doc of persona.memory.referenceDocs) {
       presentDocIds.add(docContentKey(persona.id, doc.id));
+      if (doc.bodyStatus === 'missing') continue;
       const content = resolvePersonaMemoryDocBodyToPersist(persona, doc);
       if (content === undefined) continue;
       changes.push({ type: 'upsert', seed: toPersonaMemoryDocumentSeed(persona, doc, content) });
@@ -459,6 +461,7 @@ export async function readPersonaMemoryDocContent(
   personaId: string,
   doc: PersonaMemoryReferenceDoc
 ) {
+  if (doc.bodyStatus === 'missing') throw new Error(`Persona memory document content is missing: ${personaId}:${doc.id}`);
   if (doc.contentLoaded) return doc.content;
   const documentRowBody = await readDocumentBodyIfActive('persona-memory-doc', docContentKey(personaId, doc.id));
   if (documentRowBody.status === 'complete') {
@@ -553,7 +556,7 @@ export async function restoreCurrentPersonaMemoryDocContent(personas: Persona[])
         try {
           return await loadPersonaMemoryReferenceDocContent(persona.id, doc);
         } catch (error) {
-          if (!isPersonaMemoryDocBodyRecoveryFailure(error)) throw error;
+          if (!isConfirmedPersonaMemoryDocBodyDamage(error)) throw error;
           return doc;
         }
       }))
@@ -561,7 +564,7 @@ export async function restoreCurrentPersonaMemoryDocContent(personas: Persona[])
   } satisfies Persona)));
 }
 
-function isPersonaMemoryDocBodyRecoveryFailure(error: unknown) {
+export function isConfirmedPersonaMemoryDocBodyDamage(error: unknown) {
   return error instanceof Error
     && (
       error.message.startsWith('Persona memory document content is missing:')

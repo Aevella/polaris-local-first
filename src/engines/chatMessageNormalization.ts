@@ -1,5 +1,6 @@
 import type { AssistantReply, AssistantReplyProgress } from './chat-api/chatApiTypes';
 import type { ChatMessage, ChatNativeToolCall } from '../types/domain';
+import { normalizeProviderReasoningState } from './provider-runtime/providerRuntimeReasoningState';
 
 export type NormalizedChatNativeToolCall = ChatNativeToolCall & { id: string };
 
@@ -40,14 +41,33 @@ export function normalizeChatNativeToolCalls(
 }
 
 export function normalizeChatMessage(message: ChatMessage): ChatMessage {
+  const providerReasoning = normalizeProviderReasoningState(message.providerReasoning);
+  const assistantReplyId =
+    message.role === 'assistant'
+    && typeof message.assistantReplyId === 'string'
+    && message.assistantReplyId.trim()
+      ? message.assistantReplyId.trim()
+      : undefined;
+  const assistantReplySegmentIndex =
+    assistantReplyId
+    && Number.isInteger(message.assistantReplySegmentIndex)
+    && (message.assistantReplySegmentIndex ?? -1) >= 0
+      ? message.assistantReplySegmentIndex
+      : undefined;
   return {
     ...message,
     thinkingText: normalizeOptionalText(message.thinkingText),
+    assistantReplyId: assistantReplySegmentIndex === undefined ? undefined : assistantReplyId,
+    assistantReplySegmentIndex,
+    ...(providerReasoning ? { providerReasoning } : {}),
     nativeToolCalls: normalizeChatNativeToolCalls(message.id, message.nativeToolCalls)
   };
 }
 
-type AssistantReplyLike = Pick<AssistantReply | AssistantReplyProgress, 'model' | 'tokenCount' | 'tokenUsage' | 'thinkingText'>;
+type AssistantReplyLike = Pick<
+  AssistantReply | AssistantReplyProgress,
+  'model' | 'tokenCount' | 'tokenUsage' | 'thinkingText' | 'providerReasoning'
+>;
 
 export function buildAssistantMessagePatch(args: {
   messageId: string;
@@ -60,6 +80,7 @@ export function buildAssistantMessagePatch(args: {
   nativeToolCalls?: ChatNativeToolCall[];
   memoryEvidence?: ChatMessage['memoryEvidence'];
 }): Partial<ChatMessage> {
+  const providerReasoning = normalizeProviderReasoningState(args.reply.providerReasoning);
   const patch: Partial<ChatMessage> = {
     content: args.visibleContent,
     providerId: args.providerId,
@@ -69,6 +90,7 @@ export function buildAssistantMessagePatch(args: {
     assistantName: args.assistantName,
     speakerCollaboratorId: args.speakerCollaboratorId,
     thinkingText: normalizeOptionalText(args.reply.thinkingText),
+    ...(providerReasoning ? { providerReasoning } : {}),
     nativeToolCalls: normalizeChatNativeToolCalls(args.messageId, args.nativeToolCalls)
   };
   if (args.reply.tokenUsage) {

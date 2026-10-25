@@ -1,6 +1,6 @@
 import {
   buildHistoricalToolCallNameMap,
-  buildOrderedMessages,
+  buildSeparatedSystemMessages,
   extractTextPayload
 } from './requestShared/messages';
 import { resolveRequestBuilderBase } from './requestShared/sampling';
@@ -17,8 +17,7 @@ import { extractGeminiNativeReply } from './providerRuntimeGeminiResponse';
 import { setGeminiConnectionTestOutputTokens } from './providerRuntimeConnectionTest';
 import {
   canonicalProviderCapabilitiesFromContract,
-  resolveProviderCapability,
-  type ProviderCapability
+  resolveProviderCapability
 } from './providerCapability';
 
 const GEMINI_GENERATE_CONTENT_ADAPTER_ID = 'gemini-generate-content';
@@ -92,10 +91,9 @@ function buildGeminiToolConfig(context: ProviderRuntimeRequestInput['context']) 
 }
 
 function buildGeminiContents(
-  context: ProviderRuntimeRequestInput['context'],
-  capability: ProviderCapability
+  context: ProviderRuntimeRequestInput['context']
 ) {
-  const orderedMessages = buildOrderedMessages(context, capability.context);
+  const orderedMessages = buildSeparatedSystemMessages(context);
   const normalizedToolNames = buildHistoricalToolCallNameMap(orderedMessages);
   const contents: Array<{ role: 'user' | 'model'; parts: GeminiPart[] }> = [];
 
@@ -153,10 +151,9 @@ function buildGeminiContents(
 }
 
 function buildGeminiSystemInstruction(
-  context: ProviderRuntimeRequestInput['context'],
-  capability: ProviderCapability
+  context: ProviderRuntimeRequestInput['context']
 ) {
-  const systemText = buildOrderedMessages(context, capability.context)
+  const systemText = buildSeparatedSystemMessages(context)
     .filter((message) => message.role === 'system')
     .map((message) => extractTextPayload(message.content).trim())
     .filter(Boolean)
@@ -195,9 +192,9 @@ export function buildGeminiNativeRequest(input: ProviderRuntimeRequestInput) {
   }
 
   const body: Record<string, unknown> = {
-    contents: buildGeminiContents(context, providerCapability)
+    contents: buildGeminiContents(context)
   };
-  const systemInstruction = buildGeminiSystemInstruction(context, providerCapability);
+  const systemInstruction = buildGeminiSystemInstruction(context);
   const tools = buildGeminiTools(context);
   const toolConfig = buildGeminiToolConfig(context);
   if (systemInstruction) {
@@ -223,6 +220,7 @@ export function buildGeminiNativeRequest(input: ProviderRuntimeRequestInput) {
     body,
     customBody,
     bodyOverrides,
+    reasoningStrength: input.reasoningStrength,
     provider: 'gemini-generate-content',
     compatibilityMode: providerCapability.route.compatibilityMode,
     capability: providerCapability,

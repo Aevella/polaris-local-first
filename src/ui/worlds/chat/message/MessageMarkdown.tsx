@@ -17,7 +17,7 @@ type MarkdownBlock =
   | { type: 'paragraph'; lines: string[] }
   | { type: 'blockquote'; lines: string[] }
   | { type: 'unordered-list'; items: string[] }
-  | { type: 'ordered-list'; items: string[] }
+  | { type: 'ordered-list'; items: string[]; start: number }
   | { type: 'table'; headers: string[]; alignments: Array<'left' | 'center' | 'right' | null>; rows: string[][] }
   | { type: 'code'; language: string; code: string }
   | { type: 'math'; content: string }
@@ -223,12 +223,13 @@ function parseMarkdownBlocks(content: string) {
     }
 
     if (/^\d+\.\s+/.test(line)) {
+      const start = Number.parseInt(line, 10);
       const items: string[] = [];
       while (index < lines.length && /^\d+\.\s+/.test((lines[index] ?? '').trimEnd())) {
         items.push((lines[index] ?? '').trimEnd().replace(/^\d+\.\s+/, ''));
         index += 1;
       }
-      blocks.push({ type: 'ordered-list', items });
+      blocks.push({ type: 'ordered-list', items, start });
       continue;
     }
 
@@ -296,7 +297,7 @@ function renderBlock(block: MarkdownBlock, index: number, keyPrefix = 'block'): 
   if (block.type === 'unordered-list' || block.type === 'ordered-list') {
     const ListTag = block.type === 'unordered-list' ? 'ul' : 'ol';
     return (
-      <ListTag key={`${keyPrefix}-list-${index}`} className={`message-markdown-list ${block.type}`}>
+      <ListTag start={block.type === 'ordered-list' ? block.start : undefined} key={`${keyPrefix}-list-${index}`} className={`message-markdown-list ${block.type}`}>
         {block.items.map((item, itemIndex) => <li key={`item-${itemIndex}`}>{renderRichInlineContent(item)}</li>)}
       </ListTag>
     );

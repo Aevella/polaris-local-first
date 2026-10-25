@@ -1,6 +1,7 @@
 import type { CanonicalProviderStreamEvent } from '../provider-runtime';
 import type { ReplyAccumulator } from '../provider-runtime/providerRuntimeReplyAccumulator';
 import { mergeToolCallArgumentsText } from '../provider-runtime/providerRuntimeToolArguments';
+import { mergeProviderReasoningState } from '../provider-runtime/providerRuntimeReasoningState';
 
 type UsageStreamEvent = Extract<CanonicalProviderStreamEvent, { type: 'usage' }>;
 
@@ -79,6 +80,11 @@ export function applyProviderRuntimeStreamEvents(
       changed = true;
       return;
     }
+    if (event.type === 'reasoning.state') {
+      target.providerReasoning = mergeProviderReasoningState(target.providerReasoning, event.state);
+      changed = true;
+      return;
+    }
     if (event.type === 'usage') {
       target.tokenUsage = event.usage;
       const tokenCount = totalFromUsage(event.usage);
@@ -89,7 +95,9 @@ export function applyProviderRuntimeStreamEvents(
       return;
     }
     if (event.type === 'done') {
-      target.finishReason = event.finishReason;
+      if (event.finishReason && !(event.finishReason === 'stop' && target.finishReason)) {
+        target.finishReason = event.finishReason;
+      }
       target.transportIncomplete = event.transportIncomplete;
       changed = true;
       return;
@@ -108,7 +116,9 @@ export function applyProviderRuntimeStreamEvents(
       if (event.id) {
         existing.id = event.id;
       }
-      existing.name = event.name;
+      if (event.name) {
+        existing.name = event.name;
+      }
     }
     if (event.type === 'tool_call.delta') {
       if (event.id) {

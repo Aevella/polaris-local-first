@@ -1,3 +1,5 @@
+import { createConversationWindowSettings } from '../engines/conversationContextSettings';
+import type { ConversationWindowDefaults } from '../types/domain';
 import { createUid } from '../engines/id';
 import type { Conversation } from '../types/domain';
 
@@ -8,6 +10,8 @@ function normalizeMemberIds(memberIds: string[]) {
 export function createDirectConversationRecord(args: {
   collaboratorId?: string | null;
   activeProjectId?: string | null;
+  draft?: string;
+  defaults?: ConversationWindowDefaults;
 } = {}): Conversation {
   return {
     id: createUid('c'),
@@ -17,7 +21,8 @@ export function createDirectConversationRecord(args: {
     groupRoomId: null,
     activeProjectId: args.activeProjectId ?? null,
     toolLedger: undefined,
-    draft: '',
+    draft: args.draft ?? '',
+    ...createConversationWindowSettings(args.defaults),
     pinnedAt: null,
     updatedAt: Date.now(),
     messages: []
@@ -74,6 +79,7 @@ export function createGroupConversationRecord(options: {
     activeProjectId: null,
     toolLedger: undefined,
     draft: '',
+    ...createConversationWindowSettings(),
     pinnedAt: null,
     updatedAt: group.updatedAt,
     messages: []

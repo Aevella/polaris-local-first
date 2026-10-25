@@ -5,6 +5,14 @@ import {
 } from './requestToolResultProjection';
 
 describe('requestToolResultProjection', () => {
+  it('replays the complete long-term material body after a successful read', () => {
+    const detailText = '长期资料正文。'.repeat(8000) + '正文末尾标记';
+    expect(projectToolInvocationForRequest({
+      id: 'memory-doc-read', kind: 'readMemoryDoc', status: 'executed',
+      title: '读取长期资料', summary: '已读取长期资料', detailText
+    })).toMatchObject({ detailText });
+  });
+
   it('keeps full detail for material read results', () => {
     expect(projectToolInvocationForRequest({
       id: 'tool-read',

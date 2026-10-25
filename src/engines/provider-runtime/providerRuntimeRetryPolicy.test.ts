@@ -316,4 +316,20 @@ describe('provider runtime retry policy', () => {
       kind: 'none'
     });
   });
+
+  it('classifies a missing relay tool body as a non-retryable schema failure', () => {
+    const request = createRequest();
+    const error = new Error(
+      '模型服务声明要调用工具，但没有返回可解析的工具调用。请检查中转是否完整转发 tool_calls。'
+    );
+    const input = retryInput(openAiCompatibleChatAdapter, request, error);
+
+    expect(input.errorInfo).toMatchObject({
+      code: 'schema_unsupported',
+      retryable: false
+    });
+    expect(openAiCompatibleChatAdapter.resolveRetry(input)).toMatchObject({
+      kind: 'none'
+    });
+  });
 });

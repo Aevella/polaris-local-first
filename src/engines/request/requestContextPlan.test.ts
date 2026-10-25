@@ -404,7 +404,16 @@ describe('requestContextPlan', () => {
     expect(historyDecision.status).toBe('trimmed_budget');
   });
 
-  it('keeps the latest user turn without summarizing messages explicitly dropped by messageLimit', () => {
+  it('uses the stepped boundary in the actual request plan without a second rolling cutoff', () => {
+    const messages = Array.from({ length: 126 }, (_, index) => ({ id: String(index), role: 'user' as const, content: 'hello', timestamp: index }));
+    for (const [count, start] of [[100, 0], [101, 25], [125, 25], [126, 50]]) {
+      const plan = buildRequestContextPlan({ messages: messages.slice(0, count), messageLimit: 100, historyMaxTokens: 100000 });
+      expect(plan.conversation[0].id).toBe(String(start));
+      expect(plan.conversation[plan.conversation.length - 1]?.id).toBe(String(count - 1));
+    }
+  });
+
+  it('keeps the latest user turn including system follow-ups beyond the count target', () => {
     const { conversation, contextPlan } = buildRequestContextPlan({
       historyMaxTokens: 8_000,
       messageLimit: 1,
@@ -430,14 +439,14 @@ describe('requestContextPlan', () => {
       ]
     });
 
-    expect(conversation.map((message) => message.id)).toEqual(['user-1']);
+    expect(conversation.map((message) => message.id)).toEqual(['user-1', 'tool-followup-1', 'tool-followup-2']);
     expect(contextPlan.entries.find((entry) => entry.messageId === 'user-1')?.status).toBe('kept');
-    expect(contextPlan.entries.find((entry) => entry.messageId === 'tool-followup-1')?.status).toBe('dropped_message_limit');
-    expect(contextPlan.entries.find((entry) => entry.messageId === 'tool-followup-2')?.status).toBe('dropped_message_limit');
+    expect(contextPlan.entries.find((entry) => entry.messageId === 'tool-followup-1')?.status).toBe('kept');
+    expect(contextPlan.entries.find((entry) => entry.messageId === 'tool-followup-2')?.status).toBe('kept');
     expect(contextPlan.summaries).toEqual([]);
   });
 
-  it('does not keep a tool result when messageLimit cuts away its origin assistant', () => {
+  it('aligns a count boundary to retain tool results with their origin assistant', () => {
     const { conversation, contextPlan } = buildRequestContextPlan({
       historyMaxTokens: 8_000,
       messageLimit: 2,
@@ -477,17 +486,17 @@ describe('requestContextPlan', () => {
       ]
     });
 
-    expect(conversation.map((message) => message.id)).toEqual(['user-1']);
-    expect(contextPlan.entries.find((entry) => entry.messageId === 'assistant-1')?.status).toBe('dropped_message_limit');
-    expect(contextPlan.entries.find((entry) => entry.messageId === 'tool-1')?.status).toBe('dropped_message_limit');
+    expect(conversation.map((message) => message.id)).toEqual(['assistant-1', 'tool-1', 'user-1']);
+    expect(contextPlan.entries.find((entry) => entry.messageId === 'assistant-1')?.status).toBe('kept');
+    expect(contextPlan.entries.find((entry) => entry.messageId === 'tool-1')?.status).toBe('kept');
     expect(contextPlan.entries.find((entry) => entry.messageId === 'user-1')?.status).toBe('kept');
-    expect(contextPlan.units).toEqual([
+    expect(contextPlan.units).toEqual(expect.arrayContaining([
       expect.objectContaining({
         kind: 'user_turn',
         messageIds: ['user-1'],
         status: 'kept'
       })
-    ]);
+    ]));
     expect(contextPlan.summaries).toEqual([]);
   });
 

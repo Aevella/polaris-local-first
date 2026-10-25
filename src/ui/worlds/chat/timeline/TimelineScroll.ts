@@ -1,13 +1,13 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { ChatMessage } from '../../../../types/domain';
-import { useTimelineInsertCompensation } from '../useTimelineInsertCompensation';
+import { readTimelineReadingPosition, readingPositionScrollTop, readingPositionScrollDelta, type TimelineReadingPosition } from './timelineReadingPosition';
 
-const BOTTOM_THRESHOLD = 36;
 const JUMP_THRESHOLD = 300;
 const TOP_JUMP_THRESHOLD = 300;
 const USER_REPLY_STAGE_TOP_OFFSET = 18;
 const PROGRAMMATIC_SCROLL_GUARD_MS = 160;
 const PROGRAMMATIC_SMOOTH_SCROLL_GUARD_MS = 420;
+const MAX_SMOOTH_JUMP_VIEWPORTS = 2;
 
 export type FollowMode = 'bottom' | 'reply-stage' | 'manual';
 
@@ -19,8 +19,10 @@ type TimelineScrollArgs = {
   isWorldSettled: boolean;
 };
 
-function isAtBottom(container: HTMLDivElement) {
-  return getMaxScrollTop(container) - container.scrollTop <= BOTTOM_THRESHOLD;
+export function isTimelineAtBottom(scrollTop: number, maxScrollTop: number) {
+  // Re-enter following only at the actual bottom. A proximity threshold
+  // captures slow touch drags and repeatedly pulls them back to the bottom.
+  return maxScrollTop - scrollTop <= 1;
 }
 
 function shouldShowJumpToTop(container: HTMLDivElement) {
@@ -45,6 +47,17 @@ export function resolveReplyStageScrollTop(args: {
   );
 }
 
+export function resolveTimelineJumpBehavior(args: {
+  currentTop: number;
+  targetTop: number;
+  viewportHeight: number;
+}): ScrollBehavior {
+  if (args.viewportHeight <= 0) return 'auto';
+  return Math.abs(args.targetTop - args.currentTop) <= args.viewportHeight * MAX_SMOOTH_JUMP_VIEWPORTS
+    ? 'smooth'
+    : 'auto';
+}
+
 function getLatestMessageId(messages: ChatMessage[]) {
   return messages[messages.length - 1]?.id ?? null;
 }
@@ -67,18 +80,8 @@ function findMessageRow(container: HTMLDivElement, messageId: string) {
   return null;
 }
 
-function runWithInstantScroll(container: HTMLDivElement, action: () => void) {
-  const previousBehavior = container.style.scrollBehavior;
-  container.style.scrollBehavior = 'auto';
-  action();
-  window.requestAnimationFrame(() => {
-    if (container.style.scrollBehavior === 'auto') {
-      container.style.scrollBehavior = previousBehavior;
-    }
-  });
-}
-
 type ConversationScrollSnapshot = {
+  readingPosition: TimelineReadingPosition | null;
   bottomOffset: number;
   followMode: FollowMode;
   replyStageMessageId: string | null;
@@ -103,6 +106,7 @@ export function useTimelineScroll({
   isWorldSettled
 }: TimelineScrollArgs) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const readingPositionRef = useRef<TimelineReadingPosition | null>(null);
   const previousConversationIdRef = useRef<string | null>(null);
   const previousActiveWorldRef = useRef(isActiveWorld);
   const previousWorldSettledRef = useRef(isWorldSettled);
@@ -115,17 +119,21 @@ export function useTimelineScroll({
   const ignoreProgrammaticScrollUntilRef = useRef(0);
   const lastProgrammaticScrollTopRef = useRef<number | null>(null);
   const programmaticScrollBehaviorRef = useRef<ScrollBehavior | null>(null);
-  const [followMode, setFollowMode] = useState<FollowMode>('bottom');
+  const manualScrollIntentRef = useRef(false);
+  const [storedFollowMode, setFollowMode] = useState<FollowMode>('bottom');
+  const followMode = manualScrollIntentRef.current ? 'manual' : storedFollowMode;
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [showJumpToTop, setShowJumpToTop] = useState(false);
 
+  useLayoutEffect(() => {
+    if (storedFollowMode === 'manual') manualScrollIntentRef.current = false;
+  }, [storedFollowMode]);
+
   const updateJumpButtons = (container: HTMLDivElement, options?: { latest?: boolean }) => {
-    if (options?.latest !== undefined) {
-      setShowJumpToLatest(options.latest);
-    } else {
-      setShowJumpToLatest(shouldShowJumpToLatest(container));
-    }
-    setShowJumpToTop(shouldShowJumpToTop(container));
+    const latest = options?.latest ?? shouldShowJumpToLatest(container);
+    const top = shouldShowJumpToTop(container);
+    if (latest !== showJumpToLatest) setShowJumpToLatest(latest);
+    if (top !== showJumpToTop) setShowJumpToTop(top);
   };
 
   const guardProgrammaticScroll = (
@@ -142,16 +150,14 @@ export function useTimelineScroll({
     const container = containerRef.current;
     if (!container) return;
     const top = container.scrollHeight - container.clientHeight;
-    setShowJumpToTop(top > TOP_JUMP_THRESHOLD);
     if (behavior === 'smooth') {
+      setShowJumpToTop(top > TOP_JUMP_THRESHOLD);
       guardProgrammaticScroll(top, 'smooth', PROGRAMMATIC_SMOOTH_SCROLL_GUARD_MS);
       container.scrollTo({ top, behavior: 'smooth' });
       return;
     }
     guardProgrammaticScroll(top);
-    runWithInstantScroll(container, () => {
-      container.scrollTop = top;
-    });
+    container.scrollTo({ top, behavior: 'instant' });
     updateJumpButtons(container, { latest: false });
   };
 
@@ -163,9 +169,7 @@ export function useTimelineScroll({
       container.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    runWithInstantScroll(container, () => {
-      container.scrollTop = 0;
-    });
+    container.scrollTo({ top: 0, behavior: 'instant' });
     updateJumpButtons(container, { latest: shouldShowJumpToLatest(container) });
   };
 
@@ -179,14 +183,15 @@ export function useTimelineScroll({
       maxScrollTop: getMaxScrollTop(container)
     });
     guardProgrammaticScroll(top);
-    runWithInstantScroll(container, () => {
-      container.scrollTop = top;
-    });
+    container.scrollTo({ top, behavior: 'instant' });
     setShowJumpToTop(top > TOP_JUMP_THRESHOLD);
     return true;
   };
 
   const queueReplyStageScroll = (messageId: string) => {
+    manualScrollIntentRef.current = false;
+    readingPositionRef.current = null;
+    pendingManualModeRestoreRef.current = false;
     pendingReplyStageMessageIdRef.current = messageId;
     setFollowMode('reply-stage');
     setShowJumpToLatest(false);
@@ -200,6 +205,7 @@ export function useTimelineScroll({
     const persistedMode = normalizePersistedFollowMode(mode, isGenerationActive);
 
     conversationScrollSnapshots.set(conversationId, {
+      readingPosition: readTimelineReadingPosition(container),
       bottomOffset: Math.max(0, maxScrollTop - container.scrollTop),
       followMode: persistedMode,
       replyStageMessageId: getLatestUserMessageId(messages)
@@ -224,9 +230,7 @@ export function useTimelineScroll({
       if (!isGenerationActive) {
         const nextTop = Math.max(0, maxScrollTop - snapshot.bottomOffset);
         guardProgrammaticScroll(nextTop);
-        runWithInstantScroll(container, () => {
-          container.scrollTop = nextTop;
-        });
+        container.scrollTo({ top: nextTop, behavior: 'instant' });
         updateJumpButtons(container);
         return;
       }
@@ -239,11 +243,11 @@ export function useTimelineScroll({
       return;
     }
 
-    const nextTop = Math.max(0, maxScrollTop - snapshot.bottomOffset);
+    readingPositionRef.current = snapshot.readingPosition;
+    const nextTop = (snapshot.readingPosition && readingPositionScrollTop(container, snapshot.readingPosition))
+      ?? Math.max(0, maxScrollTop - snapshot.bottomOffset);
     guardProgrammaticScroll(nextTop);
-    runWithInstantScroll(container, () => {
-      container.scrollTop = nextTop;
-    });
+    container.scrollTo({ top: nextTop, behavior: 'instant' });
     updateJumpButtons(container);
   };
 
@@ -257,11 +261,10 @@ export function useTimelineScroll({
   };
 
   useLayoutEffect(() => {
-    if (previousConversationIdRef.current && previousConversationIdRef.current !== conversationId) {
-      rememberScrollState();
-    }
     if (previousConversationIdRef.current === conversationId) return;
     previousConversationIdRef.current = conversationId;
+    manualScrollIntentRef.current = false;
+    readingPositionRef.current = readConversationScrollSnapshot(conversationId)?.readingPosition ?? null;
     const latestMessageId = getLatestMessageId(messages);
     const latestUserMessageId = getLatestUserMessageId(messages);
     previousLatestMessageIdRef.current = latestMessageId;
@@ -351,12 +354,6 @@ export function useTimelineScroll({
     }
   }, [followMode, isActiveWorld, isWorldSettled, messages]);
 
-  useTimelineInsertCompensation({
-    flowRef: containerRef,
-    liveMode: followMode !== 'manual',
-    messages
-  });
-
   const handleScroll = () => {
     const container = containerRef.current;
     if (!container) return;
@@ -375,8 +372,9 @@ export function useTimelineScroll({
       ignoreProgrammaticScrollUntilRef.current = 0;
       programmaticScrollBehaviorRef.current = null;
     }
-    const nextIsAtBottom = isAtBottom(container);
+    const nextIsAtBottom = isTimelineAtBottom(container.scrollTop, getMaxScrollTop(container));
     if (nextIsAtBottom) {
+      manualScrollIntentRef.current = false;
       rememberScrollState('bottom');
       setFollowMode('bottom');
       setShowJumpToLatest(false);
@@ -384,24 +382,83 @@ export function useTimelineScroll({
       return;
     }
     rememberScrollState('manual');
+    readingPositionRef.current = readTimelineReadingPosition(container);
     pendingManualModeRestoreRef.current = followMode !== 'manual';
     setFollowMode('manual');
     updateJumpButtons(container);
   };
 
   return {
+    readingMessageId: followMode === 'manual' ? readingPositionRef.current?.messageId ?? null : null,
+    captureReadingPosition: () => {
+      if (!containerRef.current || pendingManualModeRestoreRef.current) return null;
+      rememberScrollState();
+      return followMode === 'manual' ? readTimelineReadingPosition(containerRef.current) : null;
+    },
+    syncTimelineGeometry: (focusedMessageId: string | null, beforeUpdate: TimelineReadingPosition | null = null) => {
+      const container = containerRef.current;
+      if (!container || !isActiveWorld || !isWorldSettled) return;
+      if (previousConversationIdRef.current !== conversationId) return;
+      // Search owns its explicit destination; never restore an old reading anchor over it.
+      if (focusedMessageId) {
+        readingPositionRef.current = null;
+        return;
+      }
+      if (programmaticScrollBehaviorRef.current === 'smooth'
+        && window.performance.now() <= ignoreProgrammaticScrollUntilRef.current) return;
+      if (followMode === 'manual') {
+        const position = beforeUpdate ?? readingPositionRef.current;
+        const delta = position ? readingPositionScrollDelta(container, position) : null;
+        // A restored conversation may need one projection render to mount its anchor.
+        if (position && delta === null && messages.some((message) => message.id === position.messageId)) return;
+        if (delta !== null && Math.abs(delta) >= 0.01) {
+          guardProgrammaticScroll(container.scrollTop + delta);
+          // Correct only the layout delta; an absolute target can overwrite a
+          // newer wheel position in the browser's asynchronous scrolling layer.
+          container.scrollBy({ top: delta, behavior: 'instant' });
+        }
+        readingPositionRef.current = readTimelineReadingPosition(container);
+        rememberScrollState('manual');
+        updateJumpButtons(container);
+      } else if (followMode === 'bottom') {
+        scrollToBottom('auto');
+      } else {
+        const messageId = getLatestUserMessageId(messages);
+        if (messageId) scrollMessageToReplyStage(messageId);
+      }
+    },
     containerRef,
+    handleScrollIntent: () => {
+      const container = containerRef.current;
+      if (!container) return;
+      manualScrollIntentRef.current = followMode !== 'manual';
+      // Wheel/touch intent precedes the browser's delayed scroll event.
+      ignoreProgrammaticScrollUntilRef.current = 0;
+      programmaticScrollBehaviorRef.current = null;
+      pendingManualModeRestoreRef.current = false;
+      readingPositionRef.current = readTimelineReadingPosition(container);
+      setFollowMode('manual');
+    },
     handleScroll,
     followMode,
     jumpToTop: () => {
       const container = containerRef.current;
       if (!container) return;
+      readingPositionRef.current = null;
+      pendingManualModeRestoreRef.current = false;
       setFollowMode('manual');
       setShowJumpToLatest(getMaxScrollTop(container) > JUMP_THRESHOLD);
       setShowJumpToTop(false);
-      scrollToTop('smooth');
+      scrollToTop(resolveTimelineJumpBehavior({
+        currentTop: container.scrollTop,
+        targetTop: 0,
+        viewportHeight: container.clientHeight
+      }));
     },
     jumpToLatest: () => {
+      manualScrollIntentRef.current = false;
+      readingPositionRef.current = null;
+      pendingManualModeRestoreRef.current = false;
       const latestUserMessageId = getLatestUserMessageId(messages);
       if (isGenerationActive && latestUserMessageId) {
         const container = containerRef.current;
@@ -411,7 +468,14 @@ export function useTimelineScroll({
       }
       setFollowMode('bottom');
       setShowJumpToLatest(false);
-      scrollToBottom('smooth');
+      const container = containerRef.current;
+      scrollToBottom(container
+        ? resolveTimelineJumpBehavior({
+            currentTop: container.scrollTop,
+            targetTop: getMaxScrollTop(container),
+            viewportHeight: container.clientHeight
+          })
+        : 'auto');
     },
     showJumpToLatest,
     showJumpToTop

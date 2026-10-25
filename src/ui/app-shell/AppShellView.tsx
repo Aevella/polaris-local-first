@@ -72,7 +72,7 @@ export function AppShellView({
             retryKey={worldRetryKeys.collection}
             onRetry={() => retryWorldFrame('collection')}
           >
-            <Suspense fallback={<WorldFrameFallback world="collection" />}>
+            <Suspense fallback={<WorldFrameFallback />}>
               <CollectionWorld
                 searchOpen={collectionSearchOpen}
                 collaboratorSwitchOpen={collectionScopeDrawerOpen}
@@ -98,7 +98,7 @@ export function AppShellView({
             retryKey={worldRetryKeys.chat}
             onRetry={() => retryWorldFrame('chat')}
           >
-            <Suspense fallback={<WorldFrameFallback world="chat" />}>
+            <Suspense fallback={<WorldFrameFallback />}>
               <ChatWorld {...chatWorldProps} />
             </Suspense>
           </WorldFrameBoundary>
@@ -111,7 +111,7 @@ export function AppShellView({
             retryKey={worldRetryKeys.group}
             onRetry={() => retryWorldFrame('group')}
           >
-            <Suspense fallback={<WorldFrameFallback world="group" />}>
+            <Suspense fallback={<WorldFrameFallback />}>
               <GroupWorld {...groupWorldProps} />
             </Suspense>
           </WorldFrameBoundary>

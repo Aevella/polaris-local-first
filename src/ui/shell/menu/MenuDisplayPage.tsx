@@ -11,6 +11,7 @@ type MenuDisplayPageProps = {
   displayPreferences: AppDisplayPreferences;
   onBack: () => void;
   onSetAppearance: (appearance: AppAppearancePreference) => void;
+  onSetTopbarLayout: (layout: 'centered' | 'leading') => void;
   onSetHapticsEnabled: (enabled: boolean) => void;
 };
 
@@ -42,7 +43,8 @@ export function MenuDisplayPage({
   displayPreferences,
   onBack,
   onSetAppearance,
-  onSetHapticsEnabled
+  onSetHapticsEnabled,
+  onSetTopbarLayout
 }: MenuDisplayPageProps) {
   const { t } = useI18n();
   const appearanceOptions = useMemo(() => getAppearanceOptions(t), [t]);
@@ -79,6 +81,17 @@ export function MenuDisplayPage({
                   <small>{option.detail}</small>
                 </button>
               ))}
+            </div>
+          </div>
+          <div className="menu-preference-row menu-preference-row--appearance">
+            <span className="menu-preference-copy"><strong>{t('settings.display.topbarTitle')}</strong><small>{t('settings.display.topbarDetail')}</small></span>
+            <div className="menu-appearance-options menu-topbar-layout-options" role="group" aria-label={t('settings.display.topbarTitle')}>
+              {(['centered', 'leading'] as const).map((layout) => <button key={layout} type="button"
+                className={`menu-appearance-option ${(displayPreferences.topbarLayout ?? 'centered') === layout ? 'active' : ''}`}
+                aria-pressed={(displayPreferences.topbarLayout ?? 'centered') === layout} onClick={() => onSetTopbarLayout(layout)}>
+                <span className={`topbar-layout-preview topbar-layout-preview--${layout}`} aria-hidden="true"><i /><i /><b /></span>
+                <span>{t(layout === 'centered' ? 'settings.display.topbarCentered' : 'settings.display.topbarLeading')}</span>
+              </button>)}
             </div>
           </div>
           <label className="menu-preference-row menu-preference-row--switch">

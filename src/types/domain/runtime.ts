@@ -23,6 +23,7 @@ export type CustomFontScope = 'global' | 'titles' | 'chat' | 'cards';
 export type AppAppearancePreference = 'system' | 'light' | 'dark';
 
 export interface AppDisplayPreferences {
+  topbarLayout?: 'centered' | 'leading';
   appearance: AppAppearancePreference;
   hapticsEnabled: boolean;
   fontScale: number;
@@ -30,6 +31,7 @@ export interface AppDisplayPreferences {
 
 export interface AppCustomization {
   showChatAvatars: boolean;
+  showWorldSwitchHandle: boolean;
   starColor: string | null;
   starOpacity: number;
   starGlow: number;

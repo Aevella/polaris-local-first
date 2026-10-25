@@ -1,5 +1,6 @@
 @import './message-turns/message-row-layout.css';
 @import './message-turns/message-bubbles.css';
 @import './message-turns/message-card-references.css';
+@import './message-turns/message-audio-attachments.css';
 @import './message-turns/message-memory-evidence.css';
 @import './message-turns/message-selection-rules.css';

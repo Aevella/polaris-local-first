@@ -25,19 +25,15 @@ import {
 import { SPACE_STORE_KEY, SPACE_STORE_VERSION, type StructuredExportSnapshot } from './storeExportPackage';
 import type { ImportLocalStorageEntry } from './storeImportPackage';
 import type { StoreImportProgressReporter } from './storeImportProgress';
+import {
+  detectKelivoArchiveShape,
+  openKelivoBackupArchive,
+  readKelivoBackupPayload,
+  type KelivoSettings,
+  type KelivoZip
+} from './kelivoImportArchive';
+import { isKelivoSQLiteBytes, readKelivoSQLiteSnapshot } from './kelivoSQLiteImportReader';
 
-type ZipBinaryType = 'arraybuffer';
-type KelivoZipFile = {
-  async(type: 'string'): Promise<string>;
-  async(type: ZipBinaryType): Promise<ArrayBuffer>;
-};
-
-type KelivoZip = {
-  file: (path: string) => KelivoZipFile | null;
-  forEach: (callback: (relativePath: string, file: { dir: boolean; name: string }) => void) => void;
-};
-
-type KelivoSettings = Record<string, unknown>;
 type KelivoProviderConfig = Record<string, unknown>;
 type KelivoAssistant = Record<string, unknown>;
 type KelivoConversation = Record<string, unknown>;
@@ -87,19 +83,8 @@ type KelivoChatState = {
   activeConversationId: string | null;
 };
 
-const KELIVO_SETTINGS_PATH = 'settings.json';
-const KELIVO_CHATS_PATH = 'chats.json';
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
-
-function parseJson<T>(content: string, label: string): T {
-  try {
-    return JSON.parse(content) as T;
-  } catch {
-    throw new Error(`${label} 格式不正确`);
-  }
 }
 
 function decodeKelivoPreference(value: unknown): unknown {
@@ -270,15 +255,20 @@ function collectMessageAttachments(
   messageId: string
 ): ChatAttachment[] {
   const content = readString(message.content);
-  if (!content) return [];
-  const matched: AssetReference[] = [];
+  const matched = new Map<string, AssetReference>();
+  const explicitPaths = Array.isArray(message.assetPaths) ? message.assetPaths : [];
+  for (const rawPath of explicitPaths) {
+    const path = resolveZipAssetPath(registry, rawPath);
+    const asset = path ? registry.byPath.get(path) : undefined;
+    if (asset) matched.set(asset.id, asset);
+  }
   for (const asset of registry.byPath.values()) {
     if (!asset.path.startsWith('upload/')) continue;
     if (content.includes(asset.path) || content.includes(asset.name)) {
-      matched.push(asset);
+      matched.set(asset.id, asset);
     }
   }
-  return matched.map((asset, index) => attachmentForAsset(asset, messageId, index));
+  return Array.from(matched.values()).map((asset, index) => attachmentForAsset(asset, messageId, index));
 }
 
 async function buildAssetRegistry(zip: KelivoZip, onProgress?: StoreImportProgressReporter): Promise<AssetRegistry> {
@@ -390,9 +380,13 @@ function selectProviderApiKey(provider: KelivoProviderConfig) {
 
 function buildProviders(settings: KelivoSettings) {
   const rawProviders = readSetting(settings, 'provider_configs_v1');
-  const providerEntries = isRecord(rawProviders)
+  const providerEntries: Array<[string, KelivoProviderConfig]> = isRecord(rawProviders)
     ? Object.entries(rawProviders).filter((entry): entry is [string, KelivoProviderConfig] => isRecord(entry[1]))
-    : [];
+    : Array.isArray(rawProviders)
+      ? rawProviders.flatMap((provider, index) => isRecord(provider)
+        ? [[readString(provider.id) || `kelivo-provider-${index + 1}`, provider] as [string, KelivoProviderConfig]]
+        : [])
+      : [];
   const order = readSetting(settings, 'providers_order_v1');
   const orderIds = Array.isArray(order)
     ? order.filter((item): item is string => typeof item === 'string')
@@ -850,39 +844,15 @@ function buildSpaceState(
   };
 }
 
-async function readKelivoSettings(zip: KelivoZip) {
-  const settingsFile = zip.file(KELIVO_SETTINGS_PATH);
-  if (!settingsFile) {
-    throw new Error('Kelivo 备份缺少 settings.json');
-  }
-  const settings = parseJson<KelivoSettings>(await settingsFile.async('string'), KELIVO_SETTINGS_PATH);
-  if (!isRecord(settings)) {
-    throw new Error('Kelivo settings.json 格式不正确');
-  }
-  return settings;
-}
-
-async function readKelivoChats(zip: KelivoZip) {
-  const chatsFile = zip.file(KELIVO_CHATS_PATH);
-  if (!chatsFile) return null;
-  return parseJson<unknown>(await chatsFile.async('string'), KELIVO_CHATS_PATH);
-}
-
-async function loadKelivoZip(file: Blob): Promise<KelivoZip> {
-  const { default: JSZip } = await import('jszip');
-  return await JSZip.loadAsync(await file.arrayBuffer()) as KelivoZip;
-}
-
-function isKelivoZipShape(zip: KelivoZip) {
-  return Boolean(zip.file(KELIVO_SETTINGS_PATH)) && !zip.file('manifest.json');
-}
-
 export async function isKelivoBackupZip(file: Blob): Promise<boolean> {
+  let zip: KelivoZip | null = null;
   try {
-    const zip = await loadKelivoZip(file);
-    return isKelivoZipShape(zip);
+    zip = await openKelivoBackupArchive(file);
+    return Boolean(await detectKelivoArchiveShape(zip));
   } catch {
     return false;
+  } finally {
+    await zip?.close();
   }
 }
 
@@ -936,8 +906,23 @@ export async function convertKelivoBackupToStructuredExportSnapshot(
   file: Blob,
   options: { onProgress?: StoreImportProgressReporter } = {}
 ): Promise<KelivoStructuredExportConversion> {
-  const zip = await loadKelivoZip(file);
-  return await convertKelivoZipToStructuredExportSnapshot(zip, options);
+  const header = await new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  if (isKelivoSQLiteBytes(header)) {
+    options.onProgress?.({ message: '读取 Kelivo SQLite 备份' });
+    const database = await readKelivoSQLiteSnapshot(new Uint8Array(await file.arrayBuffer()));
+    return convertKelivoPayloadToStructuredExportSnapshot(
+      database.settings,
+      { conversations: database.conversations, messages: database.messages },
+      { byPath: new Map(), entries: [] }
+    );
+  }
+
+  const zip = await openKelivoBackupArchive(file);
+  try {
+    return await convertKelivoZipToStructuredExportSnapshot(zip, options);
+  } finally {
+    await zip.close();
+  }
 }
 
 async function convertKelivoZipToStructuredExportSnapshot(
@@ -945,11 +930,20 @@ async function convertKelivoZipToStructuredExportSnapshot(
   options: { onProgress?: StoreImportProgressReporter } = {}
 ): Promise<KelivoStructuredExportConversion> {
   options.onProgress?.({ message: '读取 Kelivo 备份' });
-  const settings = await readKelivoSettings(zip);
-  const rawChats = await readKelivoChats(zip);
+  const shape = await detectKelivoArchiveShape(zip);
+  if (!shape) throw new Error('选择的文件不是 Kelivo 备份。');
+  const { settings, chats } = await readKelivoBackupPayload(zip, shape);
 
   options.onProgress?.({ message: '转换 Kelivo 附件' });
   const registry = await buildAssetRegistry(zip, options.onProgress);
+  return convertKelivoPayloadToStructuredExportSnapshot(settings, chats, registry);
+}
+
+function convertKelivoPayloadToStructuredExportSnapshot(
+  settings: KelivoSettings,
+  rawChats: unknown,
+  registry: AssetRegistry
+): KelivoStructuredExportConversion {
   const { providers, activeProviderId } = buildProviders(settings);
   const { mcpServers, skippedMcpServers } = buildMcpServers(settings);
   const { personas, activeCollaboratorId, backgroundAssetByPersona, userName } = buildPersonas(settings, registry, providers);
@@ -998,31 +992,42 @@ async function convertKelivoZipToStructuredExportSnapshot(
   };
 }
 
+async function importKelivoStructuredSnapshot(converted: KelivoStructuredExportConversion, options: { onProgress?: StoreImportProgressReporter }) {
+  const { importStructuredExportSnapshot } = await import('./storeImportPackage');
+  return await importStructuredExportSnapshot(converted.snapshot, options);
+}
+
 export async function importKelivoBackupPackage(
   file: Blob,
   options: { onProgress?: StoreImportProgressReporter } = {}
 ): Promise<import('./storeImportResult').StoreImportResult> {
-  const converted = await convertKelivoZipToStructuredExportSnapshot(await loadKelivoZip(file), options);
-  const { importStructuredExportSnapshot } = await import('./storeImportPackage');
-  return await importStructuredExportSnapshot(converted.snapshot, options);
+  return await importKelivoStructuredSnapshot(await convertKelivoBackupToStructuredExportSnapshot(file, options), options);
 }
 
 export async function importKelivoBackupPackageIfMatched(
   file: Blob,
   options: { onProgress?: StoreImportProgressReporter } = {}
 ): Promise<import('./storeImportResult').StoreImportResult | null> {
+  const header = await new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  if (isKelivoSQLiteBytes(header)) {
+    options.onProgress?.({ message: '识别为 Kelivo SQLite 备份' });
+    return await importKelivoStructuredSnapshot(await convertKelivoBackupToStructuredExportSnapshot(file, options), options);
+  }
+
   let zip: KelivoZip;
   try {
-    zip = await loadKelivoZip(file);
+    zip = await openKelivoBackupArchive(file);
   } catch {
     return null;
   }
-  if (!isKelivoZipShape(zip)) {
-    return null;
-  }
+  try {
+    if (!await detectKelivoArchiveShape(zip)) {
+      return null;
+    }
 
-  options.onProgress?.({ message: '识别为 Kelivo 备份' });
-  const converted = await convertKelivoZipToStructuredExportSnapshot(zip, options);
-  const { importStructuredExportSnapshot } = await import('./storeImportPackage');
-  return await importStructuredExportSnapshot(converted.snapshot, options);
+    options.onProgress?.({ message: '识别为 Kelivo 备份' });
+    return await importKelivoStructuredSnapshot(await convertKelivoZipToStructuredExportSnapshot(zip, options), options);
+  } finally {
+    await zip.close();
+  }
 }

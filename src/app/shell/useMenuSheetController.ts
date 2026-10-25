@@ -322,6 +322,7 @@ export function useMenuSheetController({
     onTestAutomationRule: automation.onTestAutomationRule,
     onCopyAutomationTriggerUrl: automation.onCopyAutomationTriggerUrl,
     onSetCustomFontScope: fontLibrary.onSetCustomFontScope,
+    onSetTopbarLayout: (topbarLayout: 'centered' | 'leading') => setDisplayPreferences({ topbarLayout }),
     onSetAppearance: (appearance: typeof displayPreferences.appearance) => setDisplayPreferences({ appearance }),
     onSetDisplayFontScale: (fontScale: number) => setDisplayPreferences({ fontScale }),
     onSetHapticsEnabled: (enabled: boolean) => setDisplayPreferences({ hapticsEnabled: enabled }),

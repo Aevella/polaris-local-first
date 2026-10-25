@@ -1,5 +1,6 @@
 import type { MutableRefObject } from 'react';
 import type { ChatMessage, ChatMessageVoiceCache } from '../../types/domain';
+import { createMessage } from '../../engines/chatMessageFactory';
 import { createUid } from '../../engines/id';
 import type { ChatActionStoreBindings, ChatDerivedStatePort, ChatUiActionState } from './chatPorts';
 import {
@@ -16,6 +17,13 @@ import {
 } from './chatSendPerformanceTrace';
 import { selectChatConversations } from './liveConversationCatalog';
 import { reportPersistenceError } from '../../infrastructure/persistenceDiagnostics';
+import type { I18nTranslator } from '../../i18n';
+import {
+  collectRemovedPendingProposalIds,
+  reconcileConversationTaskAfterMessageRemoval,
+  removeUserMessageTurn
+} from '../../engines/chatMessageTurnRemoval';
+import { resolveAssistantReplySegments } from '../../engines/assistantReplySegments';
 
 type CreateChatActionHandlersArgs = {
   startupReady: boolean;
@@ -29,6 +37,7 @@ type CreateChatActionHandlersArgs = {
   }) => Promise<unknown>;
   submitToolCommand: (rawInput: string) => Promise<boolean>;
   activeSubmitFingerprintRef: MutableRefObject<string | null>;
+  t?: I18nTranslator['t'];
 };
 
 export function createChatActionHandlers({
@@ -38,8 +47,13 @@ export function createChatActionHandlers({
   derived,
   runReply,
   submitToolCommand,
-  activeSubmitFingerprintRef
+  activeSubmitFingerprintRef,
+  t
 }: CreateChatActionHandlersArgs) {
+  const localize = (
+    key: Parameters<I18nTranslator['t']>[0],
+    fallback: string
+  ) => t ? t(key) : fallback;
   const readLatestSubmitState = () => {
     const chatState = store.chat.readLatestState();
     const personaState = store.persona.readLatestState();
@@ -137,9 +151,12 @@ export function createChatActionHandlers({
     }
   };
 
-  const commitMessageEdit = async (message: ChatMessage) => {
-    const activeConversation = derived.activeConversation;
-    if (!activeConversation || ui.sending || !ui.editing) return;
+  const commitMessageEdit = async (message: ChatMessage, mode: 'retry' | 'save-only' = 'retry') => {
+    const latestState = store.chat.readLatestState();
+    const activeConversation = latestState.conversations.find(
+      (conversation) => conversation.id === latestState.activeConversationId
+    );
+    if (!activeConversation || ui.sending || ui.editing?.messageId !== message.id || message.role !== 'user') return;
 
     const nextContent = ui.editing.draft.trim();
     const nextAttachments = ui.editing.attachments;
@@ -154,6 +171,25 @@ export function createChatActionHandlers({
     }
     if (isCompanionCollaboratorId(activeConversation.collaboratorId)) {
       ui.setCommandStatus('电脑端 companion 这轮还不支持在手机上原地改写上一句。', true);
+      return;
+    }
+
+    if (mode === 'save-only') {
+      const writable = await store.chat.ensureConversationWritable(activeConversation.id);
+      if (!writable) { ui.setCommandStatus('消息正文尚未完整载入，修改未保存。', true); return; }
+      store.chat.updateMessage(writable, message.id, {
+        content: nextContent,
+        attachments: nextAttachments.length ? nextAttachments : undefined
+      });
+      try {
+        await store.chat.persistToDb?.();
+      } catch (error) {
+        reportPersistenceError({ label: '[chat:message-edit]', store: 'chat', operation: 'save-message-edit' }, error);
+        ui.setCommandStatus(localize('chat.messageEdit.saveFailed', '保存失败，修改仍保留在编辑框中，请重试。'), true);
+        return;
+      }
+      ui.cancelEditingMessage();
+      ui.setCommandStatus(localize('chat.messageEdit.saved', '已保存修改，后续回复已保留。'));
       return;
     }
 
@@ -200,13 +236,85 @@ export function createChatActionHandlers({
     }
     const messageIndex = writableConversation.messages.findIndex((candidate) => candidate.id === message.id);
     if (messageIndex <= 0) return;
-    const nextMessages = writableConversation.messages.slice(0, messageIndex);
+    if (writableConversation.messages[messageIndex].replyIncomplete) {
+      const notice = createMessage('system',
+        '用户选择继续中断的回复。已收到的内容和工具结果已保留。没有结果的工具调用不代表执行成功；执行状态可能未知，涉及副作用时先核对实际状态，不要盲目重复。请接着完成用户的原请求。',
+        undefined, 'system-note');
+      store.chat.updateMessage(writableConversation, message.id, { replyIncomplete: undefined });
+      store.chat.addMessage(writableConversation, notice);
+      try {
+        await runReply({
+          conversationId: activeConversation.id,
+          collaboratorId: derived.activeCollaboratorSourceId ?? activeConversation.collaboratorId,
+          messages: [...writableConversation.messages.map(candidate => candidate.id === message.id
+            ? { ...candidate, replyIncomplete: undefined } : candidate), notice]
+        });
+      } catch (error) {
+        store.chat.updateMessage(writableConversation, message.id, { replyIncomplete: true });
+        throw error;
+      }
+      return;
+    }
+    const replySegments = resolveAssistantReplySegments(writableConversation.messages, message.id);
+    const firstSegmentIndex = replySegments.reduce((earliestIndex, segment) => {
+      const index = writableConversation.messages.findIndex((candidate) => candidate.id === segment.id);
+      return index >= 0 ? Math.min(earliestIndex, index) : earliestIndex;
+    }, messageIndex);
+    const nextMessages = writableConversation.messages.slice(0, firstSegmentIndex);
     store.chat.replaceConversationMessages(writableConversation, nextMessages);
     await runReply({
       conversationId: activeConversation.id,
       collaboratorId: derived.activeCollaboratorSourceId ?? activeConversation.collaboratorId,
       messages: nextMessages
     });
+  };
+
+  const deleteUserMessage = async (message: ChatMessage) => {
+    if (ui.sending || message.role !== 'user' || message.toolInvocation) return;
+    const latestState = store.chat.readLatestState();
+    const activeConversation = latestState.activeConversationId
+      ? latestState.conversations.find((conversation) => conversation.id === latestState.activeConversationId) ?? null
+      : null;
+    if (!activeConversation) return;
+
+    const writableConversation = await store.chat.ensureConversationWritable(activeConversation.id);
+    if (!writableConversation) {
+      ui.setCommandStatus('读取当前对话历史失败，先别删除，避免误删不完整的整轮消息。', true);
+      return;
+    }
+    const removal = removeUserMessageTurn(writableConversation.messages, message.id);
+    if (!removal) return;
+    if (!ui.confirm(localize(
+      'chat.messageActions.deleteTurnConfirm',
+      '删除这条消息及它引出的整轮回答？之后的对话会保留。'
+    ))) return;
+
+    const pendingProposalIds = new Set(collectRemovedPendingProposalIds(
+      writableConversation.conversation.task,
+      removal.removedMessageIds
+    ));
+    const targetIndex = writableConversation.messages.findIndex((candidate) => candidate.id === message.id);
+    const hasLaterUserTurn = writableConversation.messages
+      .slice(targetIndex + 1)
+      .some((candidate) => candidate.role === 'user' && !candidate.toolInvocation);
+    if (!hasLaterUserTurn) {
+      latestState.pendingWorkspaceProposals
+        .filter((proposal) => proposal.conversationId === activeConversation.id)
+        .forEach((proposal) => pendingProposalIds.add(proposal.id));
+    }
+    latestState.pendingWorkspaceProposals
+      .filter((proposal) => pendingProposalIds.has(proposal.id))
+      .forEach((proposal) => store.chat.removePendingWorkspaceProposal(proposal.id));
+    store.chat.replaceConversationMessages(writableConversation, removal.messages);
+    store.chat.setConversationTask(
+      activeConversation.id,
+      reconcileConversationTaskAfterMessageRemoval(
+        writableConversation.conversation.task,
+        removal.removedMessageIds
+      )
+    );
+    if (ui.editing?.messageId === message.id) ui.cancelEditingMessage();
+    ui.setCommandStatus(localize('chat.command.messageTurnDeleted', '已删除这轮消息。'));
   };
 
   const updateAssistantMessage = async (message: ChatMessage, content: string) => {
@@ -224,11 +332,34 @@ export function createChatActionHandlers({
       ui.setCommandStatus('读取当前对话历史失败，先别修改回答。', true);
       return;
     }
-    store.chat.updateMessage(writableConversation, message.id, {
-      content: nextContent,
-      timestamp: Date.now(),
-      voiceCache: undefined
-    });
+    const replySegments = resolveAssistantReplySegments(writableConversation.messages, message.id);
+    if (replySegments.length === 1 && !message.assistantReplyId) {
+      store.chat.updateMessage(writableConversation, message.id, {
+        content: nextContent,
+        timestamp: Date.now(),
+        voiceCache: undefined
+      });
+      ui.setCommandStatus('已修改这条回答。');
+      return;
+    }
+    const removedSegmentIds = new Set(
+      replySegments.filter((segment) => segment.id !== message.id).map((segment) => segment.id)
+    );
+    store.chat.replaceConversationMessages(
+      writableConversation,
+      writableConversation.messages
+        .filter((candidate) => !removedSegmentIds.has(candidate.id))
+        .map((candidate) => candidate.id === message.id
+          ? {
+              ...candidate,
+              content: nextContent,
+              timestamp: Date.now(),
+              voiceCache: undefined,
+              assistantReplyId: undefined,
+              assistantReplySegmentIndex: undefined
+            }
+          : candidate)
+    );
     ui.setCommandStatus('已修改这条回答。');
   };
 
@@ -275,10 +406,15 @@ export function createChatActionHandlers({
       ui.setCommandStatus('新分支还没准备好，先别写入。', true);
       return;
     }
-    const clonedMessages = sourceConversation.messages.slice(0, messageIndex + 1).map((entry, index) => ({
+    store.chat.setConversationReasoningStrength?.(conversationId, sourceConversation.conversation.reasoningStrength ?? 'automatic');
+    const sourceMessages = sourceConversation.messages.slice(0, messageIndex + 1);
+    const clonedIdsBySourceId = new Map(sourceMessages.map((entry) => [entry.id, createUid(entry.role)]));
+    const clonedMessages = sourceMessages.map((entry) => ({
       ...entry,
-      id: createUid(entry.role),
-      timestamp: Date.now() + index
+      id: clonedIdsBySourceId.get(entry.id) as string,
+      assistantReplyId: entry.assistantReplyId
+        ? clonedIdsBySourceId.get(entry.assistantReplyId)
+        : undefined
     }));
     store.chat.replaceConversationMessages(writableConversation, clonedMessages);
     store.space.clearPendingAttachments();
@@ -402,6 +538,7 @@ export function createChatActionHandlers({
     handleSubmit,
     commitMessageEdit,
     retryLatestAssistant,
+    deleteUserMessage,
     updateAssistantMessage,
     cacheAssistantSpeech,
     forkConversationFromMessage,

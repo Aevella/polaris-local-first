@@ -1,4 +1,6 @@
+import { normalizeToolPreparationDiagnostic, type ToolPreparationDiagnostic } from './toolPreparationDiagnostics.js';
 export type ClientDiagnosticsEventKind =
+  | 'tool-preparation'
   | 'startup'
   | 'storage-summary'
   | 'persistence-error'
@@ -99,6 +101,7 @@ export type ClientDiagnosticsPayload = {
   localData?: ClientDiagnosticsLocalDataUsageSummary;
   error?: ClientDiagnosticsErrorSummary;
   persistence?: ClientDiagnosticsPersistenceSummary;
+  toolPreparation?: ToolPreparationDiagnostic;
 };
 
 export type ClientDiagnosticsLogEntry = ClientDiagnosticsPayload & {
@@ -181,7 +184,8 @@ function normalizePlatform(value: unknown): ClientDiagnosticsPlatform {
 }
 
 function normalizeEventKind(value: unknown): ClientDiagnosticsEventKind | null {
-  return value === 'startup'
+  return value === 'tool-preparation'
+    || value === 'startup'
     || value === 'storage-summary'
     || value === 'persistence-error'
     || value === 'window-error'
@@ -389,10 +393,12 @@ export function normalizeClientDiagnosticsPayload(
   const eventId = normalizeString(value.eventId, 120);
   const sessionId = normalizeString(value.sessionId, 120);
   if (!eventKind || !eventId || !sessionId) return null;
-  const storage = normalizeStorageSummary(value.storage);
-  const localData = normalizeLocalDataUsageSummary(value.localData);
-  const error = normalizeErrorSummary(value.error);
-  const persistence = normalizePersistenceSummary(value.persistence);
+  const toolPreparation = eventKind === 'tool-preparation' ? normalizeToolPreparationDiagnostic(value.toolPreparation) : undefined;
+  if (eventKind === 'tool-preparation' && !toolPreparation) return null;
+  const storage = eventKind === 'tool-preparation' ? undefined : normalizeStorageSummary(value.storage);
+  const localData = eventKind === 'tool-preparation' ? undefined : normalizeLocalDataUsageSummary(value.localData);
+  const error = eventKind === 'tool-preparation' ? undefined : normalizeErrorSummary(value.error);
+  const persistence = eventKind === 'tool-preparation' ? undefined : normalizePersistenceSummary(value.persistence);
   if ((eventKind === 'storage-summary' || eventKind === 'startup') && !storage) return null;
   if ((eventKind === 'window-error' || eventKind === 'unhandled-rejection') && !error) return null;
   if (eventKind === 'persistence-error' && (!error || !persistence)) return null;
@@ -411,6 +417,7 @@ export function normalizeClientDiagnosticsPayload(
     ...(localData ? { localData } : {}),
     ...(error ? { error } : {}),
     ...(persistence ? { persistence } : {}),
+    ...(toolPreparation ? { toolPreparation } : {}),
     receivedAt
   };
 }

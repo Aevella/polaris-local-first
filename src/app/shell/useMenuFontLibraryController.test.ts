@@ -10,6 +10,7 @@ import {
 
 const baseCustomization: AppCustomization = {
   showChatAvatars: false,
+  showWorldSwitchHandle: true,
   starColor: null,
   starOpacity: 0.98,
   starGlow: 0.46,

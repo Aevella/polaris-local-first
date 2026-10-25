@@ -259,7 +259,8 @@ export async function commitPersonaRowChangesIfActive(args: {
   });
 }
 
-async function commitPersonaRowChanges(args: {
+// Caller must hold runExclusivePersonaPersistenceCommit.
+export async function commitPersonaRowChanges(args: {
   changes: PersonaRowChange[];
   activeCollaboratorId: string | null;
   seededDefaultPersonaIds: string[];

@@ -29,6 +29,7 @@ import {
   buildStructuredExportPackage,
   streamStructuredExportPackageEntries,
   streamStructuredExportPackage,
+  type ExportReport,
   type StructuredExportSnapshot
 } from '../../stores/storeExportPackage';
 import type { StoreTransferProgressReporter } from '../../stores/storeImportProgress';
@@ -141,7 +142,7 @@ async function exportCurrentPackageViaStreamingSystemFile(options: {
   };
 
   try {
-    await streamStructuredExportPackage(
+    const result = await streamStructuredExportPackage(
       await prepareCompleteExportSnapshot(),
       {
         onStart: async ({ fileName, mimeType }) => {
@@ -167,8 +168,9 @@ async function exportCurrentPackageViaStreamingSystemFile(options: {
     }
     await flushQueuedChunks();
     options.onProgress?.({ message: '打开系统保存位置' });
-    await finishExportFileViaSystemFiles(exportId);
+    const saved = await finishExportFileViaSystemFiles(exportId);
     exportId = null;
+    return { report: result.report, saved };
   } catch (error) {
     if (exportId) {
       await cancelExportFileViaSystemFiles(exportId);
@@ -197,7 +199,7 @@ async function exportCurrentPackageViaNativeZip(options: {
 }) {
   let exportId: string | null = null;
   try {
-    await streamStructuredExportPackageEntries(await prepareCompleteExportSnapshot(), {
+    const result = await streamStructuredExportPackageEntries(await prepareCompleteExportSnapshot(), {
       onStart: async ({ fileName, mimeType }) => {
         options.onProgress?.({ message: '创建系统文件' });
         exportId = await beginZipExportViaSystemFiles(fileName, mimeType);
@@ -222,8 +224,9 @@ async function exportCurrentPackageViaNativeZip(options: {
       throw new Error('系统文件导出会话尚未创建。');
     }
     options.onProgress?.({ message: '打开系统保存位置' });
-    await finishZipExportViaSystemFiles(exportId);
+    const saved = await finishZipExportViaSystemFiles(exportId);
     exportId = null;
+    return { report: result.report, saved };
   } catch (error) {
     if (exportId) {
       await cancelZipExportViaSystemFiles(exportId);
@@ -234,6 +237,8 @@ async function exportCurrentPackageViaNativeZip(options: {
 
 export async function exportCompleteBackup(options: CompleteBackupExportOptions): Promise<{
   target: CompleteBackupExportTarget;
+  report: ExportReport;
+  saved: boolean;
 }> {
   options.onProgress?.({ message: '读取对话和设置' });
   if (getSystemBackupAvailability() === 'unavailable') {
@@ -241,23 +246,23 @@ export async function exportCompleteBackup(options: CompleteBackupExportOptions)
   }
 
   if (canStreamNativeZipBackupFiles()) {
-    await exportCurrentPackageViaNativeZip(options);
-    return { target: 'native-stream' };
+    const result = await exportCurrentPackageViaNativeZip(options);
+    return { target: 'native-stream', ...result };
   }
 
   if (canStreamNativeSystemBackupFiles()) {
-    await exportCurrentPackageViaStreamingSystemFile(options);
-    return { target: 'native-stream' };
+    const result = await exportCurrentPackageViaStreamingSystemFile(options);
+    return { target: 'native-stream', ...result };
   }
 
-  const { blob, fileName } = await buildCurrentExportPackage(options);
+  const { blob, fileName, report } = await buildCurrentExportPackage(options);
   if (canUseNativeSystemBackupFiles()) {
     options.onProgress?.({ message: '打开系统保存位置' });
-    await exportFileViaSystemFiles(blob, fileName);
-    return { target: 'native-file' };
+    const saved = await exportFileViaSystemFiles(blob, fileName);
+    return { target: 'native-file', report, saved };
   }
 
   options.onProgress?.({ message: '准备下载' });
   await options.downloadFile(blob, fileName);
-  return { target: 'browser-download' };
+  return { target: 'browser-download', report, saved: true };
 }

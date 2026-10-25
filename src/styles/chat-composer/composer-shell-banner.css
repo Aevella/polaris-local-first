@@ -103,6 +103,16 @@
   gap: 8px;
   flex-shrink: 0;
 }
+@media (max-width: 620px) {
+  .chat-workspace-banner.active.compact .chat-workspace-banner-copy {
+    flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chat-workspace-banner.active.compact .chat-workspace-banner-copy span,
+  .chat-workspace-banner.active.compact .chat-workspace-banner-copy em {
+    display: none;
+  }
+}
 .chat-current-group-chip {
   align-self: flex-start;
   max-width: min(100%, 360px);

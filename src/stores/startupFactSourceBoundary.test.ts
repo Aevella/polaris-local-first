@@ -562,7 +562,7 @@ describe('startup fact source boundary', () => {
       'useIosKeyboardAccessoryBar',
       'useViewportShellVars',
       'useCompanionRuntime',
-      'useMcpCatalogHeartbeat',
+      'useMcpSessionLifecycle',
       'useDesktopWorkspaceAutoSync',
       'useAndroidApkUpdateRuntime',
       'useAutomaticConversationSummaryMemory',
@@ -583,7 +583,7 @@ describe('startup fact source boundary', () => {
 
     for (const call of [
       'useCompanionRuntime({ enabled: backgroundRuntimeReady })',
-      'useMcpCatalogHeartbeat({ enabled: backgroundRuntimeReady })',
+      'useMcpSessionLifecycle({ enabled: backgroundRuntimeReady })',
       'useAndroidApkUpdateRuntime({ enabled: backgroundRuntimeReady })',
       'useAutomaticConversationSummaryMemory({ startupReady: backgroundRuntimeReady })',
       'useCollectionOwnershipBackfill({',

@@ -8,7 +8,14 @@ import {
 import { appendAnthropicToolCall, appendOpenAiToolCalls } from './providerRuntimeResponseToolCalls';
 import { extractStructuredText, extractTextPayload, extractThinkingPayload } from './providerRuntimeResponseText';
 import { mergeToolCallArgumentsText } from './providerRuntimeToolArguments';
+import { validateProviderToolCallTermination } from './providerRuntimeToolCallResponse';
 import { parseOpenAiCompatibleUsage } from './providerRuntimeUsage';
+import {
+  extractProviderReasoningText,
+  mergeProviderReasoningState,
+  normalizeProviderReasoningItem,
+  normalizeProviderReasoningItems
+} from './providerRuntimeReasoningState';
 
 function readNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
@@ -119,6 +126,8 @@ function appendAnthropicContentBlock(target: ReplyAccumulator, block: unknown) {
     type?: unknown;
     text?: unknown;
     thinking?: unknown;
+    signature?: unknown;
+    data?: unknown;
     id?: unknown;
     name?: unknown;
     input?: unknown;
@@ -136,6 +145,23 @@ function appendAnthropicContentBlock(target: ReplyAccumulator, block: unknown) {
           ? parsed.text
           : '';
     if (thinking) target.thinkingText += thinking;
+    const item = normalizeProviderReasoningItem(parsed);
+    if (item) {
+      target.providerReasoning = mergeProviderReasoningState(target.providerReasoning, {
+        protocol: 'anthropic-messages',
+        items: [item]
+      });
+    }
+    return;
+  }
+  if (parsed.type === 'redacted_thinking') {
+    const item = normalizeProviderReasoningItem(parsed);
+    if (item) {
+      target.providerReasoning = mergeProviderReasoningState(target.providerReasoning, {
+        protocol: 'anthropic-messages',
+        items: [item]
+      });
+    }
     return;
   }
   if (parsed.type === 'tool_use') {
@@ -370,6 +396,7 @@ export function appendChunk(target: ReplyAccumulator, payload: unknown) {
         reasoning_content?: unknown;
         reasoning?: unknown;
         thinking?: unknown;
+        reasoning_details?: unknown;
         tool_calls?: unknown;
       };
       message?: {
@@ -377,6 +404,7 @@ export function appendChunk(target: ReplyAccumulator, payload: unknown) {
         reasoning_content?: unknown;
         reasoning?: unknown;
         thinking?: unknown;
+        reasoning_details?: unknown;
         tool_calls?: unknown;
       };
     }>;
@@ -392,15 +420,25 @@ export function appendChunk(target: ReplyAccumulator, payload: unknown) {
     target.finishReason = finishReason;
   }
 
-  const message = parsed.choices?.[0]?.delta ?? parsed.choices?.[0]?.message;
+  const deltaMessage = parsed.choices?.[0]?.delta;
+  const completeMessage = parsed.choices?.[0]?.message;
+  const message = deltaMessage ?? completeMessage;
   if (!message) return;
-  appendOpenAiToolCalls(target, message.tool_calls);
+  appendOpenAiToolCalls(target, message.tool_calls, deltaMessage ? 'delta' : 'complete');
 
   const content = extractTextPayload(message.content);
+  const reasoningDetails = normalizeProviderReasoningItems(message.reasoning_details);
+  if (reasoningDetails.length) {
+    target.providerReasoning = mergeProviderReasoningState(target.providerReasoning, {
+      protocol: 'openai-completions',
+      items: reasoningDetails
+    });
+  }
   const thinking =
     extractThinkingPayload(message.reasoning_content) ||
     extractThinkingPayload(message.reasoning) ||
-    extractThinkingPayload(message.thinking);
+    extractThinkingPayload(message.thinking) ||
+    extractProviderReasoningText(reasoningDetails);
 
   if (content) target.content += content;
   if (thinking) target.thinkingText += thinking;
@@ -420,7 +458,11 @@ export function extractAnthropicReply(data: unknown, fallbackModel: string): Ass
     tokenCount: resolveAnthropicUsage(parsed?.usage),
     tokenUsage: resolveAnthropicTokenUsage(parsed?.usage),
     toolCalls: [],
-    finishReason: parsed?.stop_reason === 'max_tokens' ? 'length' : undefined
+    finishReason: parsed?.stop_reason === 'max_tokens'
+      ? 'length'
+      : typeof parsed?.stop_reason === 'string'
+        ? parsed.stop_reason
+        : undefined
   };
 
   if (Array.isArray(parsed?.content)) {
@@ -431,6 +473,8 @@ export function extractAnthropicReply(data: unknown, fallbackModel: string): Ass
     collected.content = content;
     collected.thinkingText = thinkingText;
   }
+
+  validateProviderToolCallTermination(collected);
 
   if (
     !collected.content.trim()
@@ -463,6 +507,8 @@ export function extractOpenAiCompatibleReply(data: unknown, fallbackModel: strin
   if (!collected.content.trim() && !collected.thinkingText.trim() && !(collected.toolCalls?.length ?? 0)) {
     appendResponsesPayload(collected, data);
   }
+
+  validateProviderToolCallTermination(collected);
 
   if (!collected.content.trim() && !collected.thinkingText.trim() && !(collected.toolCalls?.length ?? 0)) {
     const rawSnippet = formatProviderPayloadSnippet(data);

@@ -96,6 +96,23 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function nativeZipTextChunkEnd(text: string, offset: number) {
+  let end = Math.min(offset + NATIVE_ZIP_TEXT_CHUNK_CHARS, text.length);
+  // JavaScript slices strings by UTF-16 code unit. Keep a supplementary
+  // character together so the native bridge never receives a lone surrogate.
+  if (
+    end < text.length
+    && end > offset
+    && text.charCodeAt(end - 1) >= 0xd800
+    && text.charCodeAt(end - 1) <= 0xdbff
+    && text.charCodeAt(end) >= 0xdc00
+    && text.charCodeAt(end) <= 0xdfff
+  ) {
+    end -= 1;
+  }
+  return end;
+}
+
 export type SystemBackupAvailability = 'native' | 'browser' | 'unavailable';
 
 export function getSystemBackupAvailability(): SystemBackupAvailability {
@@ -213,11 +230,13 @@ export async function addZipTextEntryViaSystemFiles(exportId: string, path: stri
   ) {
     await SystemFile.beginZipTextEntry({ exportId, path });
     try {
-      for (let offset = 0; offset < text.length; offset += NATIVE_ZIP_TEXT_CHUNK_CHARS) {
+      for (let offset = 0; offset < text.length;) {
+        const end = nativeZipTextChunkEnd(text, offset);
         await SystemFile.appendZipTextChunk({
           exportId,
-          text: text.slice(offset, offset + NATIVE_ZIP_TEXT_CHUNK_CHARS)
+          text: text.slice(offset, end)
         });
+        offset = end;
       }
       await SystemFile.finishZipTextEntry({ exportId });
       return;

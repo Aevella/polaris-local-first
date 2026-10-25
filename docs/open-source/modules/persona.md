@@ -60,3 +60,16 @@ Persona defines collaborator identity, behavior settings, and long-lived referen
 ## Related Intent
 
 - [Memory and group chat intent](../memory-and-group-chat-intent.md)
+
+## World Books And Missing Collaborators
+
+World-book saves validate entries, enter the persona commit queue, persist the selected collaborator
+row, and publish the in-memory result only after commit success. They do not read or rewrite document
+bodies. The editor retains its draft after failure and detects edits made since it opened.
+
+Missing-collaborator recovery reads the current repository. A complete live row can be reloaded into
+the current list without rehydrating other collaborators. A missing row can be explicitly rebuilt;
+a tombstone or damaged existing row cannot be replaced by this action.
+
+New installations seed Pharos where bundled collaborators are enabled. Existing Xiao Assistant
+records remain editable user data and are not reseeded or refreshed.

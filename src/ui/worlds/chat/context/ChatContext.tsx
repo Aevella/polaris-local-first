@@ -1,10 +1,11 @@
 import { createContext, useContext } from 'react';
 import type { CodeCardActionMode, CodeCardMessageProgress } from '../../../../app/chat/chatDerivedState';
 import type { WorkspaceBannerState } from '../../../../engines/workspaceBannerState';
-import type { ChatAttachment, ChatCardReference, ChatMessage, ChatMessageVoiceCache, CodeCard, Conversation, Persona, ThemeToolMode } from '../../../../types/domain';
+import type { ConversationReasoningStrength, ChatAttachment, ChatCardReference, ChatMessage, ChatMessageVoiceCache, CodeCard, Conversation, Persona, ThemeToolMode } from '../../../../types/domain';
 import type { PolarisToolPromptGroup } from '../../../../engines/tool-protocol/assistantToolProtocolTypes';
 import type { ChatCommandStatus, ChatEditingState, ChatStreamingState, ChatSubmitFlightState } from './ChatUiState';
 import type { ChatConversationBodyStatus } from '../../../../stores/chatConversationBodyStatus';
+import type { ThinkingTranslationResult, ThinkingTranslationSection } from '../../../../engines/thinkingTranslation';
 
 // Split map lives in CHAT_CONTEXT_SPLIT.md so future拆分 has a stable field-level boundary.
 export type ChatContextPresentationValue = {
@@ -36,6 +37,7 @@ export type ChatContextComposerValue = {
   taskModeEnabled: boolean;
   themeToolMode: ThemeToolMode;
   canReviveTheme: boolean;
+  reasoningStrength: ConversationReasoningStrength;
 };
 
 export type ChatContextUiValue = {
@@ -69,15 +71,21 @@ export type ChatContextActionsValue = {
   stopGeneration: () => void;
   retry: (message: ChatMessage) => Promise<void>;
   editMessage: (message: ChatMessage) => void;
+  deleteUserMessage: (message: ChatMessage) => void;
   editAssistantMessage: (message: ChatMessage, content: string) => void;
   cacheAssistantSpeech: (message: ChatMessage, voiceCache: ChatMessageVoiceCache) => void;
   forkFromMessage: (message: ChatMessage) => void;
   updateEditingDraft: (value: string) => void;
   removeEditingAttachment: (attachmentId: string) => void;
-  commitEdit: (message: ChatMessage) => Promise<void>;
+  commitEdit: (message: ChatMessage, mode?: 'retry' | 'save-only') => Promise<void>;
   cancelEdit: () => void;
   toggleThinkingCollapsed: (messageId: string) => void;
   openThinkingSummary: (message: ChatMessage) => void;
+  translateThinking: (
+    sections: ThinkingTranslationSection[],
+    targetLanguage: string,
+    signal?: AbortSignal
+  ) => Promise<ThinkingTranslationResult>;
   toggleCodeExpanded: (messageId: string) => void;
   applyToolPreview: (message: ChatMessage) => void;
   saveToolPreview: (message: ChatMessage) => void;
@@ -88,6 +96,7 @@ export type ChatContextActionsValue = {
   codeCardAction: (message: ChatMessage) => void;
   setInputDraft: (value: string) => void;
   setConversationDraft: (conversationId: string, value: string) => void;
+  setConversationReasoningStrength: (strength: ConversationReasoningStrength) => void;
   setPendingCardReference: (reference: ChatCardReference | null) => void;
   setDragActive: (value: boolean) => void;
   setCommandStatus: (text: string, isError?: boolean) => void;

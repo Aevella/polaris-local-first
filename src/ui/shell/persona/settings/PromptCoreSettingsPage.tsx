@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   canEditPersonaPrompt,
   isCorePersona,
-  isPharosPersona,
-  isProductGuidePersona
+  isPharosPersona
 } from '../../../../engines/personaBuiltin';
 import { buildTemplateContext, resolveSystemPromptVars } from '../../../../engines/templateEngine';
 import { loadPharosPersonaPrompt } from '../../../../config/prompts/pharosPromptLoader';
@@ -67,10 +66,6 @@ export function PromptCoreSettingsPage({
   useEffect(() => {
     setPromptFocused(false);
   }, [activePersona?.id]);
-
-  if (isProductGuidePersona(activePersona)) {
-    return null;
-  }
 
   if (page === 'message') {
     return (

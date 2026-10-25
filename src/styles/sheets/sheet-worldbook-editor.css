@@ -1,0 +1,72 @@
+.ps-worldbook-page { min-width: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px; color: var(--text); }
+.ps-worldbook-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.ps-worldbook-toolbar button { min-height: 42px; display: inline-flex; gap: 6px; align-items: center; }
+.ps-worldbook-library { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; }
+.ps-worldbook-entry { min-width: 0; padding: 20px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); cursor: pointer; transition: border-color .18s, background .18s; }
+.ps-worldbook-entry:hover, .ps-worldbook-entry:focus-visible { border-color: var(--accent); background: var(--surface-deep); outline: none; }
+.ps-worldbook-entry-head { display: flex; align-items: center; gap: 10px; color: var(--text-muted); font-size: var(--type-micro); }
+.ps-worldbook-entry-head button { margin-left: auto; }
+.ps-worldbook-badge { padding: 4px 8px; border-radius: 6px; background: var(--surface-deep); color: var(--text-soft); }
+.ps-worldbook-badge.is-constant { color: var(--accent); background: var(--accent-soft); }
+.ps-worldbook-entry p { margin: 18px 0 24px; line-height: 1.8; font-size: var(--type-body); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; }
+.ps-worldbook-entry-foot { display: flex; gap: 12px; justify-content: space-between; color: var(--text-muted); font-size: var(--type-micro); }
+.ps-worldbook-entry-foot span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps-worldbook-entry-foot span:last-child { flex-shrink: 0; color: var(--text-soft); }
+.ps-worldbook-empty { padding: 48px 24px; border: 1px dashed var(--border); border-radius: 20px; text-align: center; color: var(--text-muted); display: flex; flex-direction: column; align-items: center; gap: 20px; }
+.ps-worldbook-editor-head { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: calc(16px + env(safe-area-inset-top, 0px)) 32px 16px; background: var(--surface-solid); border-bottom: 1px solid var(--border); }
+.ps-worldbook-back { min-height: 44px; padding: 10px 12px; margin-inline-start: -12px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text-soft); font: inherit; font-size: var(--type-small); cursor: pointer; transition: background .16s, color .16s; }
+.ps-worldbook-back:hover, .ps-worldbook-back:active { background: var(--accent-soft); color: var(--text); }
+.ps-worldbook-back:focus:not(:focus-visible) { outline: none; }
+.ps-worldbook-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; background: var(--accent-soft); }
+.ps-worldbook-modes { display: flex; gap: 8px; flex-wrap: wrap; }
+.ps-worldbook-modes button { padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background: transparent; font: inherit; font-size: var(--type-small); color: var(--text-muted); cursor: pointer; }
+.ps-worldbook-modes button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.ps-worldbook-body-field { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ps-worldbook-body-field > span { display: flex; justify-content: space-between; font-size: var(--type-small); color: var(--text-soft); }
+.ps-worldbook-body-field small { color: var(--text-muted); }
+.ps-worldbook-body { width: 100%; box-sizing: border-box; min-height: 420px; padding: 24px; font-size: 16px; line-height: 1.95; resize: vertical; border-radius: 14px; }
+.ps-worldbook-conditions { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.ps-worldbook-options { border-top: 1px solid var(--border); padding-top: 20px; color: var(--text-muted); font-size: var(--type-small); }
+.ps-worldbook-options summary { cursor: pointer; margin-bottom: 18px; }
+.ps-worldbook-options .ps-rx-field { max-width: 280px; }
+.ps-worldbook-delete { margin-top: 20px; padding: 8px 0; border: 0; background: transparent; color: var(--color-error); font: inherit; cursor: pointer; }
+@media (max-width: 720px) {
+  .ps-worldbook-page { gap: 20px; }
+  .ps-worldbook-body { padding: 16px; min-height: 360px; }
+  .ps-worldbook-conditions { grid-template-columns: minmax(0, 1fr); }
+  .ps-worldbook-toolbar button { flex: 1 1 auto; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) { .ps-worldbook-entry, .ps-worldbook-back { transition: none; } }
+
+.ps-worldbook-drawer {
+  position: fixed;
+  inset: 0;
+  width: min(780px, 100%);
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface-solid);
+  color: var(--text);
+  box-sizing: border-box;
+  overflow: hidden;
+  box-shadow: -24px 0 80px rgba(0, 0, 0, .2);
+}
+.ps-worldbook-drawer:focus { outline: none; }
+.ps-worldbook-drawer[open] { display: flex; flex-direction: column; animation: worldbookDrawerEnter .2s ease-out; }
+.ps-worldbook-drawer::backdrop { background: rgba(0, 0, 0, .3); backdrop-filter: blur(5px); }
+.ps-worldbook-drawer-body { flex: 1; display: flex; flex-direction: column; gap: 24px; padding: 28px 32px calc(32px + env(safe-area-inset-bottom, 0px) + var(--keyboard-scroll-padding, 0px)); }
+.ps-worldbook-drawer-body .ps-worldbook-body { min-height: 480px; }
+@keyframes worldbookDrawerEnter { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+@media (max-width: 720px) {
+  .ps-worldbook-drawer { width: 100%; border: 0; box-shadow: none; }
+  .ps-worldbook-editor-head { padding-left: 20px; padding-right: 20px; }
+  .ps-worldbook-drawer-body { padding-left: 20px; padding-right: 20px; gap: 20px; }
+  .ps-worldbook-drawer-body .ps-worldbook-body { min-height: 360px; }
+}
+@media (prefers-reduced-motion: reduce) { .ps-worldbook-drawer[open] { animation: none; } }
+
+.ps-worldbook-inputs { border: 0; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 24px; }

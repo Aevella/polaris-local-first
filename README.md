@@ -6,6 +6,27 @@ Most AI chat clients treat a conversation as a single message stream. Polaris tr
 
 The core design idea is to build an environment that matches how an AI collaborator can reason naturally: clear scene, clear identities, clear tools, clear evidence, and enough local context for the model to choose well.
 
+## Screenshots
+
+![A long-lived Polaris conversation bound to a project workspace](docs/assets/screenshots/polaris-chat-workspace.png)
+
+*A collaborator, long-lived threads, tool evidence, and the active workspace remain visible parts of the same scene.*
+
+![Saved research, architecture, release, and LocalData cards in Polaris](docs/assets/screenshots/polaris-collection-cards.png)
+
+*Useful outputs leave the chat timeline as durable cards with ownership, source, and room context.*
+
+![A Polaris project workspace containing conversations, files, and reference material](docs/assets/screenshots/polaris-project-workspace.png)
+
+*Project work keeps its conversations, files, reference material, and runnable entry points together.*
+
+<p align="center">
+  <img src="docs/assets/screenshots/polaris-mobile-dark-chat.png" alt="A Polaris conversation on a phone in dark appearance" width="42%" />
+  <img src="docs/assets/screenshots/polaris-mobile-dark-workspace.png" alt="A Polaris project workspace on a phone in dark appearance" width="42%" />
+</p>
+
+<p align="center"><em>The conversation and workspace surfaces remain available at phone size with dark appearance.</em></p>
+
 ## Product Shape
 
 - **Chat workspace:** long-lived conversations, streaming replies, task state, tool calls, thinking summaries, attachments, and import/export flows.

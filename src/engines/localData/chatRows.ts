@@ -153,6 +153,9 @@ export function buildConversationCatalogLocalDataRow(args: ChatConversationLocal
     group: snapshot.group,
     groupRoomId: snapshot.groupRoomId ?? null,
     activeProjectId: snapshot.activeProjectId ?? null,
+    reasoningStrength: snapshot.reasoningStrength,
+    requestContext: snapshot.requestContext,
+    windowPreferences: snapshot.windowPreferences,
     pinnedAt: snapshot.pinnedAt,
     updatedAt: snapshot.updatedAt,
     messageCount: expectedMessageCount,
@@ -170,6 +173,23 @@ export function buildConversationCatalogLocalDataRow(args: ChatConversationLocal
   });
 }
 
+export function buildConversationRecordMetadata(
+  args: Pick<ChatConversationLocalDataArgs, 'conversation' | 'version' | 'committedAt'>,
+  assetRefs: string[]
+): Omit<ConversationRecordRow, 'messages'> {
+  const snapshot = toConversationDurableSnapshot(args.conversation);
+  return {
+    id: snapshot.id,
+    version: args.version,
+    committedAt: args.committedAt,
+    task: snapshot.task ?? null,
+    draft: snapshot.draft ?? '',
+    workspaceLedger: snapshot.workspaceLedger ?? [],
+    ownerProjectId: snapshot.activeProjectId ?? null,
+    assetRefs
+  };
+}
+
 export function buildConversationRecordLocalDataRow(args: ChatConversationLocalDataArgs) {
   assertCompleteConversationProjection(args);
   const ref = getConversationRecordLocalDataRef(args.conversation.id);
@@ -178,15 +198,8 @@ export function buildConversationRecordLocalDataRow(args: ChatConversationLocalD
 
   const snapshot = toConversationDurableSnapshot(args.conversation);
   const value: ConversationRecordRow = {
-    id: snapshot.id,
-    version: args.version,
-    committedAt: args.committedAt,
-    messages: snapshot.messages,
-    task: snapshot.task ?? null,
-    draft: snapshot.draft ?? '',
-    workspaceLedger: snapshot.workspaceLedger ?? [],
-    ownerProjectId: snapshot.activeProjectId ?? null,
-    assetRefs: collectConversationAssetRefs(snapshot.messages)
+    ...buildConversationRecordMetadata(args, collectConversationAssetRefs(snapshot.messages)),
+    messages: snapshot.messages
   };
 
   return createCompleteLocalDataRow({

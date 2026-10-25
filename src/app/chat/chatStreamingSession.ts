@@ -1,3 +1,4 @@
+import { reportPersistenceError } from '../../infrastructure/persistenceDiagnostics';
 import type { AssistantReplyProgress } from '../../engines/chatApi';
 import { buildAssistantMessagePatch } from '../../engines/chatMessageNormalization';
 import type { McpResolvedToolDefinition } from '../../engines/mcpRuntime';
@@ -5,13 +6,19 @@ import type { WritableConversationBody } from '../../stores/chatStore';
 import type { ModelTier, ThemeToolMode } from '../../types/domain';
 import type { ChatReplyStoreBindings, ChatUiReplyState } from './chatPorts';
 import { parseAssistantReplyContent, startAssistantPlaceholder } from './chatReplyContent';
+import { createMessage } from '../../engines/chatMessageFactory';
+import { createUid } from '../../engines/id';
+import { splitAssistantReplySegments } from '../../engines/assistantReplySegments';
 
 type StreamingSessionArgs = {
   ui: Pick<
     ChatUiReplyState,
     'abortControllerRef' | 'setStreaming' | 'setSending' | 'streamingLifecycleReleaseRef'
   >;
-  chat: Pick<ChatReplyStoreBindings['chat'], 'addMessage' | 'updateMessage'>;
+  chat: Pick<ChatReplyStoreBindings['chat'], 'addMessage' | 'updateMessage'> & Partial<Pick<
+    ChatReplyStoreBindings['chat'],
+    'insertMessageBefore' | 'getConversationMessages' | 'replaceConversationMessages' | 'persistToDb'
+  >>;
   conversationId: string;
   writableConversation: WritableConversationBody;
   placeholderId: string;
@@ -26,6 +33,7 @@ type StreamingSessionArgs = {
   activeProjectId?: string | null;
   allowCreativeCssRecovery?: boolean;
   mcpTools?: McpResolvedToolDefinition[];
+  segmentedRepliesEnabled?: boolean;
   onFirstProgressFlushed?: () => void;
 };
 
@@ -67,15 +75,123 @@ export function createStreamingSession(args: StreamingSessionArgs) {
     activeProjectId = null,
     allowCreativeCssRecovery = false,
     mcpTools = [],
+    segmentedRepliesEnabled = false,
     onFirstProgressFlushed
   } = args;
   const controller = new AbortController();
+  const replyStartedAt = Date.now();
   let latestProgress: AssistantReplyProgress | null = null;
   let latestSeenProgress: AssistantReplyProgress | null = null;
   let progressFrameId: number | null = null;
   let progressTimerId: number | null = null;
   let lastProgressFlushAt = 0;
   let hasReceivedFirstProgress = false;
+  let prefixSegmentIds: string[] = [];
+  let checkpointTimer: number | null = null;
+  let finished = false;
+  let completed = false;
+  let checkpointInFlight = false;
+  let progressNeedsCheckpoint = false;
+
+  // Checkpoints share the normal chat writer; they never wait on the network
+  // or replay a tool. Only one background checkpoint can be in flight.
+  const persistCheckpoint = () => {
+    if (checkpointInFlight) return;
+    chat.updateMessage(writableConversation, placeholderId, { replyIncomplete: true });
+    if (!chat.persistToDb) return;
+    checkpointInFlight = true;
+    void chat.persistToDb().catch((error) => {
+      reportPersistenceError({ label: '[store:persist]', store: 'chat', operation: 'reply-checkpoint' }, error);
+      progressNeedsCheckpoint = true;
+    }).finally(() => { checkpointInFlight = false; });
+  };
+  const scheduleCheckpoint = () => {
+    checkpointTimer = window.setTimeout(() => {
+      checkpointTimer = null;
+      if (finished || completed) return;
+      if (latestProgress) commitQueuedProgress();
+      if (progressNeedsCheckpoint && !checkpointInFlight) {
+        progressNeedsCheckpoint = false;
+        persistCheckpoint();
+      }
+      scheduleCheckpoint();
+    }, 1000);
+  };
+
+  const removeUnusedPrefixSegments = (keepCount: number) => {
+    if (prefixSegmentIds.length <= keepCount) return;
+    if (!chat.getConversationMessages || !chat.replaceConversationMessages) {
+      throw new Error('分段回复缺少消息重排能力。');
+    }
+    const removedIds = new Set(prefixSegmentIds.slice(keepCount));
+    chat.replaceConversationMessages(
+      writableConversation,
+      chat.getConversationMessages(conversationId).filter((message) => !removedIds.has(message.id))
+    );
+    prefixSegmentIds = prefixSegmentIds.slice(0, keepCount);
+  };
+
+  const syncSegmentedReply = (
+    visibleContent: string,
+    patch: ReturnType<typeof buildAssistantMessagePatch>
+  ) => {
+    const segments = segmentedRepliesEnabled
+      ? splitAssistantReplySegments(visibleContent)
+      : [visibleContent];
+    const prefixCount = Math.max(0, segments.length - 1);
+    removeUnusedPrefixSegments(prefixCount);
+
+    while (prefixSegmentIds.length < prefixCount) {
+      if (!chat.insertMessageBefore) {
+        throw new Error('分段回复缺少消息插入能力。');
+      }
+      const segmentIndex = prefixSegmentIds.length;
+      const segmentId = createUid('assistant');
+      prefixSegmentIds.push(segmentId);
+      chat.insertMessageBefore(writableConversation, placeholderId, {
+        ...createMessage('assistant', segments[segmentIndex] ?? '', undefined, 'assistant-reply', segmentId),
+        assistantName,
+        speakerCollaboratorId,
+        providerId,
+        providerName,
+        timestamp: replyStartedAt + segmentIndex,
+        assistantReplyId: placeholderId,
+        assistantReplySegmentIndex: segmentIndex
+      });
+    }
+
+    if (segments.length <= 1) {
+      chat.updateMessage(writableConversation, placeholderId, {
+        ...patch,
+        content: segments[0] ?? '',
+        timestamp: replyStartedAt,
+        assistantReplyId: undefined,
+        assistantReplySegmentIndex: undefined
+      });
+      return;
+    }
+
+    prefixSegmentIds.forEach((segmentId, segmentIndex) => {
+      chat.updateMessage(writableConversation, segmentId, {
+        content: segments[segmentIndex] ?? '',
+        assistantName,
+        speakerCollaboratorId,
+        providerId,
+        providerName,
+        model: patch.model,
+        timestamp: replyStartedAt + segmentIndex,
+        assistantReplyId: placeholderId,
+        assistantReplySegmentIndex: segmentIndex
+      });
+    });
+    chat.updateMessage(writableConversation, placeholderId, {
+      ...patch,
+      content: segments[segments.length - 1] ?? '',
+      timestamp: replyStartedAt + segments.length - 1,
+      assistantReplyId: placeholderId,
+      assistantReplySegmentIndex: segments.length - 1
+    });
+  };
 
   const clearScheduledLifecycleRelease = () => {
     if (ui.streamingLifecycleReleaseRef.current === null) return;
@@ -94,6 +210,7 @@ export function createStreamingSession(args: StreamingSessionArgs) {
     lastProgressFlushAt = Date.now();
     if (!latestProgress) return;
     latestSeenProgress = latestProgress;
+    progressNeedsCheckpoint = true;
 
     const { visibleContent } = parseAssistantReplyContent(
       latestProgress.content,
@@ -104,7 +221,7 @@ export function createStreamingSession(args: StreamingSessionArgs) {
       ignoredUnknownNativeToolNames,
       { hasWorkspaceContext, activeProjectId, allowCreativeCssRecovery, mcpTools }
     );
-    chat.updateMessage(writableConversation, placeholderId, buildAssistantMessagePatch({
+    syncSegmentedReply(visibleContent, buildAssistantMessagePatch({
       messageId: placeholderId,
       assistantName,
       speakerCollaboratorId,
@@ -156,6 +273,12 @@ export function createStreamingSession(args: StreamingSessionArgs) {
     flushProgress();
   };
 
+  const checkpointOnLeave = () => {
+    if (finished || completed || document.visibilityState !== 'hidden') return;
+    commitQueuedProgress();
+    persistCheckpoint();
+  };
+
   const scheduleLifecycleRelease = (delayMs: number) => {
     clearScheduledLifecycleRelease();
     setStreamingPhase('settling');
@@ -178,9 +301,16 @@ export function createStreamingSession(args: StreamingSessionArgs) {
       setStreamingMessageId: (messageId) => ui.setStreaming({ messageId, phase: 'stage' })
     });
     ui.setSending(true);
+    persistCheckpoint();
+    if (chat.persistToDb) scheduleCheckpoint();
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', checkpointOnLeave);
   };
 
   const finish = (preserveLifecycle = false) => {
+    finished = true;
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', checkpointOnLeave);
+    if (checkpointTimer !== null) window.clearTimeout(checkpointTimer);
+    checkpointTimer = null;
     if (progressTimerId !== null) {
       window.clearTimeout(progressTimerId);
       progressTimerId = null;
@@ -200,9 +330,17 @@ export function createStreamingSession(args: StreamingSessionArgs) {
 
   return {
     controller,
+    markCompleted: () => {
+      completed = true;
+      chat.updateMessage(writableConversation, placeholderId, { replyIncomplete: undefined });
+    },
     queueProgress,
     commitQueuedProgress,
     getLatestProgress: () => latestProgress ?? latestSeenProgress,
+    commitFinalReply: (
+      visibleContent: string,
+      patch: ReturnType<typeof buildAssistantMessagePatch>
+    ) => syncSegmentedReply(visibleContent, patch),
     scheduleLifecycleRelease,
     start,
     finish

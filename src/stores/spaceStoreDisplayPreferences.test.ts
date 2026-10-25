@@ -47,3 +47,13 @@ describe('mergeDisplayPreferencesPatch', () => {
     });
   });
 });
+
+
+describe('header layout preferences', () => {
+  it('keeps legacy headers centered and persists the explicit left arrangement', () => {
+    expect(normalizeDisplayPreferences({}).topbarLayout).toBeUndefined();
+    const leading = mergeDisplayPreferencesPatch(DEFAULT_DISPLAY_PREFERENCES, { topbarLayout: 'leading' });
+    expect(normalizeDisplayPreferences(JSON.parse(JSON.stringify(leading))).topbarLayout).toBe('leading');
+    expect(mergeDisplayPreferencesPatch(leading, { topbarLayout: 'centered' }).topbarLayout).toBeUndefined();
+  });
+});

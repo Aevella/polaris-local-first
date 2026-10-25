@@ -40,6 +40,9 @@ export async function buildUnloadedConversationCatalogUpdate(
     title: normalizeConversationTitle(conversation.title, []),
     collaboratorId: conversation.collaboratorId,
     activeProjectId: conversation.activeProjectId ?? null,
+    reasoningStrength: conversation.reasoningStrength,
+    requestContext: conversation.requestContext,
+    windowPreferences: conversation.windowPreferences,
     pinnedAt: conversation.pinnedAt,
     updatedAt: conversation.updatedAt
   };

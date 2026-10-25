@@ -202,6 +202,22 @@ describe('buildChatMigrationDryRunReportFromCurrentPersistence', () => {
     }));
   });
 
+  it('preserves window settings from the selected record during explicit migration', async () => {
+    const current = conversation({reasoningStrength: 'high', requestContext: {mode: 'recent', messageCount: 90},
+      windowPreferences: {historicalImagePolicy: 'always', composerReturnKeyBehavior: 'newline', mcpScope: {mode: 'inherit'}}});
+    const entries = serializeChatStateEntries({conversations: [current], activeConversationId: current.id});
+    // The selected record is newer than the catalog's metadata.
+    const catalog = entries.find(entry => entry.key === 'chat-catalog-v1')!;
+    (catalog.value as {conversations: Array<{requestContext?: unknown}>}).conversations[0].requestContext = {mode: 'all'};
+    setPersistenceBackendForTesting(createMemoryPersistenceBackend({kv: [...entries, personaStateEntry()],
+      assetMeta: [['asset-current', assetMeta('asset-current')]]}));
+    const result = await commitChatMigrationStagingFromCurrentPersistence({version: 9, committedAt: 100, validatedAt: 110});
+    expect(result.report.ok).toBe(true);
+    const row = await kvGet<LocalDataCompleteRow<Record<string, unknown>>>(getLocalDataRowKey(getConversationCatalogLocalDataRef(current.id)));
+    expect(row?.value).toMatchObject({reasoningStrength: 'high', requestContext: {mode: 'recent', messageCount: 90},
+      windowPreferences: current.windowPreferences});
+  });
+
   it('reads legacy chat-index message chunks through the same current-persistence preflight', async () => {
     const legacyConversation = conversation({
       id: 'c-legacy',

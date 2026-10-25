@@ -1,3 +1,5 @@
+import { resolveConversationMcpServers } from '../../engines/conversationWindowSettings';
+import { applyConversationRequestContext } from '../../engines/conversationContextSettings';
 import { inferModelTier } from '../../engines/modelTier';
 import { resolveProviderCapability } from '../../engines/provider-runtime';
 import {
@@ -15,6 +17,7 @@ import type {
   CodeCard,
   CollectionShelf,
   Conversation,
+  ConversationReasoningStrength,
   ConversationTaskState,
   ImageAssetCard,
   ImageGenerationSettings,
@@ -131,12 +134,18 @@ export type ChatReplyRequestSnapshot = {
   personas: Persona[];
   currentCollaboratorId: string | null;
   activeConversationTitle?: string;
+  requestContext?: Conversation['requestContext'];
+  windowPreferences?: Conversation['windowPreferences'];
+  reasoningStrength?: ConversationReasoningStrength;
   activeCollaborator: Persona | null;
 };
 
 export type ChatReplyRequestSnapshotSource = Omit<
   ChatReplyRequestSnapshot,
   | 'activeProjectId'
+  | 'reasoningStrength'
+  | 'requestContext'
+  | 'windowPreferences'
 > & {
   activeCollaborator: Persona | null;
 };
@@ -147,6 +156,7 @@ export function createChatReplyRequestSnapshot(args: {
     id: string;
     title: string;
     activeProjectId?: string | null;
+    reasoningStrength?: ConversationReasoningStrength;
   } | null;
 }) {
   const { source, activeConversation } = args;
@@ -177,7 +187,7 @@ export function createChatReplyRequestSnapshot(args: {
     themeToolMode: source.themeToolMode,
     enabledToolGroups: source.enabledToolGroups,
     taskModeEnabled: source.taskModeEnabled,
-    mcpServers: source.mcpServers,
+    mcpServers: resolveConversationMcpServers(source.mcpServers, activeConversationRecord?.windowPreferences?.mcpScope),
     mcpToolTimeoutSeconds: source.mcpToolTimeoutSeconds,
     themePreviewActive: source.themePreviewActive,
     currentThemeFrame: source.currentThemeFrame,
@@ -220,6 +230,9 @@ export function createChatReplyRequestSnapshot(args: {
     personas: source.personas,
     currentCollaboratorId: source.currentCollaboratorId,
     activeConversationTitle: source.activeConversationTitle ?? activeConversation?.title,
+    requestContext: activeConversationRecord?.requestContext,
+    windowPreferences: activeConversationRecord?.windowPreferences,
+    reasoningStrength: activeConversation?.reasoningStrength ?? 'automatic',
     activeCollaborator: source.activeCollaborator
   } satisfies ChatReplyRequestSnapshot;
 }
@@ -248,8 +261,14 @@ export function buildReplyToolContext(args: {
   const activeProject = snapshot.activeProjectId
     ? visibleProjects.find((project) => project.id === snapshot.activeProjectId) ?? null
     : null;
-  const collaboratorForReply =
-    snapshot.personas.find((persona) => persona.id === collaboratorId) ?? snapshot.activeCollaborator;
+  let collaboratorForReply =
+    applyConversationRequestContext(
+      snapshot.personas.find((persona) => persona.id === collaboratorId) ?? snapshot.activeCollaborator,
+      snapshot.requestContext
+    );
+  if (collaboratorForReply && snapshot.windowPreferences?.modelBinding?.providerId === snapshot.api.id) {
+    collaboratorForReply = { ...collaboratorForReply, advanced: { ...collaboratorForReply.advanced, providerId: snapshot.api.id, modelOverride: snapshot.api.model } };
+  }
   const assistantName = collaboratorForReply?.name || snapshot.activeCollaborator?.name || 'Assistant';
   const providerCapability = resolveProviderCapability(snapshot.api);
   const modelId = providerCapability.provider.model;

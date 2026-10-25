@@ -13,7 +13,7 @@ import {
 } from './providerRuntimeFixtures';
 import { resolveCanonicalProviderCapabilities } from './providerRuntimeCapabilities';
 import type { AssistantRequestCachePlan } from '../request/requestCachePlan';
-import type { AssistantRequestContext } from '../request/requestContext';
+import { assembleAssistantContext, type AssistantRequestContext } from '../request/requestContext';
 import type { ProviderRuntimeRequestInput } from './providerRuntimeRequestTypes';
 
 type OpenAiCompatibleAdapterParityCase = {
@@ -244,8 +244,8 @@ const parityCases: OpenAiCompatibleAdapterParityCase[] = [
         expect.objectContaining({ role: 'system', content: 'Stable memory lane.' }),
         expect.objectContaining({ role: 'user', content: 'Earlier turn.' }),
         expect.objectContaining({ role: 'assistant', content: 'Earlier answer.' }),
-        expect.objectContaining({ role: 'user', content: 'Latest turn.' }),
-        expect.objectContaining({ role: 'system', content: 'Volatile semantic recall.' })
+        expect.objectContaining({ role: 'system', content: 'Volatile semantic recall.' }),
+        expect.objectContaining({ role: 'user', content: 'Latest turn.' })
       ]);
       expect(request.body.messages).not.toEqual(expect.arrayContaining([
         expect.objectContaining({ content: 'Append-only system feedback should not become a stable prefix.' })
@@ -274,10 +274,10 @@ const parityCases: OpenAiCompatibleAdapterParityCase[] = [
         expect.objectContaining({ role: 'system', content: 'Stable memory lane.' }),
         expect.objectContaining({ role: 'user', content: 'Earlier turn.' }),
         expect.objectContaining({ role: 'assistant', content: 'Earlier answer.' }),
-        expect.objectContaining({ role: 'user', content: 'Latest turn.' }),
         expect.objectContaining({ role: 'system', content: 'Current model runtime hint.' }),
         expect.objectContaining({ role: 'system', content: 'Volatile semantic recall.' }),
-        expect.objectContaining({ role: 'system', content: 'Append-only system feedback should not become a stable prefix.' })
+        expect.objectContaining({ role: 'system', content: 'Append-only system feedback should not become a stable prefix.' }),
+        expect.objectContaining({ role: 'user', content: 'Latest turn.' })
       ]);
     },
     verifyCapabilities: expect.objectContaining({
@@ -315,18 +315,18 @@ const parityCases: OpenAiCompatibleAdapterParityCase[] = [
         }),
         expect.objectContaining({ role: 'system', content: 'Stable memory lane.' }),
         expect.objectContaining({ role: 'user', content: 'Earlier turn.' }),
-        expect.objectContaining({ role: 'assistant', content: 'Earlier answer.' }),
         expect.objectContaining({
-          role: 'user',
+          role: 'assistant',
           content: [{
             type: 'text',
-            text: 'Latest turn.',
+            text: 'Earlier answer.',
             cache_control: { type: 'ephemeral' }
           }]
         }),
         expect.objectContaining({ role: 'system', content: 'Current model runtime hint.' }),
         expect.objectContaining({ role: 'system', content: 'Volatile semantic recall.' }),
-        expect.objectContaining({ role: 'system', content: 'Append-only system feedback should not become a stable prefix.' })
+        expect.objectContaining({ role: 'system', content: 'Append-only system feedback should not become a stable prefix.' }),
+        expect.objectContaining({ role: 'user', content: 'Latest turn.' })
       ]);
     },
     verifyCapabilities: expect.objectContaining({
@@ -580,5 +580,137 @@ describe('openAiCompatibleChatAdapter', () => {
         content: 'Please answer with a small provider runtime fixture.'
       }
     ]);
+  });
+
+  it('uses OpenRouter reasoning and replays structured reasoning details automatically', () => {
+    const context = createProviderRuntimeTestContext({ withTools: true, withToolHistory: true });
+    const assistantMessage = context.segments[0]?.messages.find((message) => message.role === 'assistant');
+    if (assistantMessage?.role === 'assistant') {
+      assistantMessage.providerReasoning = {
+        protocol: 'openai-completions',
+        items: [{
+          type: 'reasoning.text',
+          index: 0,
+          text: '先检查工具参数。',
+          signature: 'sig-openrouter-a'
+        }]
+      };
+    }
+
+    const request = buildOpenAiCompatibleRequest({
+      api: createProviderRuntimeTestProvider({
+        baseUrl: 'https://openrouter.ai/api/v1',
+        path: '/chat/completions',
+        model: 'anthropic/claude-sonnet-4.6',
+        capabilities: { images: true, streaming: true, thinking: true }
+      }),
+      context,
+      advanced: createProviderRuntimeAdvanced({ thinkingBudget: '4096' })
+    });
+
+    expect(request.body.reasoning).toEqual({ max_tokens: 4096, exclude: false });
+    expect(request.body.thinking).toBeUndefined();
+    expect(firstAssistantMessage(request)).toEqual(expect.objectContaining({
+      reasoning_details: [{
+        type: 'reasoning.text',
+        text: '先检查工具参数。',
+        signature: 'sig-openrouter-a'
+      }]
+    }));
+  });
+
+  it('maps conversation reasoning strength to DeepSeek V4 native controls', () => {
+    const api = createProviderRuntimeTestProvider({
+      baseUrl: 'https://api.deepseek.com/v1',
+      path: '/chat/completions',
+      model: 'deepseek-v4-pro',
+      capabilities: { images: false, streaming: true, thinking: true }
+    });
+    const context = createProviderRuntimeTestContext();
+
+    const offRequest = buildOpenAiCompatibleRequest({
+      api,
+      context,
+      reasoningStrength: 'off',
+      advanced: createProviderRuntimeAdvanced({
+        customBody: JSON.stringify({
+          thinking: { type: 'enabled' },
+          reasoning_effort: 'max'
+        })
+      })
+    });
+    expect(offRequest.body.thinking).toEqual({ type: 'disabled' });
+    expect(offRequest.body.reasoning_effort).toBeUndefined();
+
+    const highRequest = buildOpenAiCompatibleRequest({
+      api,
+      context,
+      reasoningStrength: 'high',
+      advanced: createProviderRuntimeAdvanced()
+    });
+    expect(highRequest.body.thinking).toEqual({ type: 'enabled' });
+    expect(highRequest.body.reasoning_effort).toBe('high');
+
+    const extremeRequest = buildOpenAiCompatibleRequest({
+      api,
+      context,
+      reasoningStrength: 'extreme',
+      advanced: createProviderRuntimeAdvanced()
+    });
+    expect(extremeRequest.body.thinking).toEqual({ type: 'enabled' });
+    expect(extremeRequest.body.reasoning_effort).toBe('max');
+  });
+
+  it('keeps automatic DeepSeek reasoning on provider defaults', () => {
+    const request = buildOpenAiCompatibleRequest({
+      api: createProviderRuntimeTestProvider({
+        baseUrl: 'https://api.deepseek.com/v1',
+        path: '/chat/completions',
+        model: 'deepseek-v4-flash',
+        capabilities: { images: false, streaming: true, thinking: true }
+      }),
+      context: createProviderRuntimeTestContext(),
+      reasoningStrength: 'automatic',
+      advanced: createProviderRuntimeAdvanced({ thinkingBudget: '16384' })
+    });
+
+    expect(request.body.thinking).toBeUndefined();
+    expect(request.body.reasoning_effort).toBeUndefined();
+  });
+
+  it('uses Anthropic-compatible adaptive thinking for Claude 4.6 relays', () => {
+    const request = buildOpenAiCompatibleRequest({
+      api: createProviderRuntimeTestProvider({
+        baseUrl: 'https://relay.example.com/v1',
+        path: '/chat/completions',
+        model: 'claude-opus-4-6',
+        capabilities: { images: true, streaming: true, thinking: true }
+      }),
+      context: createProviderRuntimeTestContext(),
+      advanced: createProviderRuntimeAdvanced({ thinkingBudget: '8192' })
+    });
+
+    expect(request.body.thinking).toEqual({ type: 'adaptive' });
+    expect(request.body.output_config).toEqual({ effort: 'high' });
+  });
+});
+
+
+describe('current intent after recalled background', () => {
+  it.each(['native', 'transcript'] as const)('keeps the latest user after recall and clock in %s mode', (mode) => {
+    const context = assembleAssistantContext({
+      messages: [{ id: 'current', role: 'user', content: '我刚刚在打游戏', timestamp: 2 }],
+      semanticRecallCandidates: [{ id: 'old', label: '旧房间', kind: 'recent_tail', text: 'user: 我要睡觉了，晚安', sourceTimestamp: 1, sourceConversationId: 'old-room', sourceMessageIds: ['old-user'], score: null }],
+      systemPromptParts: [{ name: 'runtime_clock_context', layer: 'context', content: '<runtime_clock />' }]
+    });
+    const request = buildOpenAiCompatibleRequest({
+      api: createProviderRuntimeTestProvider(), context,
+      advanced: createProviderRuntimeAdvanced(), openAiToolHistoryMode: mode
+    });
+    const payload = JSON.stringify(request.body.messages);
+    expect(payload.indexOf('我要睡觉了')).toBeLessThan(payload.indexOf('我刚刚在打游戏'));
+    expect(payload.indexOf('<runtime_clock />')).toBeLessThan(payload.indexOf('我刚刚在打游戏'));
+    expect(payload).toContain('旧对话近期记录');
+    expect(payload).not.toContain('接着聊');
   });
 });

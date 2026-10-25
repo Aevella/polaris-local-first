@@ -26,3 +26,9 @@ describe('formatStoreImportResult', () => {
     })).toBe('部分导入完成：1 个数据域已更新。对话的激活、清理或界面刷新将在下次启动继续检查。');
   });
 });
+
+it('reports retained document directories without claiming their bodies were restored', () => {
+  expect(formatStoreImportResult({status: 'complete', importedDomains: ['persona', 'document'], retainedDomains: [],
+    missingDocumentBodies: [{personaId: 'p', docId: 'd', title: 'Notes'}]}))
+    .toBe('导入完成：2 个数据域已安全替换。其中 1 份资料缺少正文，标题和摘要已保留：Notes。');
+});

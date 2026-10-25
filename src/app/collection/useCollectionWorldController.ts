@@ -33,6 +33,7 @@ import { useSpaceStore } from '../../stores/spaceStore';
 import type { ChatMessage, McpServerConfig, PolarisTriggerRule, PolarisTriggerSchedule } from '../../types/domain';
 import { hasArchivedConversationContent } from './conversationArchiveVisibility';
 import { enterCollaboratorCollectionScope } from '../shell/frontstageNavigation';
+import { useCollaboratorRecoveryController } from './useCollaboratorRecoveryController';
 
 type CollectionWorldUiPorts = {
   confirm: (message: string) => boolean;
@@ -248,6 +249,10 @@ export function useCollectionWorldController(ui: CollectionWorldUiPorts) {
       .sort((left, right) => left.localeCompare(right, 'zh-Hans-CN'))
       .slice(0, 8);
   }, [frontstage.collectionShelf, scopedCodeCards, searchTerm]);
+  const collaboratorRecovery = useCollaboratorRecoveryController({
+    personas, conversations, loadedMessageConversationIds,
+    ui, navigation: frontstage
+  });
 
   const testAutomationRule = (ruleId: string) => {
     updateTriggerRule(ruleId, {
@@ -277,6 +282,7 @@ export function useCollectionWorldController(ui: CollectionWorldUiPorts) {
     editingConversationId,
     conversationTitleDraft,
     exportingConversationArchive,
+    collaboratorRecovery,
     codeWorkshopOpen,
     setCodeWorkshopOpen,
     onConversationTitleDraftChange: setConversationTitleDraft,

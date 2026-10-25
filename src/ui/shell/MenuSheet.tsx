@@ -82,7 +82,7 @@ export function MenuSheet({
           ref={importInputRef}
           type="file"
           hidden
-          accept="application/zip,application/json,.zip,.json"
+          accept="application/zip,application/json,application/vnd.sqlite3,.zip,.json,.db,.sqlite,.sqlite3"
           onChange={(event) => {
             const file = event.target.files?.[0] ?? null;
             event.target.value = '';
@@ -260,6 +260,7 @@ export function MenuSheet({
           <MenuDisplayPage
             displayPreferences={controller.displayPreferences}
             onBack={() => controller.onSetPage('root')}
+            onSetTopbarLayout={controller.onSetTopbarLayout}
             onSetAppearance={controller.onSetAppearance}
             onSetHapticsEnabled={controller.onSetHapticsEnabled}
           />

@@ -1,4 +1,5 @@
 export const memory = {
+  'memory.docs.backupBodyMissing': '正文缺失 · 标题和摘要已保留，点击可重新补写',
   'memory.page.overview': '总览',
   'memory.page.entries': '条目',
   'memory.page.docs': '资料',

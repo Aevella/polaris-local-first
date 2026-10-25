@@ -223,6 +223,7 @@ describe('buildLocalDataCensusSnapshot', () => {
       rowCount: 1
     }));
     expect(snapshot.knownCollaboratorCount).toBe(1);
+    // Retired Polaris Assistant remains a known historical owner, not a live collaborator.
     expect(snapshot.knownOwnerCount).toBe(3);
     expect(snapshot.chat).toEqual(expect.objectContaining({
       catalogConversationCount: 3,

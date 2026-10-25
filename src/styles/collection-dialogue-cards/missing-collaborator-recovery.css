@@ -1,0 +1,165 @@
+.missing-collaborator-recovery {
+  width: min(760px, 100%);
+  margin: 0 auto 12px;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border) 80%);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 22px 18px, color-mix(in srgb, var(--accent-soft) 40%, transparent), transparent 88px),
+    color-mix(in srgb, var(--surface-solid) 94%, var(--accent-soft) 6%);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.missing-collaborator-recovery-lead {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 2px 2px 11px;
+}
+
+.missing-collaborator-recovery-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent-soft) 70%, var(--surface-solid) 30%);
+  color: color-mix(in srgb, var(--accent) 74%, var(--text) 26%);
+}
+
+.missing-collaborator-recovery-lead strong,
+.missing-collaborator-recovery-copy strong {
+  color: var(--text);
+}
+
+.missing-collaborator-recovery-lead p {
+  margin: 3px 0 0;
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.missing-collaborator-recovery-list {
+  display: grid;
+  gap: 8px;
+}
+
+.missing-collaborator-recovery-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 14px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-solid) 97%, rgba(255, 255, 255, 0.25));
+}
+
+.missing-collaborator-recovery-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.missing-collaborator-recovery-copy span,
+.missing-collaborator-recovery-copy small {
+  color: var(--text-soft);
+  line-height: 1.35;
+}
+
+.missing-collaborator-recovery-copy span {
+  font-size: 11px;
+}
+
+.missing-collaborator-recovery-copy small {
+  font-size: 10px;
+}
+
+.missing-collaborator-recovery-actions,
+.missing-collaborator-recovery-form {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.missing-collaborator-recovery-actions .btn-secondary,
+.missing-collaborator-recovery-form .btn-secondary {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border) 82%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-solid) 88%, var(--accent-soft) 12%);
+  color: color-mix(in srgb, var(--text) 88%, var(--accent) 12%);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.missing-collaborator-recovery-actions .btn-secondary:hover,
+.missing-collaborator-recovery-actions .btn-secondary:focus-visible,
+.missing-collaborator-recovery-form .btn-secondary:hover,
+.missing-collaborator-recovery-form .btn-secondary:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border) 62%);
+  background: color-mix(in srgb, var(--surface-solid) 76%, var(--accent-soft) 24%);
+  transform: translateY(-1px);
+}
+
+.missing-collaborator-recovery-actions .btn-secondary:disabled,
+.missing-collaborator-recovery-form .btn-secondary:disabled {
+  opacity: 0.48;
+  cursor: default;
+  transform: none;
+}
+
+.missing-collaborator-recovery-form {
+  grid-column: 1 / -1;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+}
+
+.missing-collaborator-recovery-form input,
+.missing-collaborator-recovery-form select {
+  width: min(320px, 100%);
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-solid);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.missing-collaborator-recovery-form input:focus,
+.missing-collaborator-recovery-form select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--border) 46%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-soft) 56%, transparent);
+}
+
+@media (max-width: 640px) {
+  .missing-collaborator-recovery-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .missing-collaborator-recovery-actions,
+  .missing-collaborator-recovery-form {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .missing-collaborator-recovery-form {
+    grid-column: 1;
+  }
+
+  .missing-collaborator-recovery-form input,
+  .missing-collaborator-recovery-form select {
+    flex: 1 1 180px;
+  }
+}

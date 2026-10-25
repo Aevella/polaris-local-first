@@ -1,5 +1,5 @@
 import type { AssistantReply, AssistantReplyProgress } from './chatApiTypes';
-import type { ChatTokenUsage } from '../../types/domain';
+import type { ChatProviderReasoningState, ChatTokenUsage } from '../../types/domain';
 import {
   parseProviderRuntimeStreamEvents,
   type CanonicalProviderStreamEvent
@@ -21,6 +21,7 @@ import {
 } from '../provider-runtime/providerRuntimeReplyAccumulator';
 import { extractTextPayload, extractThinkingPayload } from '../provider-runtime/providerRuntimeResponseText';
 import { createStreamLineParser } from './chatApiStreamParser';
+import { validateProviderToolCallTermination } from '../provider-runtime/providerRuntimeToolCallResponse';
 
 function tryParseStreamPayload(input: string): unknown | null {
   try {
@@ -51,6 +52,7 @@ function flushStreamingPayload(params: {
   collected: {
     content: string;
     thinkingText: string;
+    providerReasoning?: ChatProviderReasoningState;
     model?: string;
     tokenCount?: number;
     tokenUsage?: ChatTokenUsage;
@@ -98,6 +100,7 @@ export function createStreamingReplyCollector(
   const collected = {
     content: '',
     thinkingText: '',
+    providerReasoning: undefined as ChatProviderReasoningState | undefined,
     model: fallbackModel as string | undefined,
     tokenCount: undefined as number | undefined,
     tokenUsage: undefined as ChatTokenUsage | undefined,
@@ -177,6 +180,8 @@ export function createStreamingReplyCollector(
         }
       }
     }
+
+    validateProviderToolCallTermination(collected);
 
     if (!collected.content.trim() && !collected.thinkingText.trim() && !(collected.toolCalls?.length ?? 0)) {
       throw new Error(formatEmptyProviderResponseMessage(rawResponseText));

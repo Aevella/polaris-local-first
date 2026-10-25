@@ -79,6 +79,9 @@ vi.mock('../infrastructure/persistence', () => ({
 }));
 
 vi.mock('../infrastructure/assetStore', () => ({
+  listAssetMeta: async () => Array.from(getDbStore(persistenceMocks.ASSET_META_STORE).values()),
+  getAssetBlob: async (id: string) => getDbStore(persistenceMocks.ASSET_BINARY_STORE).get(id) ?? null,
+  getAssetPreviewBlob: async (id: string) => getDbStore(persistenceMocks.ASSET_PREVIEW_STORE).get(id) ?? null,
   exportAssetEntries: assetStoreMocks.exportAssetEntries,
   getActiveAssetStorageKey: async (assetId: string) => assetId,
   listActiveAssetBinaryKeys: async () => Array.from(getDbStore(persistenceMocks.ASSET_BINARY_STORE).keys()),
@@ -479,6 +482,56 @@ describe('importStructuredExportPackage', () => {
     expect(pageLifecycleMocks.flushPageLifecycleHandlers).not.toHaveBeenCalled();
     expect(persistenceMocks.kvApplyMutations).not.toHaveBeenCalled();
     expect(assetStoreMocks.stageAssetImportEntries).not.toHaveBeenCalled();
+  });
+
+  it('imports a backup with explicit missing document bodies and preserves a readable destination body', async () => {
+    const source = createPersonaTemplate({ id: 'p', name: 'P', description: '', memory: {
+      referenceDocs: [{ id: 'd', title: 'Material', summary: 'kept', content: 'body', contentLoaded: true, charCount: 4, source: 'upload', updatedAt: 1 }]
+    } });
+    const makeBlob = async (missing: boolean) => {
+      const zip = await JSZip.loadAsync(await (await buildMinimalImportBlob()).arrayBuffer());
+      zip.file('stores/persona.json', JSON.stringify({ personas: [{ ...source, memory: { ...source.memory,
+        referenceDocs: source.memory.referenceDocs.map(doc => missing ? { ...doc, content: '', contentLoaded: false, bodyStatus: 'missing' } : doc)
+      } }], activeCollaboratorId: 'p', seededDefaultPersonaIds: [] }));
+      return zip.generateAsync({ type: 'blob' });
+    };
+    expect((await importStructuredExportPackage(await makeBlob(false))).status).toBe('complete');
+    const restored = await importStructuredExportPackage(await makeBlob(true));
+    expect(restored.status).toBe('complete');
+    expect(restored.missingDocumentBodies).toBeUndefined();
+    const personaRow = currentKvEntries().find(entry => entry.key === 'local-data-v1:row:persona:collaborator:p');
+    expect(personaRow?.value).toMatchObject({ state: 'complete', value: { value: { memory: { referenceDocs: [expect.objectContaining({ title: 'Material', charCount: 4 })] } } } });
+    const body = currentKvEntries().find(entry => entry.key.startsWith('local-data-v1:row:document:persona-memory-doc:'));
+    expect(body?.value).toMatchObject({ state: 'complete', value: { content: 'body' } });
+  });
+
+  it('restores a missing-body directory on an empty destination without fabricating content', async () => {
+    const zip = await JSZip.loadAsync(await (await buildMinimalImportBlob()).arrayBuffer());
+    const source = createPersonaTemplate({ id: 'p', name: 'P', description: '', memory: {
+      referenceDocs: [{ id: 'd', title: 'Material', summary: 'kept', content: '', contentLoaded: false, charCount: 4, bodyStatus: 'missing', source: 'upload', updatedAt: 1 }]
+    } });
+    zip.file('stores/persona.json', JSON.stringify({ personas: [source], activeCollaboratorId: 'p', seededDefaultPersonaIds: [] }));
+    const result = await importStructuredExportPackage(await zip.generateAsync({ type: 'blob' }));
+    expect(result.status).toBe('complete');
+    expect(result.missingDocumentBodies).toEqual([{ personaId: 'p', docId: 'd', title: 'Material' }]);
+    expect(currentKvEntries().some(entry => entry.key.startsWith('local-data-v1:row:document:persona-memory-doc:') && (entry.value as {state:string}).state === 'complete')).toBe(false);
+  });
+
+  it('leaves local UI storage and assets untouched when a destination body cannot be read', async () => {
+    const localStorage = createLocalStorageMock({ 'polaris-space-store-v1': 'original-ui-state' });
+    vi.stubGlobal('window', { localStorage });
+    const zip = await JSZip.loadAsync(await (await buildMinimalImportBlob()).arrayBuffer());
+    const source = createPersonaTemplate({ id: 'p', name: 'P', description: '', memory: {
+      referenceDocs: [{ id: 'd', title: 'Material', summary: '', content: '', contentLoaded: false,
+        charCount: 4, bodyStatus: 'missing', source: 'upload', updatedAt: 1 }]
+    } });
+    zip.file('stores/persona.json', JSON.stringify({ personas: [source], activeCollaboratorId: 'p' }));
+    persistenceMocks.kvGet.mockRejectedValue(new Error('destination temporarily unavailable'));
+    await expect(importStructuredExportPackage(await zip.generateAsync({ type: 'blob' })))
+      .rejects.toThrow('destination temporarily unavailable');
+    expect(localStorage.getItem('polaris-space-store-v1')).toBe('original-ui-state');
+    expect(assetStoreMocks.stageAssetImportEntries).not.toHaveBeenCalled();
+    expect(persistenceMocks.kvApplyMutations).not.toHaveBeenCalled();
   });
 
   it('imports split persona memory document content when the backup contains it', async () => {

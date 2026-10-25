@@ -125,3 +125,22 @@
 .system-inline-note { max-width: min(100%, 336px); padding: 7px 11px; border-radius: 17px; background: var(--chat-system-note-fill); border: var(--chat-system-note-border); box-shadow: var(--chat-system-note-shadow); backdrop-filter: var(--chat-system-note-backdrop); font-size: 11px; line-height: 1.45; color: color-mix(in srgb, var(--text-muted) 92%, var(--text-soft) 8%); white-space: pre-wrap; word-break: break-word; opacity: 0.88; transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease, box-shadow var(--duration-fast) ease, opacity var(--duration-fast) ease, transform 180ms ease; }
 .msg-row.system:hover .system-inline-note,
 .msg-row.system:focus-within .system-inline-note { border: var(--chat-system-note-border-hover); background: var(--chat-system-note-fill-hover); box-shadow: var(--chat-system-note-shadow-hover); opacity: 0.96; transform: translateY(-1px); }
+
+.message-interruption-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.message-interruption-note button {
+  padding: 4px 8px;
+  border: 1px solid currentColor;
+  border-radius: 9px;
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) ease;
+}
+.message-interruption-note button:hover { opacity: 0.7; }
+.message-interruption-note button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

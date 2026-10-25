@@ -50,3 +50,16 @@ html[data-polaris-platform='android'] .api-provider-sheet * {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
+
+/*
+ * Android WebView does not reliably separate translucent modal sheets from
+ * the rendered controls directly underneath them. Keep each sheet's themed
+ * transparent material, but remove the underlying interface from that
+ * composition while the modal is open so only the app / room background can
+ * show through.
+ */
+html[data-polaris-platform='android'] .mcp-menu-page.mcp-inline-sheet-open > :not(.mcp-inline-sheet-overlay),
+html[data-polaris-platform='android'] .world-chat.thinking-summary-open > .chat-body,
+html[data-polaris-platform='android'] .world-chat.thinking-summary-open > .chat-dock {
+  visibility: hidden;
+}

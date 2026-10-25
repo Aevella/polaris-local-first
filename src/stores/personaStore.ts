@@ -1,8 +1,15 @@
+import { runExclusivePersonaPersistenceCommit } from './personaPersistenceCommitQueue';
+import { commitPersonaRowChanges } from './persona/localData';
+import { readCollaboratorRecoveryEvidence } from './collaboratorRecoveryEvidence';
+import { createStoreLocalDataRepository } from './localDataStorePersistence';
+import { getPersonaObjectLocalDataRef, isLegacyLifecyclePersonaState, type PersonaObjectRow } from '../engines/localData';
 import { create } from 'zustand';
+import { persistPersonaWorldBook } from './personaWorldBookPersistence';
+import { parseRegexTriggers, type RegexTriggerRule } from '../engines/regexTriggerProcessor';
 import {
-  BUNDLED_DEFAULT_PERSONA_IDS,
-  DEFAULT_PERSONAS,
-  POLARIS_ASSISTANT_PERSONA_ID,
+  KNOWN_BUNDLED_PERSONA_IDS,
+  RETIRED_POLARIS_ASSISTANT_PERSONA_ID,
+  RETIRED_POLARIS_ASSISTANT_PROVIDER_ID,
   type DefaultPersonaPlatformOptions,
   createPersonaTemplate,
   getDefaultPersonasForPlatform,
@@ -45,10 +52,13 @@ type PersonaState = {
   hydrated: boolean;
   setActiveCollaborator: (id: string) => void;
   createPersona: (options?: CreatePersonaOptions) => string;
+  reloadMissingCollaborator: (id: string) => Promise<boolean>;
+  rebuildMissingCollaborator: (id: string, name: string) => Promise<boolean>;
   duplicatePersona: (id: string) => string | null;
   deleteCollaborator: (id: string) => boolean;
   toggleCollaboratorPinned: (id: string) => void;
   updateCollaborator: (id: string, patch: PersonaPatch) => void;
+  saveWorldBookRules: (id: string, rules: RegexTriggerRule[], options?: { append?: boolean; expectedPrevious?: string }) => Promise<void>;
   hydrateFromDb: () => Promise<boolean>;
   persistToDb: () => Promise<void>;
 };
@@ -97,28 +107,20 @@ function normalizeSeededDefaultPersonaIds(value: string[] | undefined) {
   return Array.from(new Set(value.filter((id) => typeof id === 'string' && id.trim().length > 0)));
 }
 
-function getDefaultPersona(id: string) {
-  return DEFAULT_PERSONAS.find((persona) => persona.id === id) ?? null;
-}
+function retireProductGuideBinding(persona: Persona) {
+  if (
+    persona.id !== RETIRED_POLARIS_ASSISTANT_PERSONA_ID
+    || persona.advanced.providerId !== RETIRED_POLARIS_ASSISTANT_PROVIDER_ID
+  ) return persona;
 
-function normalizeProductGuidePersona(persona: Persona) {
-  if (persona.id !== POLARIS_ASSISTANT_PERSONA_ID) return persona;
-  const defaultProductGuide = getDefaultPersona(POLARIS_ASSISTANT_PERSONA_ID);
-  if (!defaultProductGuide) return persona;
-
-  return normalizePersona({
+  return {
     ...persona,
-    name: defaultProductGuide.name,
-    description: defaultProductGuide.description,
-    purpose: defaultProductGuide.purpose,
-    compiledPrompt: defaultProductGuide.compiledPrompt,
     advanced: {
       ...persona.advanced,
-      providerId: defaultProductGuide.advanced.providerId,
-      modelOverride: defaultProductGuide.advanced.modelOverride,
-      showThinking: defaultProductGuide.advanced.showThinking
+      providerId: '',
+      modelOverride: ''
     }
-  });
+  };
 }
 
 export function migratePersistedPersonaPayload(
@@ -129,7 +131,7 @@ export function migratePersistedPersonaPayload(
   const includeBundledDefaultPersonas = options?.includeBundledDefaultPersonas ?? getDefaultPersonasForPlatform().length > 0;
 
   if (!includeBundledDefaultPersonas) {
-    const removedBundledDefaultPersonaIds = new Set<string>(BUNDLED_DEFAULT_PERSONA_IDS);
+    const removedBundledDefaultPersonaIds = new Set<string>(KNOWN_BUNDLED_PERSONA_IDS);
     return {
       personas: sortPersonasByPinned(
         payload.personas
@@ -138,38 +140,18 @@ export function migratePersistedPersonaPayload(
       ),
       seededDefaultPersonaIds: normalizeSeededDefaultPersonaIds([
         ...seededDefaultPersonaIds,
-        ...BUNDLED_DEFAULT_PERSONA_IDS
+        ...KNOWN_BUNDLED_PERSONA_IDS
       ])
     };
   }
 
   const migratedPersonas = payload.personas
     .filter((persona) => persona.id !== 'coder')
-    .map((persona) => normalizeProductGuidePersona(normalizePersona(
+    .map((persona) => normalizePersona(retireProductGuideBinding(
       persona.id === 'pharos'
-        ? {
-            ...persona,
-            systemRole: 'default'
-          }
+        ? { ...persona, systemRole: 'default' }
         : persona
     )));
-
-  const hasProductGuide = migratedPersonas.some((persona) => persona.id === POLARIS_ASSISTANT_PERSONA_ID);
-  const productGuideSeeded = seededDefaultPersonaIds.includes(POLARIS_ASSISTANT_PERSONA_ID);
-  const productGuide = getDefaultPersona(POLARIS_ASSISTANT_PERSONA_ID);
-  if (hasProductGuide && !productGuideSeeded) {
-    return {
-      personas: sortPersonasByPinned(migratedPersonas),
-      seededDefaultPersonaIds: [...seededDefaultPersonaIds, POLARIS_ASSISTANT_PERSONA_ID]
-    };
-  }
-
-  if (!hasProductGuide && !productGuideSeeded && productGuide) {
-    return {
-      personas: sortPersonasByPinned([normalizePersona(productGuide), ...migratedPersonas]),
-      seededDefaultPersonaIds: [...seededDefaultPersonaIds, POLARIS_ASSISTANT_PERSONA_ID]
-    };
-  }
 
   return {
     personas: sortPersonasByPinned(migratedPersonas),
@@ -203,6 +185,7 @@ export function normalizePersona(persona: Partial<Persona> & Pick<Persona, 'id' 
     id: persona.id,
     name: normalizePersonaName(persona.name),
     systemRole: persona.systemRole,
+    conversationDefaults: persona.conversationDefaults,
     description: persona.description,
     assistantAvatarAssetId: persona.assistantAvatarAssetId,
     assistantAvatarIconId: normalizeAvatarIconId(persona.assistantAvatarIconId),
@@ -260,6 +243,47 @@ export const usePersonaStore = create<PersonaState>((set, get) => ({
 
     return id;
   },
+  reloadMissingCollaborator: async (id) => runExclusivePersonaPersistenceCommit(async () => {
+    if (get().personas.some(persona => persona.id === id)) return true;
+    const evidence = await readCollaboratorRecoveryEvidence([id]);
+    if (evidence[id]?.mode !== 'reload') return false;
+    const read = await createStoreLocalDataRepository().read<PersonaObjectRow>(getPersonaObjectLocalDataRef(id));
+    if (read.status !== 'complete' || isLegacyLifecyclePersonaState(read.value.state)) return false;
+    const restored = normalizePersona(read.value.value);
+    set(latest => latest.personas.some(persona => persona.id === id) ? {} : {
+      personas: sortPersonasByPinned([...latest.personas, restored])
+    });
+    return true;
+  }),
+  rebuildMissingCollaborator: async (id, name) => runExclusivePersonaPersistenceCommit(async () => {
+    const collaboratorId = id.trim();
+    if (!collaboratorId || !name.trim() || get().personas.some(persona => persona.id === collaboratorId)) return false;
+    const evidence = await readCollaboratorRecoveryEvidence([collaboratorId]);
+    if (evidence[collaboratorId]?.mode !== 'rebuild') return false;
+    const next = normalizePersona({ ...createSeedPersona(collaboratorId, 'custom'), name: name.trim() });
+    const snapshot = get();
+    await commitPersonaRowChanges({ changes: [{ type: 'upsert', value: next }], activeCollaboratorId: collaboratorId, seededDefaultPersonaIds: snapshot.seededDefaultPersonaIds });
+    set(latest => ({ personas: sortPersonasByPinned([...latest.personas, next]), activeCollaboratorId: collaboratorId }));
+    return true;
+  }),
+  saveWorldBookRules: async (personaId, rules, options) => runExclusivePersonaPersistenceCommit(async () => {
+    const state = get();
+    const target = state.personas.find(persona => persona.id === personaId);
+    if (!target) throw new Error('协作者已不存在，世界书未写入。');
+    const previous = target.advanced.regexTriggers ?? '';
+    if (options?.expectedPrevious !== undefined && previous !== options.expectedPrevious) {
+      throw new Error('世界书刚刚发生了其他修改，请关闭后重新打开条目；当前正文仍可复制。');
+    }
+    const nextRules = options?.append ? [...parseRegexTriggers(previous), ...rules] : rules;
+    for (const rule of nextRules) {
+      if (!rule.prompt.trim() || (!rule.alwaysOn && !rule.pattern.trim())) throw new Error('条目缺少正文或匹配条件。');
+      if (!rule.alwaysOn) new RegExp(rule.pattern, rule.flags);
+    }
+    const regexTriggers = nextRules.length ? JSON.stringify(nextRules, null, 2) : '';
+    await persistPersonaWorldBook(state, personaId, regexTriggers);
+    set(latest => ({ personas: latest.personas.map(persona => persona.id === personaId
+      ? { ...persona, advanced: { ...persona.advanced, regexTriggers } } : persona) }));
+  }),
   duplicatePersona: (id) => {
     const source = get().personas.find((persona) => persona.id === id);
     if (!source) return null;

@@ -181,6 +181,9 @@ class AppBridgeViewController: CAPBridgeViewController {
             bridge?.registerPluginInstance(PersonalDataPlugin())
         }
 
+        if bridge?.plugin(withName: "NativeMcpSse") == nil {
+            bridge?.registerPluginInstance(NativeMcpSsePlugin())
+        }
         if bridge?.plugin(withName: "NativeProviderHttp") == nil {
             bridge?.registerPluginInstance(NativeProviderHttpPlugin())
         }

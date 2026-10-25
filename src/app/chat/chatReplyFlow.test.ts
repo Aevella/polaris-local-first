@@ -38,7 +38,7 @@ describe('createChatReplyRunner', () => {
     readConversationMessagesMock.mockResolvedValue([]);
   });
 
-  it('builds request snapshots from the latest injected store readers', async () => {
+  it.each([false, true])('builds fresh request snapshots with window model override %s', async (windowOverride) => {
     const ensureConversationTask = vi.fn(() => null);
     const liveMessages: ChatMessage[] = [{
       id: 'live-user-1',
@@ -97,6 +97,7 @@ describe('createChatReplyRunner', () => {
             conversations: [{
               id: 'conversation-1',
               title: '最新对话',
+              windowPreferences: windowOverride ? { modelBinding: { providerId: 'window-route', model: 'window-model' } } : undefined,
               collaboratorId: 'pharos',
               activeProjectId: 'workspace-fresh',
               draft: '',
@@ -190,7 +191,7 @@ describe('createChatReplyRunner', () => {
               model: 'fresh-model',
               capabilities: { images: false, toolUse: true, thinking: false }
             } as never,
-            providers: [] as never[],
+            providers: [{ id: 'window-route', name: 'Window route', kind: 'custom', protocol: 'openai-completions', baseUrl: 'https://window.example.test', path: '/v1/chat/completions', apiKey: '', model: 'route-default', capabilities: { images: false, thinking: false, streaming: true } }] as never[],
             memoryVectorRetrieval: { enabled: false },
             imageGeneration: { enabled: false },
             imageUnderstanding: { enabled: false },
@@ -269,8 +270,8 @@ describe('createChatReplyRunner', () => {
       messages: liveMessages,
       requestSnapshot: expect.objectContaining({
         api: expect.objectContaining({
-          id: 'live-provider',
-          model: 'fresh-model'
+          id: windowOverride ? 'window-route' : 'live-provider',
+          model: windowOverride ? 'window-model' : 'fresh-model'
         }),
         activeWorld: 'collection',
         collectionShelf: 'project',

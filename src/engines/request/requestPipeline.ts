@@ -1,14 +1,15 @@
+import type { ConversationWindowPreferences } from '../../types/domain';
 import type { AssistantToolContext } from '../assistantToolProtocol';
 import type { OpenAiToolHistoryMode } from '../provider-runtime/providerRuntimeOpenAiToolHistory';
 import type { ProviderHttpRequest } from '../provider-runtime';
 import type { AssistantRequestAudit } from './requestAudit';
 import { recordRequestDebug } from './requestDebugRecorder';
 import {
-  prepareCollaboratorReplyRequest,
   messageContainsUnreadableImage,
   resolveRequestImageHydrationMessageIds,
   type RequestImageUnderstandingResult
-} from './requestPreparation';
+} from './requestImagePreparation';
+import { prepareCollaboratorReplyRequest } from './requestPreparation';
 import type { RequestMessage } from './requestMessage';
 import { applyRegexRules } from '../regexProcessor';
 import { providerRuntimeSupportsImageInput } from '../provider-runtime';
@@ -20,6 +21,7 @@ import {
 import { promoteInlineThinkingTags } from '../inlineThinkingTags';
 import type {
   ChatMessage,
+  ConversationReasoningStrength,
   Conversation,
   ConversationTaskState,
   ImageUnderstandingSettings,
@@ -57,7 +59,9 @@ export async function requestCollaboratorReply(params: {
   globalApi?: ProviderProfile;
   memoryVectorRetrieval?: MemoryVectorRetrievalSettings;
   imageUnderstanding?: ImageUnderstandingSettings;
+  historicalImagePolicy?: ConversationWindowPreferences['historicalImagePolicy'];
   persona: Persona | null | undefined;
+  reasoningStrength?: ConversationReasoningStrength;
   personas?: Persona[];
   messages: ChatMessage[];
   semanticRecallEnabled?: boolean;
@@ -80,7 +84,9 @@ export async function requestCollaboratorReply(params: {
     globalApi,
     memoryVectorRetrieval,
     imageUnderstanding,
+    historicalImagePolicy,
     persona,
+    reasoningStrength,
     personas,
     messages,
     semanticRecallEnabled,
@@ -103,6 +109,7 @@ export async function requestCollaboratorReply(params: {
     globalApi,
     memoryVectorRetrieval,
     imageUnderstanding,
+    historicalImagePolicy,
     persona,
     personas,
     messages,
@@ -122,7 +129,7 @@ export async function requestCollaboratorReply(params: {
   }
   const supportsImageInput = providerRuntimeSupportsImageInput(api, persona?.advanced);
   const conversation = prepared.conversation;
-  const requestImageMessageIds = resolveRequestImageHydrationMessageIds(conversation);
+  const requestImageMessageIds = resolveRequestImageHydrationMessageIds(conversation, historicalImagePolicy);
   const requestImageMessages = conversation.filter((message) => requestImageMessageIds.has(message.id));
   if (supportsImageInput && requestImageMessages.some(messageContainsImageMissingModelPayload)) {
     throw new Error('图片附件没有成功进入模型请求；这轮不会只把文件名发给模型硬猜。请重试发送图片，或检查本地附件存储。');
@@ -141,6 +148,7 @@ export async function requestCollaboratorReply(params: {
       context: prepared.context,
       sessionId: activeConversationId ?? undefined,
       advanced: prepared.advanced,
+      reasoningStrength,
       preferredOpenAiToolHistoryMode,
       onBuiltRequest: (request) => {
         builtRequestForDebug = request;

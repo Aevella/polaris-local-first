@@ -5,6 +5,8 @@ import { DEFAULT_WEB_SEARCH_CONFIG } from '../../stores/runtimeStoreSearch';
 import type { WritableConversationBody } from '../../stores/chatStore';
 import type { ChatMessage, CodeCard, Conversation, ImageAssetCard, ProjectFile, RoomProject, ToolInvocation } from '../../types/domain';
 import { createToolActionRunner } from './chatToolActionRunner';
+// Load the production lazy executor during test collection; test time measures execution, not Vite transformation.
+import './chatToolDirectActionExecutor';
 
 function writableConversation(conversationId = 'c1', messages: ChatMessage[] = []): WritableConversationBody {
   return {

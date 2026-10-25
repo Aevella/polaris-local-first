@@ -1054,14 +1054,11 @@ describe('buildApiRequest tool choice', () => {
       },
       {
         type: 'text',
-        text: '当前模型执行提示。'
-      },
-      {
-        type: 'text',
         text: '稳定工具目录。',
         cache_control: { type: 'ephemeral', ttl: '1h' }
       }
     ]);
+    expect(JSON.stringify(request.body.messages)).toContain('当前模型执行提示。');
   });
 
   it('omits top_p for the Zen preset when it stays at 1', () => {
@@ -1506,7 +1503,7 @@ describe('buildApiRequest tool choice', () => {
     expect(request.body.messages).toEqual([
       {
         role: 'user',
-        content: '你好\n\n还在吗\n\n[system_context]\n[Polaris 本地请求诊断]\n上一轮 provider 请求失败。'
+        content: '你好\n\n[system_context]\n[Polaris 本地请求诊断]\n上一轮 provider 请求失败。\n\n还在吗'
       }
     ]);
   });

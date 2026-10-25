@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   memberRunningActivityKey,
+  messageGeneratedAudioAttachments,
   messageGeneratedImageAttachments,
   toolActivityKey
 } from './groupActivity';
@@ -96,5 +97,40 @@ describe('messageGeneratedImageAttachments', () => {
       ]
     });
     expect(messageGeneratedImageAttachments(message)).toHaveLength(0);
+  });
+});
+
+describe('messageGeneratedAudioAttachments', () => {
+  const audioAttachment = {
+    id: 'att-audio',
+    kind: 'file',
+    assetId: 'asset-audio',
+    name: 'reply.mp3',
+    mimeType: 'audio/mpeg'
+  } as NonNullable<ChatMessage['attachments']>[number];
+
+  it('returns playable audio from a finished tool message', () => {
+    const message = toolMessage({
+      toolInvocation: { id: 't', kind: 'invokeMcpTool', status: 'executed', title: '', summary: '' } as ChatMessage['toolInvocation'],
+      attachments: [audioAttachment]
+    });
+    expect(messageGeneratedAudioAttachments(message)).toEqual([audioAttachment]);
+  });
+
+  it('skips unfinished, cleared, and non-audio attachments', () => {
+    const running = toolMessage({
+      toolInvocation: { id: 't', kind: 'invokeMcpTool', status: 'running', title: '', summary: '' } as ChatMessage['toolInvocation'],
+      attachments: [audioAttachment]
+    });
+    const executed = toolMessage({
+      toolInvocation: { id: 't', kind: 'invokeMcpTool', status: 'executed', title: '', summary: '' } as ChatMessage['toolInvocation'],
+      attachments: [
+        { ...audioAttachment, clearedAt: 5 },
+        { ...audioAttachment, id: 'att-text', mimeType: 'text/plain' }
+      ]
+    });
+
+    expect(messageGeneratedAudioAttachments(running)).toHaveLength(0);
+    expect(messageGeneratedAudioAttachments(executed)).toHaveLength(0);
   });
 });

@@ -22,7 +22,7 @@ describe('productDocs', () => {
     const aiGuide = formatProductDocAsMarkdown(getProductDoc('ai-guide'));
     const backupGuide = formatProductDocAsMarkdown(getProductDoc('backup-migration'));
 
-    expect(userGuide).toContain('新装默认协作者是“小助手”');
+    expect(userGuide).toContain('Web 和 Android 新装只会内置 Pharos / 灯塔');
     expect(userGuide).toContain('对话式头像布局');
     expect(userGuide).toContain('MCP 是 Polaris 应用内连接外部工具服务的入口');
     expect(userGuide).toContain('平台和版本怎么说');

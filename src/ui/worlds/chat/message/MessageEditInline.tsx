@@ -1,17 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChatAttachment, ChatMessage } from '../../../../types/domain';
 import type { ChatEditingState } from '../context/ChatUiState';
 import { ChatAttachmentStrip } from '../ChatAttachmentStrip';
 import { useI18n } from '../../../../i18n';
-
-const EDITING_TEXT_INTERACTION_CLASS = 'chat-flow--message-editing-text-interaction';
 
 type MessageEditInlineProps = {
   editing: Exclude<ChatEditingState, null>;
   message: ChatMessage;
   onRemoveEditingAttachment: (attachmentId: string) => void;
   onUpdateEditingDraft: (value: string) => void;
-  onCommitEdit: (message: ChatMessage) => Promise<void>;
+  onCommitEdit: (message: ChatMessage, mode?: 'retry' | 'save-only') => Promise<void>;
   onCancelEdit: () => void;
 };
 
@@ -25,86 +23,44 @@ export function MessageEditInline({
 }: MessageEditInlineProps) {
   const { t } = useI18n();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const committingRef = useRef(false);
+  const [committing, setCommitting] = useState(false);
+  const commit = async (mode: 'retry' | 'save-only') => {
+    if (committingRef.current) return;
+    committingRef.current = true;
+    setCommitting(true);
+    try {
+      await onCommitEdit(message, mode);
+    } finally {
+      committingRef.current = false;
+      setCommitting(false);
+    }
+  };
 
   useEffect(() => {
     const textarea = textareaRef.current;
-    const timeline = textarea?.closest('.chat-flow');
     const shell = textarea?.closest('.app-shell');
-    let textGestureActive = false;
-    let releaseTimer: number | null = null;
 
     shell?.classList.add('app-shell--message-editing-text');
 
-    const syncTimelineLock = () => {
-      if (!textarea || (!textGestureActive && document.activeElement !== textarea)) {
-        textGestureActive = false;
-        timeline?.classList.remove(EDITING_TEXT_INTERACTION_CLASS);
-        return;
-      }
-      const hasSelection = document.activeElement === textarea && textarea.selectionStart !== textarea.selectionEnd;
-      timeline?.classList.toggle(EDITING_TEXT_INTERACTION_CLASS, textGestureActive || hasSelection);
-    };
-
-    const beginTextGesture = () => {
-      if (releaseTimer !== null) {
-        window.clearTimeout(releaseTimer);
-        releaseTimer = null;
-      }
-      textGestureActive = true;
-      syncTimelineLock();
-    };
-
-    const endTextGesture = () => {
-      if (releaseTimer !== null) window.clearTimeout(releaseTimer);
-      releaseTimer = window.setTimeout(() => {
-        textGestureActive = false;
-        releaseTimer = null;
-        syncTimelineLock();
-      }, 160);
-    };
-
-    document.addEventListener('selectionchange', syncTimelineLock);
-    textarea?.addEventListener('select', syncTimelineLock);
-    textarea?.addEventListener('keyup', syncTimelineLock);
-    textarea?.addEventListener('input', syncTimelineLock);
-    textarea?.addEventListener('blur', syncTimelineLock);
-    textarea?.addEventListener('pointerdown', beginTextGesture);
-    textarea?.addEventListener('pointerup', endTextGesture);
-    textarea?.addEventListener('pointercancel', endTextGesture);
-    textarea?.addEventListener('touchstart', beginTextGesture);
-    textarea?.addEventListener('touchend', endTextGesture);
-    textarea?.addEventListener('touchcancel', endTextGesture);
-    syncTimelineLock();
-
     return () => {
-      if (releaseTimer !== null) window.clearTimeout(releaseTimer);
-      document.removeEventListener('selectionchange', syncTimelineLock);
-      textarea?.removeEventListener('select', syncTimelineLock);
-      textarea?.removeEventListener('keyup', syncTimelineLock);
-      textarea?.removeEventListener('input', syncTimelineLock);
-      textarea?.removeEventListener('blur', syncTimelineLock);
-      textarea?.removeEventListener('pointerdown', beginTextGesture);
-      textarea?.removeEventListener('pointerup', endTextGesture);
-      textarea?.removeEventListener('pointercancel', endTextGesture);
-      textarea?.removeEventListener('touchstart', beginTextGesture);
-      textarea?.removeEventListener('touchend', endTextGesture);
-      textarea?.removeEventListener('touchcancel', endTextGesture);
-      timeline?.classList.remove(EDITING_TEXT_INTERACTION_CLASS);
       shell?.classList.remove('app-shell--message-editing-text');
     };
   }, []);
 
   return (
     <div className="message-edit-panel">
-      <ChatAttachmentStrip attachments={editing.attachments as ChatAttachment[]} tone="message" onRemove={onRemoveEditingAttachment} />
+      <ChatAttachmentStrip attachments={editing.attachments as ChatAttachment[]} tone="message" onRemove={committing ? undefined : onRemoveEditingAttachment} />
       <textarea
         ref={textareaRef}
         value={editing.draft}
+        disabled={committing}
         onChange={(event) => onUpdateEditingDraft(event.target.value)}
         onKeyDown={(event) => {
           if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-            void onCommitEdit(message);
-          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            void commit('retry');
+          } else if (event.key === 'Escape' && !committingRef.current) {
             onCancelEdit();
           }
         }}
@@ -114,10 +70,13 @@ export function MessageEditInline({
       />
       <div className="message-edit-hint">{t('chat.messageEdit.hint')}</div>
       <div className="message-inline-actions user">
-        <button type="button" className="btn-secondary compact" onClick={onCancelEdit}>
+        <button type="button" className="btn-secondary compact" disabled={committing} onClick={onCancelEdit}>
           {t('chat.messageActions.cancel')}
         </button>
-        <button type="button" className="btn-secondary compact active" onClick={() => void onCommitEdit(message)}>
+        <button type="button" className="btn-secondary compact" disabled={committing} onClick={() => void commit('save-only')}>
+          {t('chat.messageEdit.saveOnly')}
+        </button>
+        <button type="button" className="btn-secondary compact active" disabled={committing} onClick={() => void commit('retry')}>
           {t('chat.messageEdit.saveAndRetry')}
         </button>
       </div>

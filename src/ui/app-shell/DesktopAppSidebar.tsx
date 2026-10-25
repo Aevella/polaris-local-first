@@ -1,3 +1,4 @@
+import { ConversationMenu } from '../shell/conversation/ConversationMenu';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import type { CollectionShelf, Persona, World } from '../../types/domain';
 import type { ConversationCardSummary } from '../../app/collection/conversationCardSummary';
@@ -308,7 +309,7 @@ export function DesktopAppSidebar({
           onClick={onOpenGroupWorld}
         >
           <Icon name="navGroup" size={18} />
-          <span>群聊</span>
+          <span>{t('app.world.group')}</span>
         </button>
         {shelfItems.map((item) => {
           const active = activeWorld === 'collection' && collectionShelf === item.shelf;
@@ -453,6 +454,7 @@ export function DesktopAppSidebar({
                         <Icon name="edit" size={13} />
                         <span>{t('desktop.renameConversation')}</span>
                       </button>
+                      <ConversationMenu conversationId={conversation.id} className="desktop-sidebar-thread-menu-item" showLabel />
                       <button
                         type="button"
                         className="desktop-sidebar-thread-menu-item danger"

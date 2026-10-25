@@ -12,12 +12,10 @@ import { CollaboratorOverviewRail } from './CollaboratorOverviewRail';
 import { CollaboratorCreatePicker } from '../../worlds/chat/collaborator/CollaboratorCreatePicker';
 import { CollectionFloatingCreateAction } from '../grid/CollectionFloatingCreateAction';
 import { isCompanionCollaboratorId } from '../../../engines/companion';
-import { isProductGuidePersona } from '../../../engines/personaBuiltin';
 import type { I18nKey } from '../../../i18n/messages';
 import { useI18n } from '../../../i18n/useI18n';
 const INFO_TABS = ['identity', 'prompt', 'memory', 'room', 'automation', 'request'] as const;
 type CollaboratorInfoTab = (typeof INFO_TABS)[number];
-const PRODUCT_GUIDE_INFO_TABS = INFO_TABS.filter((tab) => tab !== 'prompt' && tab !== 'automation' && tab !== 'request');
 const INFO_TAB_LABEL_KEYS = {
   identity: 'collaborator.info.tab.identity',
   prompt: 'collaborator.info.tab.prompt',
@@ -98,7 +96,7 @@ export function CollaboratorInfoShelf({
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<CollaboratorInfoTab>('identity');
   const [createPickerOpen, setCreatePickerOpen] = useState(false);
-  const visibleTabs = isProductGuidePersona(currentCollaborator) ? PRODUCT_GUIDE_INFO_TABS : INFO_TABS;
+  const visibleTabs = INFO_TABS;
   const isCompanionCollaborator = isCompanionCollaboratorId(currentCollaboratorId);
   const collaboratorName = currentCollaborator?.name.trim() || t('collaborator.info.fallbackName');
 

@@ -9,6 +9,7 @@ import { toolIconName } from '../chatToolIcons';
 import { compactToolEventSummary, toolEventCopy, toolStatusLabel } from '../chatToolLabels';
 import { MessageCodeBlockView } from './MessageCodeBlockView';
 import { buildToolWriteDetailBlocks, formatLineDelta } from './toolWriteDetails';
+import { isPlayableAudioAttachment } from '../../../../engines/attachmentMedia';
 
 type MessageToolEventProps = {
   message: ChatMessage;
@@ -117,8 +118,10 @@ export function MessageToolEvent({
     Boolean(expandedSummary.trim())
     && normalizeCopy(expandedSummary) !== normalizeCopy(expandedTitle);
   const canOpenToolbox = tool.status === 'failed' && /当前没有“[^”]+”能力。/.test(detailCopy);
-  // 图片成果交给回执下方的大图成品卡（MessageGeneratedImages），回执里只留文件附件
-  const fileAttachments = (message.attachments ?? []).filter((attachment) => attachment.kind !== 'image');
+  // 图片和音频成果交给回执下方的富媒体成品卡，回执里只留普通文件附件
+  const fileAttachments = (message.attachments ?? []).filter(
+    (attachment) => attachment.kind !== 'image' && !isPlayableAudioAttachment(attachment)
+  );
   const hasExpandedBody =
     themeSurfaceLabels.length > 0
     || hasWriteDetails

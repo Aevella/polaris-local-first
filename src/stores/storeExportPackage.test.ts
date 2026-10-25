@@ -233,6 +233,7 @@ describe('storeExportPackage', () => {
   });
 
   it('exports persona memory document bodies outside the persona store file', async () => {
+    setPersistenceBackendForTesting(createMemoryPersistenceBackend());
     const exported = await buildStructuredExportPackage({
       spaceState: {},
       chatState: {
@@ -499,7 +500,7 @@ describe('storeExportPackage', () => {
       kind: 'image',
       name: 'preview-only.png',
       mimeType: 'image/png',
-      size: 3,
+      size: 99,
       createdAt: 1
     });
     await backend.dbStoreSet(
@@ -563,6 +564,8 @@ describe('storeExportPackage', () => {
     expect(assetIndex).toEqual([
       expect.objectContaining({
         id: 'asset-preview-only',
+        size: 3,
+        mimeType: 'image/jpeg',
         filePath: 'assets/images/asset-preview-only.png',
         previewPath: 'previews/images/asset-preview-only.jpg'
       })

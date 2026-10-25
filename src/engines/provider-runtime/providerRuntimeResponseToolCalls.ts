@@ -1,18 +1,15 @@
 import type { OpenAiToolCallAccumulator, ReplyAccumulator } from './providerRuntimeReplyAccumulator';
 import { mergeToolCallArgumentsText } from './providerRuntimeToolArguments';
+import {
+  normalizeOpenAiToolCalls,
+  serializeProviderToolArguments,
+  type ProviderToolCallWireShape
+} from './providerRuntimeToolCallResponse';
 
 function readObject(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : undefined;
-}
-
-function serializeToolInput(input: unknown) {
-  if (typeof input === 'string') return input;
-  if (input && typeof input === 'object' && !Array.isArray(input)) {
-    return Object.keys(input).length > 0 ? JSON.stringify(input) : '';
-  }
-  return '';
 }
 
 function readGeminiThoughtSignature(entry: Record<string, unknown>) {
@@ -27,45 +24,44 @@ function readGeminiThoughtSignature(entry: Record<string, unknown>) {
   return typeof signature === 'string' && signature.trim() ? signature : undefined;
 }
 
-export function appendOpenAiToolCalls(target: ReplyAccumulator, toolCalls: unknown) {
-  if (!Array.isArray(toolCalls)) return;
+export function appendOpenAiToolCalls(
+  target: ReplyAccumulator,
+  toolCalls: unknown,
+  shape: ProviderToolCallWireShape
+) {
   const nextToolCalls = target.toolCalls ?? [];
 
-  toolCalls.forEach((entry, index) => {
-    if (!entry || typeof entry !== 'object') return;
-
-    const parsed = entry as {
-      index?: unknown;
-      id?: unknown;
-      function?: {
-        name?: unknown;
-        arguments?: unknown;
-      };
-    };
-
-    const targetIndex =
-      typeof parsed.index === 'number' && parsed.index >= 0
-        ? parsed.index
-        : index;
-    const existing = nextToolCalls[targetIndex] ?? { argumentsText: '' };
+  normalizeOpenAiToolCalls(toolCalls, shape).forEach((toolCall) => {
+    const sourceIndex = toolCall.index ?? toolCall.fallbackIndex;
+    const idMatchIndex = toolCall.id
+      ? nextToolCalls.findIndex((entry) => entry.id === toolCall.id)
+      : -1;
+    const targetIndex = idMatchIndex >= 0
+      ? idMatchIndex
+      : nextToolCalls.findIndex((entry) => entry.sourceSpan?.index === sourceIndex);
+    const existing = targetIndex >= 0
+      ? nextToolCalls[targetIndex]!
+      : { argumentsText: '' };
     existing.sourceSpan ??= {
       transport: 'native',
-      index: targetIndex
+      index: sourceIndex
     };
 
-    if (typeof parsed.id === 'string') {
-      existing.id = parsed.id;
+    if (toolCall.id) {
+      existing.id = toolCall.id;
     }
 
-    if (typeof parsed.function?.name === 'string') {
-      existing.name = parsed.function.name;
+    if (toolCall.name) {
+      existing.name = toolCall.name;
     }
 
-    if (typeof parsed.function?.arguments === 'string') {
-      existing.argumentsText = mergeToolCallArgumentsText(existing.argumentsText, parsed.function.arguments);
+    if (toolCall.argumentsKind === 'delta') {
+      existing.argumentsText = mergeToolCallArgumentsText(existing.argumentsText, toolCall.argumentsText);
+    } else if (toolCall.argumentsKind === 'snapshot') {
+      existing.argumentsText = toolCall.argumentsText;
     }
 
-    const geminiThoughtSignature = readGeminiThoughtSignature(entry as Record<string, unknown>);
+    const geminiThoughtSignature = readGeminiThoughtSignature(toolCall.raw);
     if (geminiThoughtSignature) {
       existing.providerMetadata = {
         ...existing.providerMetadata,
@@ -73,7 +69,11 @@ export function appendOpenAiToolCalls(target: ReplyAccumulator, toolCalls: unkno
       };
     }
 
-    nextToolCalls[targetIndex] = existing;
+    if (targetIndex >= 0) {
+      nextToolCalls[targetIndex] = existing;
+    } else {
+      nextToolCalls.push(existing);
+    }
   });
 
   target.toolCalls = nextToolCalls;
@@ -93,7 +93,7 @@ export function appendAnthropicToolCall(
   nextToolCalls.push({
     id: typeof toolUse.id === 'string' ? toolUse.id : '',
     name: toolUse.name,
-    argumentsText: serializeToolInput(toolUse.input),
+    argumentsText: serializeProviderToolArguments(toolUse.input),
     sourceSpan: {
       transport: 'native',
       index: nextToolCalls.length

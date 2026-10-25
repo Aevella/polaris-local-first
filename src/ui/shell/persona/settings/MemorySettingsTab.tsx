@@ -431,7 +431,7 @@ function MemoryReferenceDocCard({
           <span className="memory-entry-dot" />
           <span className="memory-entry-main">
             <span className="memory-entry-title">{doc.title || t('memory.docs.untitled')}</span>
-            <span className="memory-entry-summary">{summarizeDoc(doc, t)}</span>
+            <span className="memory-entry-summary">{doc.bodyStatus === 'missing' ? t('memory.docs.backupBodyMissing') : summarizeDoc(doc, t)}</span>
           </span>
           <span className="memory-entry-meta">{t('memory.docs.meta', {
             date: formatDocDate(doc.updatedAt, i18n),
@@ -779,6 +779,7 @@ export function MemorySettingsTab({ activePersona, onUpdatePersona }: PersonaTab
                   ...patch,
                   charCount: patch.content !== undefined ? patch.content.length : doc.charCount,
                   contentLoaded: patch.content !== undefined ? true : doc.contentLoaded,
+                  bodyStatus: patch.content !== undefined ? undefined : doc.bodyStatus,
                   updatedAt: Date.now()
                 }
               : doc
@@ -805,7 +806,7 @@ export function MemorySettingsTab({ activePersona, onUpdatePersona }: PersonaTab
     }
     setConfirmingDeleteDocId(null);
     if (!activePersona) return;
-    if (doc.contentLoaded) {
+    if (doc.bodyStatus === 'missing' || doc.contentLoaded) {
       setEditingDocId(doc.id);
       return;
     }

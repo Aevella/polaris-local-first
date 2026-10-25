@@ -9,6 +9,7 @@ Layout surfaces decide how the shared Polaris runtime is arranged on screen. The
 - Phone, tablet, and desktop layout selection.
 - Sidebar availability and auto-collapse behavior.
 - Top-level shell arrangement for shared product worlds.
+- Visibility of the collaborator-side world switch handle as runtime customization, without changing world presence ownership.
 - Public explanation of how viewport layout differs from native platform capability.
 
 ## Does Not Own

@@ -60,9 +60,15 @@ export function resolveMenuLocalBackupDetails(systemBackupAvailability: ReturnTy
   };
 }
 
-async function importBackupData(file: Blob, onProgress: (progress: StoreTransferProgress) => void) {
+async function importBackupData(file: import('../../infrastructure/backupImportSource').BackupImportSource, onProgress: (progress: StoreTransferProgress) => void) {
   const { importAllData } = await import('../../stores/spaceStoreDataTransfer');
-  return await importAllData(file, { onProgress });
+  const { readBackupImportSourceBytes, isNativeBackupImportSource } = await import('../../infrastructure/backupImportSource');
+  try {
+    const blob = isNativeBackupImportSource(file) ? new Blob([await readBackupImportSourceBytes(file)]) : file;
+    return await importAllData(blob, { onProgress });
+  } finally {
+    if (isNativeBackupImportSource(file)) await file.release();
+  }
 }
 
 export function useMenuBackupTransferController({

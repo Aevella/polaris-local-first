@@ -1,11 +1,9 @@
 import { Capacitor } from '@capacitor/core';
-import { useEffect, useRef, useState } from 'react';
-import { getAssetBlob } from '../../../infrastructure/assetStore';
-import { reportPersistenceError } from '../../../infrastructure/persistenceDiagnostics';
 import { formatAttachmentSize } from '../../../engines/attachmentFormat';
 import type { ChatAttachment } from '../../../types/domain';
 import { useAssetObjectUrl } from '../../useAssetObjectUrl';
 import { useI18n, type I18nTranslator } from '../../../i18n';
+import { downloadChatAttachment, useNearViewportAssetLoading } from '../../media/chatAttachmentMedia';
 
 type ChatAttachmentStripProps = {
   attachments: ChatAttachment[] | undefined;
@@ -34,59 +32,6 @@ function resolveFileSecondaryText(attachment: ChatAttachment, t: I18nTranslator[
   const previewText = previewSource?.replace(/\s+/g, ' ').trim();
   if (!previewText) return sizeLabel;
   return `${sizeLabel} · ${previewText}${attachment.textContent && attachment.textContent.length > FILE_PREVIEW_MAX_CHARS ? '...' : ''}`;
-}
-
-export function useNearViewportAssetLoading() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [shouldLoad, setShouldLoad] = useState(false);
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || shouldLoad) return;
-
-    if (typeof IntersectionObserver === 'undefined') {
-      setShouldLoad(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      setShouldLoad(true);
-      observer.disconnect();
-    }, {
-      root: null,
-      rootMargin: '600px 0px'
-    });
-
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [shouldLoad]);
-
-  return { ref, shouldLoad };
-}
-
-async function downloadAttachment(attachment: ChatAttachment) {
-  if (!attachment.assetId || attachment.clearedAt) return;
-  let objectUrl: string | null = null;
-  try {
-    const blob = await getAssetBlob(attachment.assetId);
-    if (!blob) return;
-    objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = objectUrl;
-    anchor.download = attachment.name;
-    anchor.rel = 'noreferrer';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-  } catch (error) {
-    reportPersistenceError({ label: '[asset:download]', store: 'asset', operation: 'read-download' }, error);
-  } finally {
-    if (objectUrl) {
-      const urlToRevoke = objectUrl;
-      window.setTimeout(() => URL.revokeObjectURL(urlToRevoke), 0);
-    }
-  }
 }
 
 function AttachmentChip({
@@ -158,7 +103,7 @@ function AttachmentChip({
           className="attachment-preview-link"
           aria-label={t('chat.attachment.downloadAria', { name: attachment.name })}
           title={attachment.name}
-          onClick={() => { void downloadAttachment(attachment); }}
+          onClick={() => { void downloadChatAttachment(attachment); }}
         >
           {renderFileChip}
         </button>

@@ -160,6 +160,7 @@ describe('collectReferencedAssetIds', () => {
     ];
     const customization: AppCustomization = {
       showChatAvatars: true,
+      showWorldSwitchHandle: true,
       starColor: null,
       starOpacity: 0.98,
       starGlow: 0.46,
@@ -463,6 +464,7 @@ describe('collectReferencedAssetIds', () => {
     };
     const customization: AppCustomization = {
       showChatAvatars: true,
+      showWorldSwitchHandle: true,
       starColor: null,
       starOpacity: 0.98,
       starGlow: 0.46,
@@ -842,6 +844,7 @@ describe('buildAssetAuditSummary', () => {
     ];
     const customization: AppCustomization = {
       showChatAvatars: true,
+      showWorldSwitchHandle: true,
       starColor: null,
       starOpacity: 0.98,
       starGlow: 0.46,

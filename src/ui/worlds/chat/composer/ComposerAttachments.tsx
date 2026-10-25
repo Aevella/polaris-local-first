@@ -4,11 +4,12 @@ import { ChatAttachmentStrip } from '../ChatAttachmentStrip';
 import { Icon } from '../../../Icon';
 import { runSelectionAction } from '../../../haptics';
 import { resolveDocumentFilePickerAccept } from '../../../filePickerAccept';
-import type { ChatCardReference, CodeCard } from '../../../../types/domain';
+import type { ChatCardReference, CodeCard, ConversationReasoningStrength } from '../../../../types/domain';
 import { cleanDisplayText } from '../../../text/displayText';
 import { canUseNativeCameraCapture, canUseNativePhotoLibraryPicker } from '../../../../native/imagePickerFiles';
 import { canUseNativeSystemFilePicker, pickNativeSystemFiles } from '../../../../native/systemPickedFiles';
 import { useI18n } from '../../../../i18n';
+import { ConversationReasoningPicker } from './ConversationReasoningPicker';
 
 type ComposerAttachmentsProps = {
   pickerOpen: boolean;
@@ -17,12 +18,14 @@ type ComposerAttachmentsProps = {
   hasUnsupportedPendingImages: boolean;
   taskToolsEnabled: boolean;
   taskModeEnabled: boolean;
+  reasoningStrength: ConversationReasoningStrength;
   onAddAttachments: (files: FileList | File[]) => Promise<void>;
   onRemoveAttachment: (attachmentId: string) => void;
   pendingAttachments: import('../../../../types/domain').ChatAttachment[];
   pendingCardReference: ChatCardReference | null;
   availableCards: CodeCard[];
   onToggleTaskModeEnabled: (enabled: boolean) => void;
+  onSetReasoningStrength: (strength: ConversationReasoningStrength) => void;
   onOpenToolbox: () => void;
   onSetPickerOpen: (open: boolean) => void;
   onSetPendingCardReference: (reference: ChatCardReference | null) => void;
@@ -73,18 +76,21 @@ export function ComposerAttachments({
   hasUnsupportedPendingImages,
   taskToolsEnabled,
   taskModeEnabled,
+  reasoningStrength,
   onAddAttachments,
   onRemoveAttachment,
   pendingAttachments,
   pendingCardReference,
   availableCards,
   onToggleTaskModeEnabled,
+  onSetReasoningStrength,
   onOpenToolbox,
   onSetPickerOpen,
   onSetPendingCardReference
 }: ComposerAttachmentsProps) {
   const { t } = useI18n();
   const [cardPickerOpen, setCardPickerOpen] = useState(false);
+  const [reasoningPickerOpen, setReasoningPickerOpen] = useState(false);
   const imageLibraryPickerRef = useRef<HTMLInputElement>(null);
   const cameraPickerRef = useRef<HTMLInputElement>(null);
   const filePickerRef = useRef<HTMLInputElement>(null);
@@ -93,12 +99,14 @@ export function ComposerAttachments({
   const closePicker = () => {
     onSetPickerOpen(false);
     setCardPickerOpen(false);
+    setReasoningPickerOpen(false);
   };
   const visibleCards = availableCards.filter((card) => card.kind !== 'room-rule');
 
   useEffect(() => {
     if (pickerOpen) return;
     setCardPickerOpen(false);
+    setReasoningPickerOpen(false);
   }, [pickerOpen]);
 
   const handleAttachmentSelection = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -168,7 +176,24 @@ export function ComposerAttachments({
       />
       {pickerOpen ? (
         <div className="attachment-picker-sheet" id="composer-attachment-picker" role="region" aria-label={t('chat.composer.attachmentPickerAria')}>
-          <div className="attachment-picker-actions">
+          {!reasoningPickerOpen ? <div className="attachment-picker-actions">
+            <button
+              type="button"
+              className={`attachment-picker-action ${reasoningStrength !== 'automatic' ? 'active' : ''}`}
+              onClick={(event) => {
+                runSelectionAction(() => {
+                  setCardPickerOpen(false);
+                  setReasoningPickerOpen(true);
+                }, { element: event.currentTarget });
+              }}
+            >
+              <span className="attachment-picker-action-icon">
+                <Icon name="orbit" size={18} />
+              </span>
+              <span className="attachment-picker-action-copy">
+                <strong>{t('chat.reasoning.title')}</strong>
+              </span>
+            </button>
             <button
               type="button"
               className="attachment-picker-action"
@@ -285,7 +310,17 @@ export function ComposerAttachments({
                 <strong>{t('chat.composer.toolbox')}</strong>
               </span>
             </button>
-          </div>
+          </div> : null}
+          {reasoningPickerOpen ? (
+            <ConversationReasoningPicker
+              value={reasoningStrength}
+              onChange={(strength) => {
+                onSetReasoningStrength(strength);
+                closePicker();
+              }}
+              onBack={() => setReasoningPickerOpen(false)}
+            />
+          ) : null}
           {cardPickerOpen ? (
             <div className="attachment-picker-card-section">
               <div className="attachment-picker-card-head">

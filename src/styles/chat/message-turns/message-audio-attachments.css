@@ -1,0 +1,145 @@
+.message-audio-stack {
+  width: min(100%, 420px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message-audio-card {
+  width: 100%;
+  margin: 0;
+  padding: 11px 12px 12px;
+  border: 1px solid color-mix(in srgb, var(--border-hover) 34%, transparent);
+  border-radius: 18px;
+  box-sizing: border-box;
+  background:
+    radial-gradient(circle at 10% 0%, color-mix(in srgb, var(--accent-soft) 24%, transparent), transparent 44%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-solid) 90%, rgba(255,255,255,0.18)), color-mix(in srgb, var(--surface) 78%, rgba(255,255,255,0.06)));
+  box-shadow:
+    0 12px 28px color-mix(in srgb, var(--accent-soft) 8%, transparent),
+    inset 0 1px 0 rgba(255,255,255,0.12);
+  animation: messageAudioReveal 220ms var(--ease-out) both;
+}
+
+@keyframes messageAudioReveal {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.message-audio-head {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 9px;
+}
+
+.message-audio-icon {
+  width: 31px;
+  height: 31px;
+  flex: 0 0 31px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  color: color-mix(in srgb, var(--accent) 82%, var(--text) 18%);
+  background: color-mix(in srgb, var(--accent-soft) 34%, transparent);
+}
+
+.message-audio-title {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.message-audio-title strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-audio-title span {
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+
+.message-audio-download {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--border) 42%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--surface) 68%, transparent);
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: transform 160ms var(--ease-out), border-color 160ms var(--ease-out), color 160ms var(--ease-out);
+}
+
+.message-audio-download:hover,
+.message-audio-download:focus-visible {
+  outline: none;
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--text);
+}
+
+.message-audio-player {
+  display: block;
+  width: 100%;
+  height: 36px;
+  accent-color: var(--accent);
+  color-scheme: light dark;
+}
+
+.message-audio-loading,
+.message-audio-unavailable {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.message-audio-loading {
+  gap: 4px;
+}
+
+.message-audio-loading span {
+  width: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 68%, var(--text-muted) 32%);
+  animation: messageAudioLoading 900ms ease-in-out infinite alternate;
+}
+
+.message-audio-loading span:nth-child(1),
+.message-audio-loading span:nth-child(5) { height: 8px; }
+.message-audio-loading span:nth-child(2),
+.message-audio-loading span:nth-child(4) { height: 15px; animation-delay: 120ms; }
+.message-audio-loading span:nth-child(3) { height: 22px; animation-delay: 240ms; }
+
+@keyframes messageAudioLoading {
+  to { transform: scaleY(0.48); opacity: 0.48; }
+}
+
+.message-audio-card.is-cleared,
+.message-audio-card.is-failed {
+  border-style: dashed;
+  box-shadow: none;
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-audio-card,
+  .message-audio-loading span { animation: none; }
+}

@@ -53,6 +53,9 @@ function metadata(id: string): TypedChatSqliteConversationMetadata {
       updatedAt: 20
     },
     draft: 'draft survives',
+    reasoningStrength: 'high',
+    requestContext: { mode: 'fromMessage', anchorMessageId: 'm-1' },
+    windowPreferences: { modelBinding: { providerId: 'provider-x', model: 'model-x' }, historicalImagePolicy: 'smart', composerReturnKeyBehavior: 'newline', mcpScope: { mode: 'inherit' } },
     workspaceLedger: [{
       id: 'ledger-1',
       kind: 'workspace_scope_changed',
@@ -131,6 +134,9 @@ describe('readChatStateFromTypedChatSqliteStore', () => {
           id: 'c-1',
           messages,
           draft: 'draft survives',
+    reasoningStrength: 'high',
+    requestContext: { mode: 'fromMessage', anchorMessageId: 'm-1' },
+    windowPreferences: { modelBinding: { providerId: 'provider-x', model: 'model-x' }, historicalImagePolicy: 'smart', composerReturnKeyBehavior: 'newline', mcpScope: { mode: 'inherit' } },
           task: expect.objectContaining({ id: 'task-1' }),
           workspaceLedger: [expect.objectContaining({ id: 'ledger-1' })]
         })

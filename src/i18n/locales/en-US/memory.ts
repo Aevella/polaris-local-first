@@ -1,6 +1,7 @@
 import type { memory as zhMemory } from '../zh-CN/memory';
 
 export const memory = {
+  'memory.docs.backupBodyMissing': 'Body missing · Title and summary preserved. Open to add a replacement.',
   'memory.page.overview': 'Overview',
   'memory.page.entries': 'Entries',
   'memory.page.docs': 'Docs',
