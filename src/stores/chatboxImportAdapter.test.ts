@@ -147,4 +147,43 @@ describe('convertChatboxExportBlobToStructuredExportSnapshot', () => {
     expect(snapshot.chatState?.conversations[0]?.title).toBe('Synthetic Session');
     expect(snapshot.chatState?.conversations[0]?.messages[0]?.content).toBe('synthetic text');
   });
+
+  it('prefers session data over earlier export metadata', async () => {
+    const zip = new JSZip();
+    zip.file('a-metadata.json', JSON.stringify({ __exported_at: '2026-10-22' }));
+    zip.file('b-conversations.json', JSON.stringify({
+      'chat-sessions': [{ id: 's', messages: [{ role: 'user', content: 'found' }] }]
+    }));
+    const { snapshot } = await convertChatboxExportBlobToStructuredExportSnapshot(
+      await zip.generateAsync({ type: 'blob' })
+    );
+    expect(snapshot.chatState?.conversations[0]?.messages[0]?.content).toBe('found');
+  });
+
+  it('preserves metadata-only exports when no session payload exists', async () => {
+    const zip = new JSZip();
+    zip.file('metadata.json', JSON.stringify({ __exported_items: [] }));
+    zip.file('bad.json', '{invalid');
+    const { stats } = await convertChatboxExportBlobToStructuredExportSnapshot(
+      await zip.generateAsync({ type: 'blob' })
+    );
+    expect(stats.conversations).toBe(0);
+  });
+
+  it('reports the first invalid candidate when no Chatbox payload exists', async () => {
+    const zip = new JSZip();
+    zip.file('a.json', '{invalid');
+    zip.file('b.json', '[]');
+    await expect(convertChatboxExportBlobToStructuredExportSnapshot(
+      await zip.generateAsync({ type: 'blob' })
+    )).rejects.toThrow('a.json 不是有效 JSON');
+  });
+
+  it('reports a missing export when all JSON objects are unrelated', async () => {
+    const zip = new JSZip();
+    zip.file('metadata.json', '{}');
+    await expect(convertChatboxExportBlobToStructuredExportSnapshot(
+      await zip.generateAsync({ type: 'blob' })
+    )).rejects.toThrow('压缩包里没有找到 Chatbox 导出的会话 JSON');
+  });
 });

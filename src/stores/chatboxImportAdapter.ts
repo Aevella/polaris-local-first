@@ -136,6 +136,12 @@ function isLikelyChatboxPayload(payload: unknown) {
   return Object.keys(payload).some((key) => key.startsWith('session:'));
 }
 
+function hasChatboxSessionFields(payload: ChatboxRecord) {
+  return Array.isArray(payload['chat-sessions'])
+    || Array.isArray(payload['chat-sessions-list'])
+    || Object.keys(payload).some((key) => key.startsWith('session:'));
+}
+
 function asRecordArray(value: unknown): ChatboxRecord[] {
   return Array.isArray(value) ? value.map(parseMaybeJson).filter(isRecord) : [];
 }
@@ -508,6 +514,7 @@ export async function parseChatboxExportPayloadFromBlob(file: Blob): Promise<Cha
     });
 
   let firstInvalidCandidateError: Error | null = null;
+  let metadataOnlyCandidate: ChatboxRecord | null = null;
   for (const candidate of candidates) {
     const contents = await candidate.async('string');
     let normalized: ChatboxRecord;
@@ -518,9 +525,12 @@ export async function parseChatboxExportPayloadFromBlob(file: Blob): Promise<Cha
       continue;
     }
 
-    if (isLikelyChatboxPayload(normalized)) return normalized;
+    if (!isLikelyChatboxPayload(normalized)) continue;
+    if (hasChatboxSessionFields(normalized)) return normalized;
+    metadataOnlyCandidate ??= normalized;
   }
 
+  if (metadataOnlyCandidate) return metadataOnlyCandidate;
   if (firstInvalidCandidateError) throw firstInvalidCandidateError;
   throw new Error('压缩包里没有找到 Chatbox 导出的会话 JSON');
 }
