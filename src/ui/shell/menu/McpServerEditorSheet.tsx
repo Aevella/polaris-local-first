@@ -1,16 +1,25 @@
 import { useEffect, useState } from 'react';
+import { openMcpOAuthAuthorizationUrl } from '../../../app/shell/mcpOAuthBrowser';
+import { inspectMcpServerConnection } from '../../../app/shell/mcpServerConnection';
 import { buildMcpHandle } from '../../../engines/mcpHandle';
-import { resolveMcpToolCatalog, type McpResolvedToolDefinition } from '../../../engines/mcpRuntime';
+import {
+  beginMcpOAuthAuthorization,
+  type McpOAuthAuthorizationRequest
+} from '../../../engines/mcp-auth';
 import { useI18n } from '../../../i18n/useI18n';
 import type { McpServerConfig, McpServerHeader, McpServerToolConfig, McpServerTransport } from '../../../types/domain';
 import { Icon } from '../../Icon';
+import { McpOAuthPanel } from './McpOAuthPanel';
 
 type McpServerEditorSheetProps = {
   open: boolean;
   server: McpServerConfig | null;
   timeoutSeconds: number;
   onClose: () => void;
-  onSave: (patch: Omit<McpServerConfig, 'id' | 'handle'>) => void;
+  onPersist: (
+    serverId: string | null,
+    patch: Omit<McpServerConfig, 'id' | 'handle'>
+  ) => string;
   onDelete?: () => void;
 };
 
@@ -29,20 +38,12 @@ function createEmptyHeader(): McpServerHeader {
   };
 }
 
-function mergeDiscoveredTools(
-  currentTools: McpServerToolConfig[],
-  discoveredTools: McpResolvedToolDefinition[]
-): McpServerToolConfig[] {
-  const currentByName = new Map(currentTools.map((tool) => [tool.name, tool] as const));
-  return discoveredTools.map((tool) => {
-    const current = currentByName.get(tool.toolName);
-    return {
-      name: tool.toolName,
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-      enabled: current?.enabled ?? tool.enabled ?? true
-    };
-  });
+function usesCleartextHttp(value: string) {
+  try {
+    return new URL(value.trim()).protocol === 'http:';
+  } catch {
+    return false;
+  }
 }
 
 export function McpServerEditorSheet({
@@ -50,7 +51,7 @@ export function McpServerEditorSheet({
   server,
   timeoutSeconds,
   onClose,
-  onSave,
+  onPersist,
   onDelete
 }: McpServerEditorSheetProps) {
   const { t } = useI18n();
@@ -58,10 +59,14 @@ export function McpServerEditorSheet({
   const [description, setDescription] = useState('');
   const [transport, setTransport] = useState<McpServerTransport>('streamable-http');
   const [url, setUrl] = useState('');
+  const [oauthClientId, setOauthClientId] = useState('');
   const [headers, setHeaders] = useState<McpServerHeader[]>([]);
   const [tools, setTools] = useState<McpServerToolConfig[]>([]);
   const [isActive, setIsActive] = useState(true);
   const [testState, setTestState] = useState<McpConnectionTestState>({ status: 'idle' });
+  const [authorizationRequest, setAuthorizationRequest] = useState<McpOAuthAuthorizationRequest | null>(null);
+  const [persistedServer, setPersistedServer] = useState<McpServerConfig | null>(server);
+  const cleartextHttpActive = usesCleartextHttp(url);
 
   useEffect(() => {
     if (!open) return;
@@ -69,11 +74,14 @@ export function McpServerEditorSheet({
     setDescription(server?.description ?? '');
     setTransport(server?.transport ?? 'streamable-http');
     setUrl(server?.url ?? '');
+    setOauthClientId(server?.oauthClientId ?? '');
     setHeaders(server?.headers.length ? server.headers : []);
     setTools(server?.tools ?? []);
     setIsActive(server?.isActive ?? true);
     setTestState({ status: 'idle' });
-  }, [open, server]);
+    setAuthorizationRequest(null);
+    setPersistedServer(server);
+  }, [open, server?.id]);
 
   if (!open) return null;
 
@@ -86,16 +94,23 @@ export function McpServerEditorSheet({
       }))
       .filter((header) => header.key);
 
-  const testConnection = async () => {
+  const buildServerPatch = (
+    nextTools: McpServerToolConfig[] = tools
+  ): Omit<McpServerConfig, 'id' | 'handle'> => ({
+    name: name.trim(),
+    description: description.trim(),
+    transport,
+    url: url.trim(),
+    ...(oauthClientId.trim() ? { oauthClientId: oauthClientId.trim() } : {}),
+    headers: normalizedHeaders(),
+    tools: nextTools,
+    isActive
+  });
+
+  const buildDraftServer = (serverId = persistedServer?.id ?? 'mcp-test-preview'): McpServerConfig => {
     const trimmedName = name.trim() || t('settings.mcp.testNameFallback');
     const trimmedUrl = url.trim();
-    if (!trimmedUrl) {
-      setTestState({ status: 'error', message: t('settings.mcp.testMissingUrl') });
-      return;
-    }
-
-    const serverId = server?.id ?? 'mcp-test-preview';
-    const draftServer: McpServerConfig = {
+    return {
       id: serverId,
       handle: buildMcpHandle({
         handle: server?.handle,
@@ -107,34 +122,92 @@ export function McpServerEditorSheet({
       description: description.trim(),
       transport,
       url: trimmedUrl,
+      ...(oauthClientId.trim() ? { oauthClientId: oauthClientId.trim() } : {}),
       headers: normalizedHeaders(),
       tools,
       isActive: true
     };
+  };
+
+  const persistDraft = (nextTools: McpServerToolConfig[] = tools) => {
+    const trimmedName = name.trim();
+    const trimmedUrl = url.trim();
+    if (!trimmedName) {
+      window.alert(t('settings.mcp.nameRequired'));
+      return null;
+    }
+    if (!trimmedUrl) {
+      window.alert(t('settings.mcp.urlRequired'));
+      return null;
+    }
+
+    const patch = buildServerPatch(nextTools);
+    const serverId = onPersist(persistedServer?.id ?? null, patch);
+    const savedServer: McpServerConfig = {
+      id: serverId,
+      handle: buildMcpHandle({
+        handle: persistedServer?.handle,
+        name: patch.name,
+        url: patch.url,
+        id: serverId
+      }),
+      ...patch
+    };
+    setPersistedServer(savedServer);
+    return savedServer;
+  };
+
+  const applyConnectionResult = async (connectionServer: McpServerConfig, openAuthorization: boolean) => {
+    const result = await inspectMcpServerConnection({
+      server: connectionServer,
+      timeoutSeconds
+    });
+    if (result.status === 'authorization-required') {
+      setAuthorizationRequest(result.request);
+      setTestState({ status: 'warning', message: t('settings.mcp.oauthRequired') });
+      if (openAuthorization) {
+        const authorization = await beginMcpOAuthAuthorization({
+          server: connectionServer,
+          challenge: result.request.challenge
+        });
+        await openMcpOAuthAuthorizationUrl(authorization.authorizationUrl);
+      }
+      return;
+    }
+    if (result.status === 'error') {
+      setTestState({ status: 'error', message: result.message });
+      return;
+    }
+    if (result.status === 'empty') {
+      setTestState({ status: 'warning', message: t('settings.mcp.testNoTools') });
+      return;
+    }
+
+    setTools(result.tools);
+    if (connectionServer.id !== 'mcp-test-preview') {
+      const patch = buildServerPatch(result.tools);
+      onPersist(connectionServer.id, patch);
+      setPersistedServer({ ...connectionServer, ...patch });
+    }
+    const toolNames = result.tools.map((tool) => tool.name).slice(0, 4).join(t('settings.mcp.testToolSeparator'));
+    const summary = result.tools.length > 4
+      ? t('settings.mcp.testToolSummaryMore', { count: result.tools.length })
+      : t('settings.mcp.testToolSummary', { count: result.tools.length });
+    setTestState({ status: 'success', message: t('settings.mcp.testSuccess', { summary, tools: toolNames }) });
+  };
+
+  const testConnection = async () => {
+    if (!url.trim()) {
+      setTestState({ status: 'error', message: t('settings.mcp.testMissingUrl') });
+      return;
+    }
+
+    const draftServer = buildDraftServer();
 
     setTestState({ status: 'testing' });
+    setAuthorizationRequest(null);
     try {
-      const result = await resolveMcpToolCatalog({
-        servers: [draftServer],
-        timeoutSeconds,
-        retryDelaysMs: [],
-        includeDisabledTools: true
-      });
-      if (result.errors.length) {
-        setTestState({ status: 'error', message: result.errors.join('\n') });
-        return;
-      }
-      if (!result.tools.length) {
-        setTestState({ status: 'warning', message: t('settings.mcp.testNoTools') });
-        return;
-      }
-
-      setTools((current) => mergeDiscoveredTools(current, result.tools));
-      const toolNames = result.tools.map((tool) => tool.toolName).slice(0, 4).join(t('settings.mcp.testToolSeparator'));
-      const summary = result.tools.length > 4
-        ? t('settings.mcp.testToolSummaryMore', { count: result.tools.length })
-        : t('settings.mcp.testToolSummary', { count: result.tools.length });
-      setTestState({ status: 'success', message: t('settings.mcp.testSuccess', { summary, tools: toolNames }) });
+      await applyConnectionResult(draftServer, false);
     } catch (error) {
       setTestState({
         status: 'error',
@@ -143,28 +216,24 @@ export function McpServerEditorSheet({
     }
   };
 
-  const submit = () => {
-    const trimmedName = name.trim();
-    const trimmedUrl = url.trim();
-    if (!trimmedName) {
-      window.alert(t('settings.mcp.nameRequired'));
-      return;
-    }
-    if (!trimmedUrl) {
-      window.alert(t('settings.mcp.urlRequired'));
-      return;
-    }
-
-    onSave({
-      name: trimmedName,
-      description: description.trim(),
-      transport,
-      url: trimmedUrl,
-      headers: normalizedHeaders(),
-      tools,
-      isActive
-    });
+  const saveOnly = () => {
+    if (!persistDraft()) return;
     onClose();
+  };
+
+  const saveAndConnect = async () => {
+    const savedServer = persistDraft();
+    if (!savedServer) return;
+    setTestState({ status: 'testing' });
+    setAuthorizationRequest(null);
+    try {
+      await applyConnectionResult(savedServer, true);
+    } catch (error) {
+      setTestState({
+        status: 'error',
+        message: error instanceof Error ? error.message : t('settings.mcp.testFailed')
+      });
+    }
   };
 
   return (
@@ -178,8 +247,13 @@ export function McpServerEditorSheet({
             <Icon name="x" size={16} />
           </button>
           <strong>{server ? t('settings.mcp.editorTitleEdit') : t('settings.mcp.editorTitleCreate')}</strong>
-          <button type="button" className="mcp-inline-sheet-confirm" onClick={submit}>
-            {t('settings.mcp.save')}
+          <button
+            type="button"
+            className="mcp-inline-sheet-confirm"
+            onClick={() => void saveAndConnect()}
+            disabled={testState.status === 'testing'}
+          >
+            {testState.status === 'testing' ? t('settings.mcp.connecting') : t('settings.mcp.saveAndConnect')}
           </button>
         </div>
 
@@ -242,6 +316,23 @@ export function McpServerEditorSheet({
             />
           </label>
 
+          {cleartextHttpActive ? (
+            <div className="mcp-cleartext-warning" role="status">
+              <strong>{t('settings.mcp.cleartextWarningTitle')}</strong>
+              <span>{t('settings.mcp.cleartextWarningDetail')}</span>
+            </div>
+          ) : null}
+
+          <label>
+            {t('settings.mcp.oauthClientIdLabel')}
+            <input
+              value={oauthClientId}
+              onChange={(event) => setOauthClientId(event.target.value)}
+              placeholder={t('settings.mcp.oauthClientIdPlaceholder')}
+            />
+            <span className="mcp-field-hint">{t('settings.mcp.oauthClientIdHint')}</span>
+          </label>
+
           <div className={`mcp-test-panel ${testState.status !== 'idle' ? `mcp-test-panel--${testState.status}` : ''}`}>
             <button
               type="button"
@@ -259,6 +350,18 @@ export function McpServerEditorSheet({
                   : testState.message}
             </p>
           </div>
+
+          <McpOAuthPanel
+            open={open}
+            server={persistedServer}
+            draftServer={buildDraftServer()}
+            authorizationRequest={authorizationRequest}
+            onSaveAndConnect={saveAndConnect}
+            onAuthorizationCleared={() => setAuthorizationRequest(null)}
+            onMessage={(status, message) => {
+              setTestState(status === 'idle' ? { status } : { status, message: message ?? '' });
+            }}
+          />
 
           <div className="mcp-tool-editor">
             <div className="mcp-tool-editor-head">
@@ -371,8 +474,16 @@ export function McpServerEditorSheet({
           <button type="button" className="mcp-btn secondary" onClick={onClose}>
             {t('settings.mcp.cancel')}
           </button>
-          <button type="button" className="mcp-btn primary" onClick={submit}>
-            {t('settings.mcp.save')}
+          <button type="button" className="mcp-btn secondary" onClick={saveOnly}>
+            {t('settings.mcp.saveOnly')}
+          </button>
+          <button
+            type="button"
+            className="mcp-btn primary"
+            onClick={() => void saveAndConnect()}
+            disabled={testState.status === 'testing'}
+          >
+            {testState.status === 'testing' ? t('settings.mcp.connecting') : t('settings.mcp.saveAndConnect')}
           </button>
         </div>
       </div>

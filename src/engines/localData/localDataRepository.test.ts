@@ -364,6 +364,103 @@ describe('createLocalDataRepository', () => {
     expect(backend.committed).toEqual([]);
   });
 
+  it('rejects a same-version complete row whose updatedAt is older than the existing row', async () => {
+    const existingRow = createCompleteLocalDataRow({
+      ref: conversationRef,
+      value: { messages: ['newer'] },
+      version: 2,
+      updatedAt: 40
+    });
+    const staleRow = createCompleteLocalDataRow({
+      ref: conversationRef,
+      value: { messages: ['stale'] },
+      version: 2,
+      updatedAt: 30
+    });
+    const backend = createTransactionalBackend(new Map<string, unknown>([
+      [existingRow.key, existingRow]
+    ]));
+    const repository = createLocalDataRepository({
+      backend,
+      now: () => 50,
+      createCommitId: () => 'commit-stale'
+    });
+
+    await expect(repository.commit({
+      domain: 'chat',
+      version: 2,
+      mutations: [{ type: 'put', row: staleRow }]
+    })).rejects.toBeInstanceOf(LocalDataContractError);
+    expect(backend.committed).toEqual([]);
+  });
+
+  it('allows a same-version overwrite when the existing row was stamped by a clock that ran ahead', async () => {
+    const futureRow = createCompleteLocalDataRow({
+      ref: conversationRef,
+      value: { messages: ['written while the clock ran ahead'] },
+      version: 2,
+      updatedAt: 1_000
+    });
+    const honestRow = createCompleteLocalDataRow({
+      ref: conversationRef,
+      value: { messages: ['written after the clock was corrected'] },
+      version: 2,
+      updatedAt: 60
+    });
+    const backend = createTransactionalBackend(new Map<string, unknown>([
+      [futureRow.key, futureRow]
+    ]));
+    const repository = createLocalDataRepository({
+      backend,
+      now: () => 60,
+      createCommitId: () => 'commit-clock-rollback'
+    });
+
+    await expect(repository.commit({
+      domain: 'chat',
+      version: 2,
+      mutations: [{ type: 'put', row: honestRow }]
+    })).resolves.toEqual(expect.objectContaining({
+      commitId: 'commit-clock-rollback'
+    }));
+    expect(backend.committed).toHaveLength(1);
+    expect(backend.committed[0]).toContainEqual({
+      type: 'set',
+      key: honestRow.key,
+      value: honestRow
+    });
+  });
+
+  it('still rejects a version regression even when the existing row was stamped by a future clock', async () => {
+    const futureRow = createCompleteLocalDataRow({
+      ref: conversationRef,
+      value: { messages: ['future v3'] },
+      version: 3,
+      updatedAt: 1_000
+    });
+    const olderVersionRow = createCompleteLocalDataRow({
+      ref: conversationRef,
+      value: { messages: ['v2'] },
+      version: 2,
+      updatedAt: 60
+    });
+    const backend = createTransactionalBackend(new Map<string, unknown>([
+      [futureRow.key, futureRow]
+    ]));
+    const repository = createLocalDataRepository({
+      backend,
+      now: () => 60,
+      createCommitId: () => 'commit-version-regression'
+    });
+
+    await expect(repository.commit({
+      domain: 'chat',
+      version: 2,
+      mutations: [{ type: 'put', row: olderVersionRow }]
+    })).rejects.toBeInstanceOf(LocalDataContractError);
+    expect(backend.committed).toEqual([]);
+  });
+
   it('allows complete rows to replace existing incomplete rows', async () => {
     const incompleteRow = createIncompleteLocalDataRow({
       ref: conversationRef,

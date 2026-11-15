@@ -77,21 +77,25 @@ export function CodePreviewStageSurface({
   useEffect(() => {
     if (!persistenceRoomId || !bridgedSrcDoc) return;
 
+    let savingFromFrame = false;
+    let frameRevision = 0;
+
     const postHydrate = (state: unknown) => {
       iframeRef.current?.contentWindow?.postMessage({
         source: 'polaris-room-host',
         type: 'hydrate',
         roomId: persistenceRoomId,
+        revision: frameRevision,
         state
       }, '*');
     };
 
     const unsubscribe = subscribeRoomState(persistenceRoomId, (state) => {
-      postHydrate(state);
+      if (!savingFromFrame) postHydrate(state);
     });
 
-    void ensureRoomState(persistenceRoomId).then((state) => {
-      postHydrate(state);
+    void ensureRoomState(persistenceRoomId).then(() => {
+      postHydrate(getCachedRoomState(persistenceRoomId));
     });
 
     const handleMessage = (event: MessageEvent) => {
@@ -102,6 +106,7 @@ export function CodePreviewStageSurface({
         roomId?: string;
         state?: unknown;
         flush?: boolean;
+        revision?: number;
       } | null;
       if (!data || data.source !== 'polaris-room-bridge' || data.roomId !== persistenceRoomId) return;
 
@@ -111,7 +116,13 @@ export function CodePreviewStageSurface({
       }
 
       if (data.type === 'save') {
-        updateRoomState(persistenceRoomId, data.state);
+        frameRevision = data.revision ?? 0;
+        savingFromFrame = true;
+        try {
+          updateRoomState(persistenceRoomId, data.state);
+        } finally {
+          savingFromFrame = false;
+        }
         if (data.flush === true) {
           void flushRoomState(persistenceRoomId);
         }

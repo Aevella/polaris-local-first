@@ -54,6 +54,7 @@ describe('readDocumentAttachment', () => {
     const destroy = vi.fn(async () => {});
     const pageCleanup = vi.fn();
     getDocumentMock.mockReturnValue({
+      destroy,
       promise: Promise.resolve({
         numPages: 2,
         getPage: vi.fn(async (pageNumber: number) => ({
@@ -94,6 +95,7 @@ describe('readDocumentAttachment', () => {
   it('returns null when pdfjs finds no readable text', async () => {
     const destroy = vi.fn(async () => {});
     getDocumentMock.mockReturnValue({
+      destroy,
       promise: Promise.resolve({
         numPages: 1,
         getPage: vi.fn(async () => ({

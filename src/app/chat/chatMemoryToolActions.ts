@@ -332,6 +332,7 @@ export function createChatMemoryActions({
         toolInvocation: {
           ...message.toolInvocation,
           status: didWrite.ok ? 'applied' : 'failed',
+          summary: didWrite.ok ? `已保存长期资料 · ${didWrite.title}` : '长期资料写入失败，可以重试。',
           memoryDocId: didWrite.ok ? didWrite.docId : message.toolInvocation.memoryDocId,
           memoryDocTitle: didWrite.ok ? didWrite.title : message.toolInvocation.memoryDocTitle,
           error: didWrite.ok ? undefined : didWrite.error
@@ -344,13 +345,20 @@ export function createChatMemoryActions({
     const items = message.toolInvocation.memoryItems ?? [];
     if (!items.length) return false;
 
-    const didAppend = appendCollaboratorMemories(items, conversationId);
+    let didAppend = false;
+    let writeError = '当前没有可写入记忆的协作者。';
+    try {
+      didAppend = appendCollaboratorMemories(items, conversationId);
+    } catch (error) {
+      writeError = error instanceof Error ? error.message : '记忆没有保存成功。';
+    }
     store.chat.updateMessage(target, message.id, {
       content: didAppend ? '已写入当前协作者记忆。' : '写入失败。',
       toolInvocation: {
         ...message.toolInvocation,
         status: didAppend ? 'applied' : 'failed',
-        error: didAppend ? undefined : '当前没有可写入记忆的协作者。'
+        summary: didAppend ? `已写入 ${items.length} 条记忆` : '记忆写入失败，可以重试。',
+        error: didAppend ? undefined : writeError
       }
     });
     ui.setCommandStatus(didAppend ? '已确认写入记忆。' : '写入记忆失败。', !didAppend);
@@ -363,6 +371,8 @@ export function createChatMemoryActions({
         content: '这份长期资料没有写入。',
         toolInvocation: {
           ...message.toolInvocation,
+          summary: '已取消，长期资料没有写入。',
+          error: undefined,
           status: 'rolled_back'
         }
       });
@@ -375,6 +385,8 @@ export function createChatMemoryActions({
       content: '这批记忆没有写入。',
       toolInvocation: {
         ...message.toolInvocation,
+        summary: '已取消，这批记忆没有写入。',
+        error: undefined,
         status: 'rolled_back'
       }
     });

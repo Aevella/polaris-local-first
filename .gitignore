@@ -60,3 +60,6 @@ public/tutorial.html
 *.swp
 
 # Local working notes.
+
+# Generated native web payloads (including symlinks during isolated builds).
+android/app/src/main/assets/public

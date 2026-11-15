@@ -78,6 +78,30 @@ describe('normalizeProviderModelList', () => {
     ]);
   });
 
+  it('preserves OpenRouter model output ceilings for Anthropic-compatible requests', () => {
+    expect(normalizeProviderModelList(createProvider({
+      protocol: 'anthropic-messages',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      path: '/messages'
+    }), {
+      data: [
+        {
+          id: 'anthropic/claude-sonnet-4',
+          name: 'Anthropic: Claude Sonnet 4',
+          top_provider: {
+            max_completion_tokens: 64_000
+          }
+        }
+      ]
+    })).toEqual([
+      {
+        id: 'anthropic/claude-sonnet-4',
+        label: undefined,
+        maxOutputTokens: 64_000
+      }
+    ]);
+  });
+
   it('normalizes Gemini model names and keeps only generateContent-capable models', () => {
     expect(normalizeProviderModelList(createProvider({
       protocol: 'gemini-generate-content',

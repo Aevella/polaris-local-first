@@ -1,5 +1,5 @@
 import type { AssistantReply, AssistantReplyProgress } from './chatApiTypes';
-import type { ChatTokenUsage } from '../../types/domain';
+import type { ChatProviderReasoningState, ChatTokenUsage } from '../../types/domain';
 import {
   parseProviderRuntimeStreamEvents,
   type CanonicalProviderStreamEvent
@@ -51,6 +51,7 @@ function flushStreamingPayload(params: {
   collected: {
     content: string;
     thinkingText: string;
+    providerReasoning?: ChatProviderReasoningState;
     model?: string;
     tokenCount?: number;
     tokenUsage?: ChatTokenUsage;
@@ -98,6 +99,7 @@ export function createStreamingReplyCollector(
   const collected = {
     content: '',
     thinkingText: '',
+    providerReasoning: undefined as ChatProviderReasoningState | undefined,
     model: fallbackModel as string | undefined,
     tokenCount: undefined as number | undefined,
     tokenUsage: undefined as ChatTokenUsage | undefined,

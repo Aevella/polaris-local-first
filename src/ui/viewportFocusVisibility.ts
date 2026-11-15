@@ -15,6 +15,22 @@ export function resolveContainerScrollTop({
   visibleTop,
   visibleBottom
 }: ResolveContainerScrollTopArgs) {
+  const visibleHeight = visibleBottom - visibleTop;
+  if (visibleHeight <= 0) return currentScrollTop;
+
+  // An auto-growing editor cannot fit above the keyboard as a whole. Keep
+  // it stable while it covers the viewport instead of alternating between
+  // bottom alignment and top alignment on successive visibility passes.
+  if (targetBottom - targetTop > visibleHeight) {
+    if (targetTop > visibleTop) {
+      return currentScrollTop + (targetTop - visibleTop);
+    }
+    if (targetBottom < visibleBottom) {
+      return Math.max(0, currentScrollTop - (visibleBottom - targetBottom));
+    }
+    return currentScrollTop;
+  }
+
   if (targetBottom > visibleBottom) {
     return currentScrollTop + (targetBottom - visibleBottom);
   }

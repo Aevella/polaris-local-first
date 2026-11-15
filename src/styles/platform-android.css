@@ -38,7 +38,7 @@ html[data-polaris-platform='android'] .api-provider-overlay {
 }
 
 html[data-polaris-platform='android'] .api-provider-sheet {
-  animation: fadeIn 180ms ease both;
+  animation: fadeIn 140ms ease both;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   backface-visibility: visible;

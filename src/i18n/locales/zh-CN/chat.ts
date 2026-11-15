@@ -205,6 +205,7 @@ export const chat = {
   'chat.thinking.toolStatus.executed': '已执行',
   'chat.thinking.toolStatus.saved': '已保存',
   'chat.thinking.toolStatus.failed': '执行失败',
+  'chat.toolEvent.retryMemory': '重试写入',
   'chat.toolEvent.status.running': '执行中',
   'chat.toolEvent.status.preview': '试穿中',
   'chat.toolEvent.status.applied': '已应用',

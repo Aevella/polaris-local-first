@@ -16,7 +16,7 @@ type CustomCssSectionProps = {
   themeCustomCss: string;
   guard: ThemeCssGuardResult;
   applyFeedback: CustomCssApplyFeedback | null;
-  onCustomCssDraftChange: (value: string, options?: { feedback?: boolean; consumeOnApply?: boolean }) => void;
+  onCustomCssDraftChange: (value: string, options?: { feedback?: boolean }) => void;
   onClearCustomCss: () => void;
 };
 
@@ -92,10 +92,8 @@ export function CustomCssSection({
     const trimmed = value.trim();
     if (!trimmed) return;
     onCustomCssDraftChange(trimmed, {
-      feedback: true,
-      consumeOnApply: true
+      feedback: true
     });
-    setCssDraft('');
   };
 
   const applySelectedPartDraft = (value: string, entry: SelectorEntry) => {
@@ -168,17 +166,6 @@ export function CustomCssSection({
         <textarea
           className="theme-css-editor theme-css-direct-editor"
           value={cssDraft}
-          onPaste={(event) => {
-            const pastedCss = event.clipboardData.getData('text');
-            if (!pastedCss) return;
-            event.preventDefault();
-            setCssDraft(pastedCss);
-            if (selectedSelector) {
-              applySelectedPartDraft(pastedCss, selectedSelector);
-              return;
-            }
-            applyDirectCssDraft(pastedCss);
-          }}
           onChange={(event) => handleCssDraftChange(event.target.value)}
           placeholder={selectedSelector ? t('theme.css.selectorPlaceholder') : t('theme.css.globalPlaceholder')}
         />

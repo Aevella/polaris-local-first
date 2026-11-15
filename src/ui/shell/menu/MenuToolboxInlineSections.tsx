@@ -95,7 +95,7 @@ export function ThemeToolModeInlineConfig({
           {getThemeToolModeLabel('creative', t)}
         </button>
       </div>
-      <div className={`theme-mode-guidance ${mode === 'creative' ? 'warning' : ''}`}>
+      <div className="theme-mode-guidance">
         <strong>{getThemeToolModeLabel(mode, t)}</strong>
         <p>{description}</p>
       </div>

@@ -120,14 +120,12 @@ export async function readPdfText(buffer: ArrayBuffer): Promise<string> {
   const pdfjs = await loadPdfJs();
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
-    isEvalSupported: false,
     useSystemFonts: false,
     useWorkerFetch: false,
     stopAtErrors: false
   });
-  const document = await loadingTask.promise;
-
   try {
+    const document = await loadingTask.promise;
     const pages: string[] = [];
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
       const page = await document.getPage(pageNumber);
@@ -144,6 +142,6 @@ export async function readPdfText(buffer: ArrayBuffer): Promise<string> {
 
     return pages.join('\n\n').trim();
   } finally {
-    await document.destroy();
+    await loadingTask.destroy();
   }
 }

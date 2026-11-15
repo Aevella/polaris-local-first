@@ -95,7 +95,7 @@ export const collection = {
   'collection.dialogue.renameAria': '改名 {title}',
   'collection.dialogue.messageCount': '{count} 条消息',
   'collection.dialogue.searchMatchCount': '命中 {count} 条消息',
-  'collection.dialogue.searchHiddenCount': '另有 {count} 条',
+  'collection.dialogue.searchShowMore': '展开更多 · 还有 {count} 条',
   'collection.dialogue.searchRole.user': '我',
   'collection.dialogue.searchRole.system': '系统',
   'collection.dialogue.searchOpenMessageAria': '打开 {title} 里的这条命中消息',

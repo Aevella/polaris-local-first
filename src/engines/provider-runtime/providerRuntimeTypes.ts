@@ -1,5 +1,6 @@
 import type {
   ChatNativeToolCall,
+  ChatProviderReasoningState,
   ChatTokenUsage,
   PersonaAdvancedSettings,
   ProviderProfile,
@@ -154,6 +155,7 @@ export type CanonicalProviderStreamEvent =
   | { type: 'text.snapshot'; text: string }
   | { type: 'reasoning.delta'; text: string; mode: Exclude<CanonicalProviderReasoningMode, 'none' | 'hidden'> }
   | { type: 'reasoning.snapshot'; text: string; mode: Exclude<CanonicalProviderReasoningMode, 'none' | 'hidden'> }
+  | { type: 'reasoning.state'; state: ChatProviderReasoningState }
   | { type: 'tool_call.start'; id: string; name: string; index?: number }
   | { type: 'tool_call.delta'; id: string; argumentsDelta: string; index?: number }
   | { type: 'tool_call.done'; id: string; name: string; argumentsText: string; index?: number }
@@ -229,6 +231,7 @@ export type AssistantReply = {
   tokenCount?: number;
   tokenUsage?: ChatTokenUsage;
   thinkingText?: string;
+  providerReasoning?: ChatProviderReasoningState;
   nativeToolCalls?: AssistantNativeToolCall[];
   usedNativeToolCalls?: boolean;
   nativeToolCallCount?: number;

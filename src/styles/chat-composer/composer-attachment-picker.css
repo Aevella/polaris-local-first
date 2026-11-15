@@ -31,7 +31,7 @@
   background: color-mix(in srgb, var(--border-hover) 42%, transparent);
   opacity: 0.72;
 }
-.app-shell:not(.world-switching) .attachment-picker-sheet { animation: attachmentPickerAppear 140ms var(--ease-out) both; }
+.app-shell:not(.world-switching) .attachment-picker-sheet { animation: attachmentPickerAppear 120ms var(--ease-out) both; }
 @keyframes attachmentPickerAppear {
   from { opacity: 0; }
   to { opacity: 1; }

@@ -202,3 +202,13 @@ describe('requestToolResultProjection', () => {
     expect(projected).not.toHaveProperty('webPageRead');
   });
 });
+
+describe('resolved memory previews', () => {
+  it.each(['writeMemory', 'writeMemoryDoc'] as const)('replays actual outcomes for %s instead of stale confirmation text', (kind) => {
+    const preview = { id: 'memory', kind, title: 'Memory', summary: '请确认写入', memoryItems: ['synthetic preference'], memoryDocTitle: 'Synthetic document' };
+    expect(projectToolInvocationForRequest({ ...preview, status: 'applied' }).summary).not.toContain('确认');
+    expect(projectToolInvocationForRequest({ ...preview, status: 'rolled_back' }).summary).toContain('没有写入');
+    expect(projectToolInvocationForRequest({ ...preview, status: 'failed' }).summary).toContain('失败');
+    expect(projectToolInvocationForRequest({ ...preview, status: 'preview' }).summary).toBe('请确认写入');
+  });
+});

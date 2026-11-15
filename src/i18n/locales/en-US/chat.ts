@@ -207,6 +207,7 @@ export const chat = {
   'chat.thinking.toolStatus.executed': 'Executed',
   'chat.thinking.toolStatus.saved': 'Saved',
   'chat.thinking.toolStatus.failed': 'Failed',
+  'chat.toolEvent.retryMemory': 'Retry writing',
   'chat.toolEvent.status.running': 'Running',
   'chat.toolEvent.status.preview': 'Previewing',
   'chat.toolEvent.status.applied': 'Applied',

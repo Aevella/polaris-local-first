@@ -1,4 +1,5 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
+import { CONVERSATION_MESSAGE_SEARCH_PREVIEW_LIMIT, type ConversationMessageSearchResult } from '../../../app/collection/conversationMessageSearch';
 import type { ConversationCardSummary } from '../../../app/collection/conversationCardSummary';
 import { useI18n } from '../../../i18n';
 import { Icon } from '../../Icon';
@@ -78,7 +79,13 @@ export const ConversationCardItem = memo(function ConversationCardItem({
   };
 
   const searchMatches = cardsExpanded ? conversation.searchMatches : null;
-  const visibleSearchMatches = searchMatches?.matches ?? [];
+  const [searchExpansion, setSearchExpansion] = useState<{
+    result: ConversationMessageSearchResult | null;
+    limit: number;
+  }>({ result: null, limit: CONVERSATION_MESSAGE_SEARCH_PREVIEW_LIMIT });
+  const searchLimit = searchExpansion.result === searchMatches
+    ? searchExpansion.limit : CONVERSATION_MESSAGE_SEARCH_PREVIEW_LIMIT;
+  const visibleSearchMatches = searchMatches?.matches.slice(0, searchLimit) ?? [];
   const hiddenSearchMatchCount = Math.max(0, (searchMatches?.total ?? 0) - visibleSearchMatches.length);
   const searchRoleLabel = (role: (typeof visibleSearchMatches)[number]['role']) => {
     if (role === 'user') return t('collection.dialogue.searchRole.user');
@@ -243,9 +250,13 @@ export const ConversationCardItem = memo(function ConversationCardItem({
                       </button>
                     ))}
                     {hiddenSearchMatchCount > 0 ? (
-                      <span className="conversation-message-search-more">
-                        {t('collection.dialogue.searchHiddenCount', { count: formatNumber(hiddenSearchMatchCount) })}
-                      </span>
+                      <button type="button" className="conversation-message-search-more"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSearchExpansion({ result: searchMatches, limit: searchLimit + 20 });
+                        }}>
+                        {t('collection.dialogue.searchShowMore', { count: formatNumber(hiddenSearchMatchCount) })}
+                      </button>
                     ) : null}
                   </div>
                 ) : null}

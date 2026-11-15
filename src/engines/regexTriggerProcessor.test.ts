@@ -111,8 +111,8 @@ describe('resolveRegexTriggerMatches', () => {
       { id: 'assistant-1', role: 'assistant', content: '继续。', timestamp: 2 },
       userMessage('这一轮说拉梅兰')
     ], [
-      { pattern: '白树', prompt: '带入白树设定' },
-      { pattern: '拉梅兰', prompt: '带入拉梅兰设定' }
+      { pattern: '白树', prompt: '带入白树设定', scanDepth: 0 },
+      { pattern: '拉梅兰', prompt: '带入拉梅兰设定', scanDepth: 0 }
     ]);
 
     expect(matches.map((match) => match.prompt)).toEqual(['带入拉梅兰设定']);
@@ -133,7 +133,7 @@ describe('resolveRegexTriggerMatches', () => {
       { id: 'assistant-1', role: 'assistant', content: '我记得白树。', timestamp: 2 },
       userMessage('这一轮只说继续')
     ], [
-      { pattern: '白树', prompt: '最新用户消息不会命中' },
+      { pattern: '白树', prompt: '最新用户消息不会命中', scanDepth: 0 },
       { pattern: '白树', prompt: '最近上下文命中', scanDepth: 3 }
     ]);
 
@@ -153,10 +153,12 @@ describe('resolveRegexTriggerMatches', () => {
 describe('buildRegexTriggerContext', () => {
   it('builds a prompt context without rewriting the user text', () => {
     const context = buildRegexTriggerContext([userMessage('白树落下来了')], [
-      { pattern: '白树', prompt: '带入白树设定' }
+      { pattern: '白树', prompt: '带入白树设定', scanDepth: 0 }
     ]);
 
-    expect(context).toContain('[正则触发]');
+    expect(context).toContain('[协作者世界书]');
+    expect(context).toContain('不需要用户再次要求读取');
+    expect(context).toContain('不是用户新发的消息');
     expect(context).toContain('不要改写用户原文');
     expect(context).toContain('/白树/：带入白树设定');
   });

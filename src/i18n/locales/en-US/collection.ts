@@ -97,7 +97,7 @@ export const collection = {
   'collection.dialogue.renameAria': 'Rename {title}',
   'collection.dialogue.messageCount': 'Messages: {count}',
   'collection.dialogue.searchMatchCount': '{count} message matches',
-  'collection.dialogue.searchHiddenCount': '{count} more',
+  'collection.dialogue.searchShowMore': 'Show more · {count} remaining',
   'collection.dialogue.searchRole.user': 'Me',
   'collection.dialogue.searchRole.system': 'System',
   'collection.dialogue.searchOpenMessageAria': 'Open this matching message in {title}',

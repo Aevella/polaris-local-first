@@ -540,8 +540,8 @@ describe('createChatActionHandlers', () => {
           setActiveConversation: vi.fn(),
           readLatestState: () => ({
             inputDraft: '',
-            conversations: [],
-            activeConversationId: null
+            conversations: [{ id: 'conv-1', title: '当前目录', collaboratorId: 'pharos', messages: [] }] as never[],
+            activeConversationId: 'conv-1'
           })
         },
         persona: {

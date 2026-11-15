@@ -1,3 +1,6 @@
+import { persistPersonaWorldBook } from './personaWorldBookPersistence';
+import { runExclusivePersonaPersistenceCommit } from './personaPersistenceCommitQueue';
+import { parseRegexTriggers, type RegexTriggerRule } from '../engines/regexTriggerProcessor';
 import { create } from 'zustand';
 import {
   BUNDLED_DEFAULT_PERSONA_IDS,
@@ -51,6 +54,7 @@ type PersonaState = {
   updateCollaborator: (id: string, patch: PersonaPatch) => void;
   hydrateFromDb: () => Promise<boolean>;
   persistToDb: () => Promise<void>;
+  saveWorldBookRules: (personaId: string, rules: RegexTriggerRule[], options?: { append?: boolean; expectedPrevious?: string }) => Promise<void>;
 };
 
 type PersistedPersonaPayload = {
@@ -414,8 +418,28 @@ export const usePersonaStore = create<PersonaState>((set, get) => ({
     set({ hydrated: true });
     return false;
   },
+  saveWorldBookRules: async (personaId, rules, options) => runExclusivePersonaPersistenceCommit(async () => {
+    const state = get();
+    const target = state.personas.find((persona) => persona.id === personaId);
+    if (!target) throw new Error('协作者已不存在，世界书未写入。');
+    const previous = target.advanced.regexTriggers ?? '';
+    if (options?.expectedPrevious !== undefined && previous !== options.expectedPrevious) {
+      throw new Error('世界书刚刚发生了其他修改，请关闭后重新打开条目；当前正文仍可复制。');
+    }
+    const nextRules = options?.append ? [...parseRegexTriggers(previous), ...rules] : rules;
+    for (const rule of nextRules) {
+      if (!rule.prompt.trim() || (!rule.alwaysOn && !rule.pattern.trim())) throw new Error('条目缺少正文或匹配条件。');
+      if (!rule.alwaysOn) new RegExp(rule.pattern, rule.flags);
+    }
+    const regexTriggers = nextRules.length ? JSON.stringify(nextRules, null, 2) : '';
+    await persistPersonaWorldBook(state, personaId, regexTriggers);
+    set((latest) => ({ personas: latest.personas.map((persona) => persona.id === personaId
+      ? { ...persona, advanced: { ...persona.advanced, regexTriggers } } : persona) }));
+  }),
   persistToDb: async () => {
-    const { personas, activeCollaboratorId, seededDefaultPersonaIds } = get();
-    await writePersonaState({ personas, activeCollaboratorId, seededDefaultPersonaIds });
+    await writePersonaState(() => {
+      const { personas, activeCollaboratorId, seededDefaultPersonaIds } = get();
+      return { personas, activeCollaboratorId, seededDefaultPersonaIds };
+    });
   }
 }));

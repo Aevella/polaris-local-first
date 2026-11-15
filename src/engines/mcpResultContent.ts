@@ -1,17 +1,3 @@
-// MCP tool-call result formatting and attachment extraction.
-//
-// This module is pure: it turns the raw `tools/call` JSON-RPC result into a
-// human-readable text summary and into structured attachment descriptors.
-// It performs no I/O — no fetch, no SSE session state, no catalog cache.
-// The transport layer in `mcpRuntime.ts` produces the raw result and hands it
-// here for projection.
-
-export type ToolsCallResult = {
-  content?: unknown[];
-  structuredContent?: unknown;
-  isError?: boolean;
-};
-
 export type McpToolAttachmentContent = {
   kind: 'image' | 'file';
   sourceType: 'image' | 'audio' | 'resource';
@@ -20,6 +6,12 @@ export type McpToolAttachmentContent = {
   name: string;
   textContent?: string;
   uri?: string;
+};
+
+export type McpToolsCallResult = {
+  content?: unknown[];
+  structuredContent?: unknown;
+  isError?: boolean;
 };
 
 function formatToolContentItem(item: unknown) {
@@ -156,7 +148,7 @@ function extractResourceAttachmentContent(
   };
 }
 
-export function extractToolAttachmentContent(result: ToolsCallResult): McpToolAttachmentContent[] {
+export function extractMcpToolAttachmentContent(result: McpToolsCallResult): McpToolAttachmentContent[] {
   return (result.content ?? [])
     .map((item, index): McpToolAttachmentContent | null => {
       if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
@@ -193,7 +185,7 @@ export function extractToolAttachmentContent(result: ToolsCallResult): McpToolAt
     .filter((item): item is McpToolAttachmentContent => Boolean(item));
 }
 
-export function formatToolsCallResult(result: ToolsCallResult) {
+export function formatMcpToolsCallResult(result: McpToolsCallResult) {
   const parts = (result.content ?? [])
     .map((item) => formatToolContentItem(item))
     .filter((item) => item && item.trim());

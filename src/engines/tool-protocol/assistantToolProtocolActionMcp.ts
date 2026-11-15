@@ -1,13 +1,9 @@
 import type { McpResolvedToolDefinition } from '../mcpRuntime';
-import { asObject } from './assistantToolProtocolShared';
 import type { ParseActionResult } from './assistantToolProtocolActionShared';
-import { normalizeOptionalString } from './assistantToolProtocolActionShared';
 
 export type AssistantToolActionMcpParseContext = {
   mcpTools?: McpResolvedToolDefinition[];
 };
-
-const MCP_META_KEYS = new Set(['kind', 'targetLabel']);
 
 function resolveMcpTool(
   schemaName: string,
@@ -25,8 +21,7 @@ function resolveMcpTool(
 
 function buildMcpToolAction(
   tool: McpResolvedToolDefinition,
-  argumentsObject: Record<string, unknown>,
-  targetLabel?: string
+  argumentsObject: Record<string, unknown>
 ): ParseActionResult {
   return {
     action: {
@@ -36,20 +31,14 @@ function buildMcpToolAction(
       schemaName: tool.schemaName,
       toolName: tool.toolName,
       argumentsObject,
-      targetLabel: targetLabel || `${tool.serverName} / ${tool.toolName}`
+      targetLabel: `${tool.serverName} / ${tool.toolName}`
     }
   };
 }
 
-function normalizeMcpArguments(action: Record<string, unknown>) {
-  const explicitArguments = asObject(action.arguments);
-  if (explicitArguments) return explicitArguments;
-
-  const explicitArgs = asObject(action.args);
-  if (explicitArgs) return explicitArgs;
-
+function extractMcpArguments(action: Record<string, unknown>) {
   return Object.fromEntries(
-    Object.entries(action).filter(([key]) => !MCP_META_KEYS.has(key))
+    Object.entries(action).filter(([key]) => key !== 'kind')
   );
 }
 
@@ -64,8 +53,7 @@ export function parseMcpToolAction(
 
   return buildMcpToolAction(
     resolved.tool,
-    normalizeMcpArguments(action),
-    normalizeOptionalString(action.targetLabel)
+    extractMcpArguments(action)
   );
 }
 

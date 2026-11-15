@@ -11,6 +11,8 @@ const ROOM_BRIDGE_SCRIPT_TEMPLATE = String.raw`<script>
   var ready = false;
   var readyResolvers = [];
   var lifecycleFlushActive = false;
+  var revision = 0;
+  var composingElements = new WeakSet();
   var roomState = normalizeState(INITIAL_STATE);
 
   function clone(value) {
@@ -103,7 +105,9 @@ const ROOM_BRIDGE_SCRIPT_TEMPLATE = String.raw`<script>
   }
 
   function persistState(options) {
+    revision += 1;
     postToHost('save', {
+      revision: revision,
       state: api.getState(),
       flush: Boolean(options && options.flush) || shouldFlushImmediately()
     });
@@ -201,30 +205,31 @@ const ROOM_BRIDGE_SCRIPT_TEMPLATE = String.raw`<script>
   }
 
   function writeElementValue(element, value) {
-    if (value === undefined) return;
+    if (value === undefined || composingElements.has(element)) return;
 
     if (element instanceof HTMLInputElement) {
       if (element.type === 'checkbox') {
-        element.checked = Boolean(value);
+        if (element.checked !== Boolean(value)) element.checked = Boolean(value);
         return;
       }
 
       if (element.type === 'radio') {
-        element.checked = String(value) === element.value;
+        var checked = String(value) === element.value;
+        if (element.checked !== checked) element.checked = checked;
         return;
       }
 
-      element.value = String(value);
+      if (element.value !== String(value)) element.value = String(value);
       return;
     }
 
     if (element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
-      element.value = String(value);
+      if (element.value !== String(value)) element.value = String(value);
       return;
     }
 
     if (element.isContentEditable) {
-      element.innerHTML = String(value);
+      if (element.innerHTML !== String(value)) element.innerHTML = String(value);
     }
   }
 
@@ -246,7 +251,8 @@ const ROOM_BRIDGE_SCRIPT_TEMPLATE = String.raw`<script>
     element.dataset.polarisPersistBound = '1';
     syncElementFromState(element);
 
-    var handleInput = function () {
+    var handleInput = function (event) {
+      if (composingElements.has(element) || (event && event.isComposing)) return;
       var nextValue = readElementValue(element);
       if (nextValue === undefined) return;
 
@@ -258,6 +264,13 @@ const ROOM_BRIDGE_SCRIPT_TEMPLATE = String.raw`<script>
 
     element.addEventListener('input', handleInput);
     element.addEventListener('change', handleInput);
+    element.addEventListener('compositionstart', function () {
+      composingElements.add(element);
+    });
+    element.addEventListener('compositionend', function () {
+      composingElements.delete(element);
+      handleInput();
+    });
   }
 
   function syncPersistedFields(root) {
@@ -322,10 +335,11 @@ const ROOM_BRIDGE_SCRIPT_TEMPLATE = String.raw`<script>
     var data = event.data;
     if (!data || data.source !== HOST_SOURCE || data.roomId !== ROOM_ID) return;
     if (data.type !== 'hydrate') return;
-
-    roomState = normalizeState(data.state);
-    syncPersistedFields(document);
-    emitState();
+    // A host message queued before a newer local save cannot replace that edit.
+    if (data.revision === undefined || data.revision >= revision) {
+      roomState = normalizeState(data.state);
+      emitState();
+    }
     if (!ready) {
       ready = true;
       resolveReady();

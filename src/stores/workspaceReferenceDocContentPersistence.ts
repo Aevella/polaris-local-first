@@ -372,12 +372,10 @@ export async function readWorkspaceReferenceDocContent(doc: WorkspaceReferenceDo
   }
   const key = workspaceReferenceDocContentKey(doc.id);
   const stagedContent = stagedWorkspaceReferenceDocContent.get(key);
-  if (stagedContent !== undefined) {
-    assertReferenceDocBodyMatchesDirectory(
-      doc,
-      stagedContent,
-      `Workspace reference document content is missing: ${doc.id}`
-    );
+  // The directory may have advanced past a staged draft (for example after
+  // hydration/rollback). A stale staged body is not evidence that disk is missing.
+  // Use the same eligibility check as the write path, then validate disk normally.
+  if (stagedContent !== undefined && contentMatchesReferenceDocDirectory(doc, stagedContent)) {
     return stagedContent;
   }
   const chunkedContent = await readWorkspaceReferenceDocChunkedContent(key);

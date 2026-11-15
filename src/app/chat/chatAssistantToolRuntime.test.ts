@@ -1944,29 +1944,33 @@ describe('chatAssistantToolRuntime', () => {
     expect(result.resolved).toHaveLength(0);
   });
 
-  it('resolves native tool calls for discovered MCP tools', () => {
+  it('keeps nested arguments intact for native MCP tool calls', () => {
     const result = resolveNativeMcpToolActions({
       toolCalls: [{
         id: 'call-2',
-        name: 'mcp__weather__get_weather',
-        argumentsText: '{"city":"Shanghai"}'
+        name: 'mcp__aisay__cli',
+        argumentsText: '{"command":"help","args":{"path":"account"}}'
       }],
       mcpTools: [{
-        schemaName: 'mcp__weather__get_weather',
+        schemaName: 'mcp__aisay__cli',
         serverId: 'server-1',
-        serverName: 'Weather MCP',
-        serverHandle: 'weather',
+        serverName: 'AISay',
+        serverHandle: 'aisay',
         transport: 'streamable-http',
-        url: 'https://mcp.example.com',
-        toolName: 'get_weather',
-        description: 'Get weather',
+        url: 'https://aisay.top/chatroom/mcp',
+        toolName: 'cli',
+        description: 'AISay CLI',
         inputSchema: {
           type: 'object',
           properties: {
-            city: {
+            command: {
               type: 'string'
+            },
+            args: {
+              type: 'object'
             }
-          }
+          },
+          required: ['command']
         }
       }]
     });
@@ -1975,13 +1979,16 @@ describe('chatAssistantToolRuntime', () => {
     expect(result.resolved).toEqual([{
       kind: 'invokeMcpTool',
       serverId: 'server-1',
-      serverName: 'Weather MCP',
-      schemaName: 'mcp__weather__get_weather',
-      toolName: 'get_weather',
+      serverName: 'AISay',
+      schemaName: 'mcp__aisay__cli',
+      toolName: 'cli',
       argumentsObject: {
-        city: 'Shanghai'
+        command: 'help',
+        args: {
+          path: 'account'
+        }
       },
-      targetLabel: 'Weather MCP / get_weather'
+      targetLabel: 'AISay / cli'
     }]);
   });
 

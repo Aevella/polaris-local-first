@@ -107,6 +107,17 @@ describe('buildConversationSearchText', () => {
 });
 
 describe('buildConversationMessageSearchIndex', () => {
+  it('retains every hit so preview expansion can reach the earliest matching message', () => {
+    const target = conversation({ id: 'many', messages: Array.from({ length: 44 }, (_, i) =>
+      message({ id: `match-${i}`, content: `needle ${i}`, timestamp: i + 1 })) });
+    const result = buildConversationMessageSearchIndex([target], 'needle').many!;
+    expect(result.total).toBe(44);
+    expect(result.matches).toHaveLength(44);
+    expect(result.matches[0]?.messageId).toBe('match-43');
+    expect(result.matches[43]?.messageId).toBe('match-0');
+    expect(new Set(result.matches.map(match => match.messageId)).size).toBe(44);
+  });
+
   it('indexes only conversations with message-level hits', () => {
     const index = buildConversationMessageSearchIndex([
       conversation({ id: 'hit', messages: [message({ id: 'm1', content: 'needle here' })] }),

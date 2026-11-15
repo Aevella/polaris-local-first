@@ -192,14 +192,19 @@ export function PersonaMcpSettingsPage({
         server={null}
         timeoutSeconds={mcpToolTimeoutSeconds}
         onClose={() => setCreatingOpen(false)}
-        onSave={(patch) => {
-          const serverId = onCreateMcpServer(patch);
+        onPersist={(serverId, patch) => {
+          if (serverId) {
+            onUpdateMcpServer(serverId, patch);
+            return serverId;
+          }
+          const createdServerId = onCreateMcpServer(patch);
           onUpdatePersona({
             mcp: {
               inheritGlobal: false,
-              serverIds: Array.from(new Set([...selectedServerIds, serverId]))
+              serverIds: Array.from(new Set([...selectedServerIds, createdServerId]))
             }
           });
+          return createdServerId;
         }}
       />
 
@@ -208,9 +213,11 @@ export function PersonaMcpSettingsPage({
         server={editingServer}
         timeoutSeconds={mcpToolTimeoutSeconds}
         onClose={() => setEditingServerId(null)}
-        onSave={(patch) => {
-          if (!editingServer) return;
-          onUpdateMcpServer(editingServer.id, patch);
+        onPersist={(serverId, patch) => {
+          const targetId = serverId ?? editingServer?.id;
+          if (!targetId) return '';
+          onUpdateMcpServer(targetId, patch);
+          return targetId;
         }}
       />
     </div>

@@ -7,6 +7,7 @@ import { explainConnectivityFailure } from './providerErrorHandling';
 import { resolveProviderCapability } from './provider-runtime/providerCapability';
 import { resolveProviderRuntimeRequestAdapter } from './provider-runtime/providerRuntimeAdapters';
 import { EMPTY_PROVIDER_RUNTIME_COMPATIBILITY_STATE } from './provider-runtime/providerRuntimeCompatibility';
+import { resolveProviderRuntimeMaxOutputTokens } from './provider-runtime/providerRuntimeModelLimits';
 
 function getCurrentWindowOrigin() {
   return typeof window !== 'undefined' && typeof window.location?.origin === 'string'
@@ -34,9 +35,15 @@ export async function testApiConnection(params: {
     const { api, advanced } = params;
     if (!api.apiKey.trim() && !isPolarisBuiltInProvider(api)) return { ok: false, error: '未填写 API Key' };
 
+    const providerCapability = resolveProviderCapability(api, advanced);
+    const providerMaxOutputTokens = hasExplicitMaxTokens(advanced)
+      ? undefined
+      : await resolveProviderRuntimeMaxOutputTokens(providerCapability.provider);
+
     request = buildApiRequest({
       api,
       advanced,
+      providerMaxOutputTokens,
       context: {
         memorySlots: {
           session: [],
@@ -66,7 +73,7 @@ export async function testApiConnection(params: {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
       controller.abort();
-    }, resolveProviderCapability(api).execution.connectionTestTimeoutMs);
+    }, providerCapability.execution.connectionTestTimeoutMs);
 
     try {
       try {

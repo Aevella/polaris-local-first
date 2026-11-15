@@ -17,6 +17,7 @@ export type ProviderRuntimeRequestInput = {
   context: AssistantRequestContext;
   sessionId?: string;
   advanced?: PersonaAdvancedSettings;
+  providerMaxOutputTokens?: number;
   bodyOverrides?: Record<string, unknown>;
   openAiToolHistoryMode?: OpenAiToolHistoryMode;
 };

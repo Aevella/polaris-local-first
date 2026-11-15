@@ -167,8 +167,20 @@ describe('assistant message actions', () => {
     ]);
     expect(vi.mocked(chat.replaceConversationMessages).mock.calls[0][1][0].id).not.toBe('user-1');
     expect(vi.mocked(chat.replaceConversationMessages).mock.calls[0][1][1].id).not.toBe('assistant-1');
+    expect(vi.mocked(chat.replaceConversationMessages).mock.calls[0][1].map((entry) => entry.timestamp)).toEqual([1000, 1001]);
     expect(space.clearPendingAttachments).toHaveBeenCalled();
     expect(space.clearPendingCardReference).toHaveBeenCalled();
     expect(chat.setActiveConversation).toHaveBeenCalledWith('conv-branch');
   });
+});
+
+ it('requires confirmation before regeneration removes later user messages', async () => {
+  const first = message('u1', 'user', 'first', 1);
+  const answer = message('a1', 'assistant', 'answer', 2);
+  const later = message('u2', 'user', 'later', 3);
+  const confirm = vi.fn(() => false);
+  const { handlers, chat } = createHandlersForConversation({ conversation: { id: 'c', title: 'c', collaboratorId: 'pharos', messages: [first, answer, later], updatedAt: 3, pinnedAt: null }, ui: { confirm } });
+  await handlers.retryLatestAssistant(answer);
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(chat.replaceConversationMessages).not.toHaveBeenCalled();
 });

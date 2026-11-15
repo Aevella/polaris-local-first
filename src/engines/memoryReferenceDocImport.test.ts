@@ -67,6 +67,7 @@ describe('importMemoryReferenceDocFromFile', () => {
     const destroy = vi.fn(async () => {});
     const cleanup = vi.fn();
     getDocumentMock.mockReturnValue({
+      destroy,
       promise: Promise.resolve({
         numPages: 1,
         getPage: vi.fn(async () => ({

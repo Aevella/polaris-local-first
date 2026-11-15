@@ -144,6 +144,7 @@ export function normalizeMcpServer(
     description: input?.description?.trim() || '',
     transport: normalizeMcpTransport(input?.transport),
     url: input?.url?.trim() || '',
+    oauthClientId: input?.oauthClientId?.trim() || undefined,
     headers: normalizeMcpHeaders(input?.headers),
     tools: normalizeMcpTools(input?.tools),
     isActive: input?.isActive ?? true
@@ -197,6 +198,7 @@ export function serializeMcpServersToJson(servers: McpServerConfig[]) {
           name: server.name,
           transport: server.transport,
           url: server.url,
+          oauthClientId: server.oauthClientId,
           description: server.description || undefined,
           headers: Object.fromEntries(
             server.headers
@@ -241,6 +243,7 @@ export function parseMcpServersJson(jsonText: string): McpServerConfig[] {
           : typeof entry.endpoint === 'string'
             ? entry.endpoint
             : '',
+        oauthClientId: typeof entry.oauthClientId === 'string' ? entry.oauthClientId : undefined,
         headers: normalizeMcpHeaders(entry.headers),
         tools: normalizeMcpTools(entry.tools),
         isActive: typeof entry.isActive === 'boolean' ? entry.isActive : true

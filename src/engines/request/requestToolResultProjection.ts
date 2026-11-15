@@ -133,7 +133,22 @@ export function projectToolResultPayloadForRequest(
   assignIfPresent(projected, 'isError', payload.isError);
   assignIfPresent(projected, 'kind', overrides?.kind ?? payload.kind);
   assignIfPresent(projected, 'title', payload.title);
-  assignIfPresent(projected, 'summary', payload.summary);
+  let summary = payload.summary;
+  // Older memory previews retained their original summary after resolution.
+  // Project the recorded outcome, without claiming that a failed write succeeded.
+  if (kind === 'writeMemory' || kind === 'writeMemoryDoc') {
+    if (payload.status === 'applied') {
+      const count = Array.isArray(payload.memoryItems) ? payload.memoryItems.length : 0;
+      summary = kind === 'writeMemory'
+        ? (count ? `已写入 ${count} 条记忆` : '已写入记忆')
+        : `已保存长期资料${cleanString(payload.memoryDocTitle) ? ` · ${cleanString(payload.memoryDocTitle)}` : ''}`;
+    } else if (payload.status === 'rolled_back') {
+      summary = kind === 'writeMemory' ? '已取消，这批记忆没有写入。' : '已取消，长期资料没有写入。';
+    } else if (payload.status === 'failed') {
+      summary = kind === 'writeMemory' ? '记忆写入失败，可以重试。' : '长期资料写入失败，可以重试。';
+    }
+  }
+  assignIfPresent(projected, 'summary', summary);
   assignIfPresent(projected, 'scope', payload.scope);
   assignIfPresent(projected, 'surfaces', payload.surfaces);
   assignIfPresent(projected, 'intent', payload.intent);

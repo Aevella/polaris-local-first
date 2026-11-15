@@ -2041,7 +2041,7 @@ html[data-keyboard-open='true'] .group-tabbar {
   background: rgba(17, 17, 17, 0.32);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-  animation: groupFadeIn 160ms var(--ease-out) both;
+  animation: groupFadeIn 140ms var(--ease-out) both;
 }
 
 .group-sheet {
@@ -2059,7 +2059,7 @@ html[data-keyboard-open='true'] .group-tabbar {
   backdrop-filter: blur(22px) saturate(130%);
   -webkit-backdrop-filter: blur(22px) saturate(130%);
   overflow-y: auto;
-  animation: groupSheetUp 220ms var(--ease-out) both;
+  animation: groupSheetUp 170ms var(--ease-out) both;
 }
 
 @media (min-width: 720px) {

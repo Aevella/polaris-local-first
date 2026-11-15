@@ -202,3 +202,20 @@ describe('createChatMemoryActions', () => {
     );
   });
 });
+
+describe('memory confirmation outcomes', () => {
+  it('records the completed outcome on the writable conversation body', () => {
+    const { actions, updateMessage } = createMemoryActions();
+    expect(actions.applyMemoryPreview(writableConversation(), memoryPreviewMessage())).toBe(true);
+    expect(updateMessage).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 'conv-1' }), 'memory-preview-message', expect.objectContaining({
+      toolInvocation: expect.objectContaining({ status: 'applied', summary: '已写入 1 条记忆' })
+    }));
+  });
+  it('records cancellation without leaving confirmation text or a stale error', () => {
+    const { actions, updateMessage } = createMemoryActions();
+    actions.rollbackMemoryPreview(writableConversation(), memoryPreviewMessage());
+    expect(updateMessage).toHaveBeenCalledWith(expect.anything(), 'memory-preview-message', expect.objectContaining({
+      toolInvocation: expect.objectContaining({ status: 'rolled_back', summary: '已取消，这批记忆没有写入。', error: undefined })
+    }));
+  });
+});

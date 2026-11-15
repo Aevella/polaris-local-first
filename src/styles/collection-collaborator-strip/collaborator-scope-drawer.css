@@ -39,11 +39,11 @@
 }
 
 .app-shell:not(.world-switching) .collaborator-scope-drawer--open .collaborator-scope-drawer-scrim {
-  animation: collaboratorScopeScrimIn 220ms var(--ease-out) both;
+  animation: collaboratorScopeScrimIn 160ms var(--ease-out) both;
 }
 
 .app-shell:not(.world-switching) .collaborator-scope-drawer--open .collaborator-scope-drawer-panel {
-  animation: collaboratorScopeDrawerIn 260ms var(--ease-out) both;
+  animation: collaboratorScopeDrawerIn 180ms var(--ease-out) both;
 }
 
 .collaborator-scope-drawer-head {

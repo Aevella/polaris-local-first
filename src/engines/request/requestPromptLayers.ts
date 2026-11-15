@@ -50,11 +50,11 @@ export function buildAssistantPromptParts(params: {
   const runtimeClockEntry = includeRuntimeClockContext ? buildRuntimeClockEntry(templateContext) : null;
   const regexTriggerEntry = {
     name: 'regex_trigger_context' as const,
-    label: '正则触发',
+    label: '世界书',
     role: 'system' as const,
     layer: 'context' as const,
     truncationPriority: 52,
-    content: buildRegexTriggerContext(messages, regexTriggers),
+    content: buildRegexTriggerContext(messages, regexTriggers, templateContext),
     enabled: false,
     charCount: 0
   };

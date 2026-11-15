@@ -1,3 +1,5 @@
+import { normalizeResponsesParameters } from './responsesParameters';
+import { normalizeOpenAiChatResponseFormat } from './openAiResponseFormat';
 import type { ProviderCapability } from '../providerCapability';
 import type { ProviderHttpRequest } from '../providerRuntimeTypes';
 
@@ -79,14 +81,19 @@ export function buildRequestResult(params: {
     usesBuiltInTrial
   } = params;
 
+  const normalizedCustom = { ...customBody };
+  const normalizedOverrides = { ...bodyOverrides };
+  if (provider === 'openai-responses') {
+    normalizeResponsesParameters(normalizedCustom, endpoint);
+    normalizeResponsesParameters(normalizedOverrides, endpoint);
+  }
+  const mergedBody = { ...body, ...normalizedCustom, ...normalizedOverrides };
+  if (provider === 'openai-completions') normalizeOpenAiChatResponseFormat(mergedBody);
+  if (provider === 'openai-responses') normalizeResponsesParameters(mergedBody, endpoint);
   return {
     endpoint,
     headers,
-    body: sanitizeJsonTransportValue({
-      ...body,
-      ...customBody,
-      ...bodyOverrides
-    }) as Record<string, unknown>,
+    body: sanitizeJsonTransportValue(mergedBody) as Record<string, unknown>,
     provider,
     compatibilityMode,
     capability: {

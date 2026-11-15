@@ -7,11 +7,10 @@ export function latestAssistantMessage(messages: ChatMessage[]) {
   return messages.slice().reverse().find((message) => message.role === 'assistant') ?? null;
 }
 
-export function cloneMessageForFork(message: ChatMessage, index: number): ChatMessage {
+export function cloneMessageForFork(message: ChatMessage): ChatMessage {
   return {
     ...message,
-    id: createUid(message.role),
-    timestamp: Date.now() + index
+    id: createUid(message.role)
   };
 }
 

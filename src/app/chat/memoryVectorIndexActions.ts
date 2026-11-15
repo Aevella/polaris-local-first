@@ -48,6 +48,12 @@ export type TestMemoryVectorModelConnectionResult = {
   returnedDimensions: number;
 };
 
+function formatSkippedChunkNotice(skippedChunkCount: number, skipReason: string | null) {
+  if (skippedChunkCount <= 0) return '';
+  const reason = skipReason?.trim() ? `：${skipReason.trim()}` : '';
+  return `${skippedChunkCount} 条片段被向量模型拒绝，已跳过，下次整理会重试${reason}`;
+}
+
 function patchVectorIndexForCollaborator(
   collaboratorId: string,
   patch: Partial<PersonaVectorIndexSettings>
@@ -190,6 +196,8 @@ async function updateMemoryVectorIndexForCollaboratorNow(
       totalChunkCount: 0,
       preparedChunkCount: 0,
       embeddedChunkCount: 0,
+      skippedChunkCount: 0,
+      skipReason: null,
       generatedAt: options.now ?? Date.now(),
       metadata: null
     };
@@ -255,7 +263,7 @@ async function updateMemoryVectorIndexForCollaboratorNow(
         indexedChunkCount: result.metadata?.embeddedCount ?? result.preparedChunkCount,
         totalChunkCount: result.totalChunkCount,
         lastIndexedAt: result.generatedAt,
-        lastError: ''
+        lastError: formatSkippedChunkNotice(result.skippedChunkCount, result.skipReason)
       });
       await usePersonaStore.getState().persistToDb();
     } else if (result.status === 'empty') {

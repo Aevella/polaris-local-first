@@ -1,3 +1,19 @@
+export type ChatProviderReasoningItem = {
+  type: string;
+  index?: number;
+  id?: string;
+  format?: string;
+  text?: string;
+  thinking?: string;
+  summary?: string;
+  data?: string;
+  signature?: string;
+  encrypted_content?: string;
+};
+export type ChatProviderReasoningState = {
+  protocol: 'anthropic-messages' | 'openai-completions' | 'openai-responses';
+  items: ChatProviderReasoningItem[];
+};
 import type { ChatNativeToolCall } from './primitives';
 import type { ChatCardReference } from './collection';
 import type { ToolInvocation, ToolLedgerEntry } from './tools';
@@ -35,6 +51,7 @@ export interface ChatMessage {
   assistantName?: string;
   speakerCollaboratorId?: string;
   thinkingText?: string;
+  providerReasoning?: ChatProviderReasoningState;
   voiceCache?: ChatMessageVoiceCache;
   nativeToolCalls?: ChatNativeToolCall[];
   toolInvocation?: ToolInvocation;

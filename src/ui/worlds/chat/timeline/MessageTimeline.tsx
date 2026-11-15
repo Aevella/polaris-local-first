@@ -134,7 +134,7 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
     sending: ui.sending,
     streaming: ui.streaming
   });
-  const { containerRef, handleScroll, followMode, jumpToLatest, jumpToTop, showJumpToLatest, showJumpToTop } = useTimelineScroll({
+  const { containerRef, handleScroll, handleScrollIntent, followMode, readingMessageId, syncTimelineGeometry, jumpToLatest, jumpToTop, showJumpToLatest, showJumpToTop } = useTimelineScroll({
     conversationId,
     messages,
     isGenerationActive,
@@ -403,10 +403,14 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
     () => resolveTimelineWindow(renderItems, followMode, ui.focusedMessageId, {
       ...timelineViewport,
       rowHeights: rowHeightsRef.current,
-      anchorMessageId: followMode === 'reply-stage' ? latestUserMessageId : null
+      anchorMessageId: followMode === 'reply-stage' ? latestUserMessageId : readingMessageId
     }),
-    [renderItems, followMode, ui.focusedMessageId, timelineViewport, rowMetricsVersion, latestUserMessageId]
+    [renderItems, followMode, ui.focusedMessageId, timelineViewport, rowMetricsVersion, latestUserMessageId, readingMessageId]
   );
+  useLayoutEffect(() => {
+    syncTimelineGeometry(ui.focusedMessageId);
+    queueTimelineViewportMeasure();
+  }, [timelineWindow, rowMetricsVersion, ui.focusedMessageId, isWorldSettled, presentation.isActiveWorld]);
   const rowActions = useMemo<MessageRowActions>(() => ({
     removeEditingAttachment: actions.removeEditingAttachment,
     updateEditingDraft: actions.updateEditingDraft,
@@ -461,6 +465,11 @@ export function MessageTimeline({ isWorldSettled }: MessageTimelineProps) {
         className={`chat-flow follow-${followMode} ${isGenerationActive ? 'generation-active' : 'generation-settled'}`}
         ref={containerRef}
         onScroll={handleTimelineScroll}
+        onWheelCapture={handleScrollIntent}
+        onTouchStartCapture={handleScrollIntent}
+        onTouchMoveCapture={handleScrollIntent}
+        onTouchEndCapture={handleScroll}
+        onTouchCancelCapture={handleScroll}
       >
         {!presentation.startupReady ? (
           <div className="chat-empty-state empty-state-floating">

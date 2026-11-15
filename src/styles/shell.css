@@ -177,6 +177,7 @@ html[data-native-keyboard-overlay='true'][data-keyboard-open='true'] .app-shell:
 }
 
 .app-shell.collaborator-scope-drawer-active .app-stage {
+  transition-duration: 180ms, 180ms, 180ms;
   transform: translateX(var(--collaborator-scope-drawer-panel-width)) scale(0.992);
   filter: saturate(0.72) blur(1px);
   opacity: 0.56;

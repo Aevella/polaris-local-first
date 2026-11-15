@@ -6,6 +6,11 @@ import type {
 import { extractStructuredText } from './providerRuntimeResponseText';
 import { mergeToolCallArgumentsText } from './providerRuntimeToolArguments';
 import { parseOpenAiCompatibleUsage } from './providerRuntimeUsage';
+import {
+  extractProviderReasoningText,
+  normalizeProviderReasoningItem,
+  normalizeProviderReasoningItems
+} from './providerRuntimeReasoningState';
 
 function readObject(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -65,19 +70,13 @@ function pushResponsesOutputItemEvents(events: CanonicalProviderStreamEvent[], i
   const parsed = readObject(item);
   if (!parsed) return;
 
-  if (parsed.type === 'message') {
-    const text = extractStructuredText(parsed.content);
-    if (text) {
-      events.push({ type: 'text.snapshot', text });
-    }
-    return;
-  }
-
   if (parsed.type === 'reasoning') {
     const text = extractStructuredText(parsed.content) || extractStructuredText(parsed.summary);
     if (text) {
       events.push({ type: 'reasoning.snapshot', text, mode: 'text' });
     }
+    const item = normalizeProviderReasoningItem(parsed);
+    if (item?.encrypted_content) events.push({ type: 'reasoning.state', state: { protocol: 'openai-responses', items: [item] } });
     return;
   }
 
@@ -115,20 +114,31 @@ function parseResponsesStreamEvent(payload: Record<string, unknown>): CanonicalP
   const type = typeof payload.type === 'string' ? payload.type : '';
   if (!type.startsWith('response.')) return null;
 
+  const index = readNumber(payload.output_index);
+  if (type === 'response.failed' || type === 'response.incomplete' || type === 'response.error') {
+    const response = readObject(payload.response) ?? payload;
+    const error = readObject(response.error);
+    const details = readObject(response.incomplete_details);
+    return [{ type: 'error', error: { code: 'provider', provider: 'openai-responses', retryable: false,
+      rawMessage: String(error?.message ?? details?.reason ?? response.message ?? 'Responses request failed') } }];
+  }
+  if ((type === 'response.reasoning_summary_text.delta' || type === 'response.reasoning_text.delta') && typeof payload.delta === 'string') {
+    return [{ type: 'reasoning.delta', text: payload.delta, mode: 'summary' }];
+  }
   if (type === 'response.output_text.delta' && typeof payload.delta === 'string') {
     return [{ type: 'text.delta', text: payload.delta }];
   }
   if (type === 'response.function_call_arguments.delta' && typeof payload.delta === 'string') {
     return [{
       type: 'tool_call.delta',
-      id: typeof payload.item_id === 'string' ? payload.item_id : '',
+      id: index === undefined && typeof payload.item_id === 'string' ? payload.item_id : '', index,
       argumentsDelta: payload.delta
     }];
   }
   if (type === 'response.function_call_arguments.done' && typeof payload.arguments === 'string') {
     return [{
       type: 'tool_call.done',
-      id: typeof payload.item_id === 'string' ? payload.item_id : '',
+      id: index === undefined && typeof payload.item_id === 'string' ? payload.item_id : '', index,
       name: '',
       argumentsText: payload.arguments
     }];
@@ -139,19 +149,24 @@ function parseResponsesStreamEvent(payload: Record<string, unknown>): CanonicalP
       return [{
         type: 'tool_call.start',
         id: typeof item.call_id === 'string' ? item.call_id : typeof item.id === 'string' ? item.id : '',
-        name: item.name
+        name: item.name, index
       }];
     }
     return [];
   }
   if (type === 'response.output_item.done') {
     const item = readObject(payload.item);
+    if (item?.type === 'reasoning') {
+      const events: CanonicalProviderStreamEvent[] = [];
+      pushResponsesOutputItemEvents(events, item);
+      return events;
+    }
     if (item?.type === 'function_call' && typeof item.name === 'string') {
       return [{
         type: 'tool_call.done',
         id: typeof item.call_id === 'string' ? item.call_id : typeof item.id === 'string' ? item.id : '',
         name: item.name,
-        argumentsText: serializeArguments(item.arguments)
+        argumentsText: serializeArguments(item.arguments), index
       }];
     }
     return [];
@@ -164,7 +179,16 @@ function parseResponsesStreamEvent(payload: Record<string, unknown>): CanonicalP
         model: typeof response?.model === 'string' ? response.model : undefined
       }
     ];
-    const outputText = extractStructuredText(response?.output_text);
+    // A completed response is one reply snapshot. Individual message items
+    // are only parts of it, so emitting a snapshot per item loses all but the
+    // last item. output_text is the aggregate alternative, not another part.
+    const outputText = extractStructuredText(response?.output_text)
+      || (Array.isArray(response?.output)
+        ? response.output.map((item) => {
+            const parsed = readObject(item);
+            return parsed?.type === 'message' ? extractStructuredText(parsed.content) : '';
+          }).join('')
+        : '');
     if (outputText) {
       events.push({ type: 'text.snapshot', text: outputText });
     }
@@ -208,6 +232,22 @@ function parseAnthropicStreamEvent(payload: Record<string, unknown>): CanonicalP
       if (text) {
         events.push({ type: 'reasoning.delta', text, mode: 'text' });
       }
+      const item = normalizeProviderReasoningItem(block, blockIndex);
+      if (item) {
+        events.push({
+          type: 'reasoning.state',
+          state: { protocol: 'anthropic-messages', items: [item] }
+        });
+      }
+    }
+    if (block?.type === 'redacted_thinking') {
+      const item = normalizeProviderReasoningItem(block, blockIndex);
+      if (item) {
+        events.push({
+          type: 'reasoning.state',
+          state: { protocol: 'anthropic-messages', items: [item] }
+        });
+      }
     }
   }
   if (type === 'content_block_delta') {
@@ -216,6 +256,22 @@ function parseAnthropicStreamEvent(payload: Record<string, unknown>): CanonicalP
     }
     if (delta?.type === 'thinking_delta' && typeof delta.thinking === 'string') {
       events.push({ type: 'reasoning.delta', text: delta.thinking, mode: 'text' });
+      events.push({
+        type: 'reasoning.state',
+        state: {
+          protocol: 'anthropic-messages',
+          items: [{ type: 'thinking', index: blockIndex, thinking: delta.thinking }]
+        }
+      });
+    }
+    if (delta?.type === 'signature_delta' && typeof delta.signature === 'string') {
+      events.push({
+        type: 'reasoning.state',
+        state: {
+          protocol: 'anthropic-messages',
+          items: [{ type: 'thinking', index: blockIndex, signature: delta.signature }]
+        }
+      });
     }
     if (delta?.type === 'input_json_delta' && typeof delta.partial_json === 'string') {
       events.push({ type: 'tool_call.delta', id: '', argumentsDelta: delta.partial_json, index: blockIndex });
@@ -248,9 +304,19 @@ function parseOpenAiCompatibleStreamEvent(payload: Record<string, unknown>): Can
     if (typeof content === 'string' && content) {
       events.push({ type: 'text.delta', text: content });
     }
+    const reasoningDetails = normalizeProviderReasoningItems(message.reasoning_details);
+    if (reasoningDetails.length) {
+      events.push({
+        type: 'reasoning.state',
+        state: { protocol: 'openai-completions', items: reasoningDetails }
+      });
+    }
     const reasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
-    if (typeof reasoning === 'string' && reasoning) {
-      events.push({ type: 'reasoning.delta', text: reasoning, mode: 'text' });
+    const reasoningText = typeof reasoning === 'string'
+      ? reasoning
+      : extractProviderReasoningText(reasoningDetails);
+    if (reasoningText) {
+      events.push({ type: 'reasoning.delta', text: reasoningText, mode: 'text' });
     }
     if (Array.isArray(message.tool_calls)) {
       message.tool_calls.forEach((toolCall) => {

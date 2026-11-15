@@ -1,6 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  consumeMcpOAuthConnectionNotice,
+  MCP_OAUTH_CONNECTION_NOTICE_EVENT,
+  type McpOAuthConnectionNotice
+} from '../../../app/shell/mcpServerConnection';
 import type { McpServerConfig } from '../../../types/domain';
 import { buildMcpHandle } from '../../../engines/mcpHandle';
+import { disconnectMcpOAuth } from '../../../engines/mcp-auth';
+import { disposeMcpSession } from '../../../engines/mcpTransport';
 import { useI18n } from '../../../i18n/useI18n';
 import { Icon } from '../../Icon';
 import { McpJsonEditorSheet } from './McpJsonEditorSheet';
@@ -33,6 +40,18 @@ export function MenuMcpPage({
   const [creatingOpen, setCreatingOpen] = useState(false);
   const [jsonEditorOpen, setJsonEditorOpen] = useState(false);
   const [timeoutSheetOpen, setTimeoutSheetOpen] = useState(false);
+  const [oauthNotice, setOauthNotice] = useState<McpOAuthConnectionNotice | null>(null);
+
+  useEffect(() => {
+    const pendingNotice = consumeMcpOAuthConnectionNotice();
+    if (pendingNotice) setOauthNotice(pendingNotice);
+    const receiveNotice = (event: Event) => {
+      consumeMcpOAuthConnectionNotice();
+      setOauthNotice((event as CustomEvent<McpOAuthConnectionNotice>).detail);
+    };
+    globalThis.addEventListener(MCP_OAUTH_CONNECTION_NOTICE_EVENT, receiveNotice);
+    return () => globalThis.removeEventListener(MCP_OAUTH_CONNECTION_NOTICE_EVENT, receiveNotice);
+  }, []);
 
   const sortedServers = useMemo(
     () => [...mcpServers].sort((left, right) => {
@@ -42,10 +61,20 @@ export function MenuMcpPage({
     [language, mcpServers]
   );
   const editingServer = mcpServers.find((server) => server.id === editingServerId) ?? null;
+  const inlineSheetOpen = creatingOpen || Boolean(editingServer) || jsonEditorOpen || timeoutSheetOpen;
   const enabledCount = mcpServers.filter((server) => server.isActive).length;
+  const oauthNoticeMessage = oauthNotice?.phase === 'refreshing'
+    ? t('settings.mcp.oauthConnectedRefreshing')
+    : oauthNotice?.phase === 'connected'
+      ? t('settings.mcp.oauthConnectedRefreshed', { count: oauthNotice.toolCount ?? 0 })
+      : oauthNotice?.phase === 'empty'
+        ? t('settings.mcp.oauthConnectedNoTools')
+        : oauthNotice?.message
+          ? t('settings.mcp.oauthCatalogRefreshFailedWithReason', { reason: oauthNotice.message })
+          : t('settings.mcp.oauthCatalogRefreshFailed');
 
   return (
-    <div className="menu-sheet-page">
+    <div className={`menu-sheet-page mcp-menu-page ${inlineSheetOpen ? 'mcp-inline-sheet-open' : ''}`}>
       <div className="menu-sheet-header">
         <button type="button" className="menu-sheet-back" aria-label={t('settings.pageBack')} onClick={onBack}>
           <span className="menu-sheet-back-icon"><Icon name="chevron" size={26} /></span>
@@ -92,6 +121,17 @@ export function MenuMcpPage({
           </div>
         </div>
       </details>
+
+      {oauthNotice ? (
+        <div
+          className={`mcp-test-panel mcp-test-panel--${oauthNotice.phase === 'connected' ? 'success' : oauthNotice.phase === 'failed' ? 'error' : 'warning'}`}
+          role={oauthNotice.phase === 'failed' ? 'alert' : 'status'}
+          aria-live={oauthNotice.phase === 'failed' ? 'assertive' : 'polite'}
+        >
+          <strong>{oauthNotice.phase === 'failed' ? t('settings.mcp.oauthFailed') : 'MCP'}</strong>
+          <p>{oauthNoticeMessage}</p>
+        </div>
+      ) : null}
 
       <section className="menu-section">
         <div className="menu-section-head">
@@ -177,8 +217,12 @@ export function MenuMcpPage({
         server={null}
         timeoutSeconds={timeoutSeconds}
         onClose={() => setCreatingOpen(false)}
-        onSave={(patch) => {
-          onCreateServer(patch);
+        onPersist={(serverId, patch) => {
+          if (serverId) {
+            onUpdateServer(serverId, patch);
+            return serverId;
+          }
+          return onCreateServer(patch);
         }}
       />
 
@@ -187,14 +231,18 @@ export function MenuMcpPage({
         server={editingServer}
         timeoutSeconds={timeoutSeconds}
         onClose={() => setEditingServerId(null)}
-        onSave={(patch) => {
-          if (!editingServer) return;
-          onUpdateServer(editingServer.id, patch);
+        onPersist={(serverId, patch) => {
+          const targetId = serverId ?? editingServer?.id;
+          if (!targetId) return '';
+          onUpdateServer(targetId, patch);
+          return targetId;
         }}
         onDelete={
           editingServer
             ? () => {
                 if (!window.confirm(t('settings.mcp.confirmDelete', { name: editingServer.name }))) return;
+                void disconnectMcpOAuth(editingServer.id);
+                void disposeMcpSession(editingServer.id);
                 onDeleteServer(editingServer.id);
                 setEditingServerId(null);
               }
@@ -206,7 +254,16 @@ export function MenuMcpPage({
         open={jsonEditorOpen}
         servers={mcpServers}
         onClose={() => setJsonEditorOpen(false)}
-        onSave={onSetServers}
+        onSave={(servers) => {
+          const nextIds = new Set(servers.map((server) => server.id));
+          mcpServers
+            .filter((server) => !nextIds.has(server.id))
+            .forEach((server) => {
+              void disconnectMcpOAuth(server.id);
+              void disposeMcpSession(server.id);
+            });
+          onSetServers(servers);
+        }}
       />
 
       <McpTimeoutSheet
