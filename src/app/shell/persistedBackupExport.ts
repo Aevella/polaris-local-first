@@ -87,8 +87,9 @@ async function exportPersistedPackageViaStreamingSystemFile(options: {
     }
     await flushQueuedChunks();
     options.onProgress?.({ message: '打开系统保存位置' });
-    await finishExportFileViaSystemFiles(exportId);
+    const saved = await finishExportFileViaSystemFiles(exportId);
     exportId = null;
+    return saved;
   } catch (error) {
     if (exportId) {
       await cancelExportFileViaSystemFiles(exportId);
@@ -138,8 +139,9 @@ async function exportPersistedPackageViaNativeZip(options: {
       throw new Error('系统文件导出会话尚未创建。');
     }
     options.onProgress?.({ message: '打开系统保存位置' });
-    await finishZipExportViaSystemFiles(exportId);
+    const saved = await finishZipExportViaSystemFiles(exportId);
     exportId = null;
+    return saved;
   } catch (error) {
     if (exportId) {
       await cancelZipExportViaSystemFiles(exportId);
@@ -150,6 +152,7 @@ async function exportPersistedPackageViaNativeZip(options: {
 
 export async function exportPersistedCompleteBackup(options: PersistedBackupExportOptions): Promise<{
   target: PersistedBackupExportTarget;
+  saved: boolean;
 }> {
   options.onProgress?.({ message: '读取已保存数据' });
   if (getSystemBackupAvailability() === 'unavailable') {
@@ -157,13 +160,13 @@ export async function exportPersistedCompleteBackup(options: PersistedBackupExpo
   }
 
   if (canStreamNativeZipBackupFiles()) {
-    await exportPersistedPackageViaNativeZip({ onProgress: options.onProgress });
-    return { target: 'native-stream' };
+    const saved = await exportPersistedPackageViaNativeZip({ onProgress: options.onProgress });
+    return { target: 'native-stream', saved };
   }
 
   if (canStreamNativeSystemBackupFiles()) {
-    await exportPersistedPackageViaStreamingSystemFile({ onProgress: options.onProgress });
-    return { target: 'native-stream' };
+    const saved = await exportPersistedPackageViaStreamingSystemFile({ onProgress: options.onProgress });
+    return { target: 'native-stream', saved };
   }
 
   const { blob, fileName } = await buildStructuredExportPackage({}, {
@@ -171,11 +174,11 @@ export async function exportPersistedCompleteBackup(options: PersistedBackupExpo
   });
   if (canUseNativeSystemBackupFiles()) {
     options.onProgress?.({ message: '打开系统保存位置' });
-    await exportFileViaSystemFiles(blob, fileName);
-    return { target: 'native-file' };
+    const saved = await exportFileViaSystemFiles(blob, fileName);
+    return { target: 'native-file', saved };
   }
 
   options.onProgress?.({ message: '准备下载' });
   await options.downloadFile(blob, fileName);
-  return { target: 'browser-download' };
+  return { target: 'browser-download', saved: true };
 }

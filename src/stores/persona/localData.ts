@@ -108,9 +108,10 @@ export async function readPersonaStateFromLocalDataRepositoryIfActive(options: {
  * re-acquire this queue. When the persona repository is inactive, the collaborator
  * directory falls back to the legacy whole-state KV store.
  */
-export async function writePersonaState(payload: PersonaLocalDataPayload) {
+export async function writePersonaState(source: PersonaLocalDataPayload | (() => PersonaLocalDataPayload)) {
   try {
     await runExclusivePersonaPersistenceCommit(async () => {
+      const payload = typeof source === 'function' ? source() : source;
       await writePersonaMemoryDocContentForPersonas(payload.personas);
       if (!(await commitPersonaRowChangesFromStateActivating(payload))) {
         await kvSet('persona-state-v2', {

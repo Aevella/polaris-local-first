@@ -13,7 +13,7 @@ type McpRelayRequestBody = {
 
 function applyCors(req: VercelRequest, res: VercelResponse) {
   const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '';
-  if (isAllowedPolarisApiOrigin(origin)) {
+  if (isAllowedPolarisApiOrigin(origin, req.headers.host)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
   }
@@ -50,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
   const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '';
-  if (!origin || !isAllowedPolarisApiOrigin(origin)) {
+  if (!origin || !isAllowedPolarisApiOrigin(origin, req.headers.host)) {
     res.status(403).json({ error: { message: 'MCP Web relay 拒绝了非 Polaris 页面请求。', type: 'forbidden_origin' } });
     return;
   }

@@ -40,8 +40,11 @@ async function withWebStore<T>(
     return await new Promise<T>((resolve, reject) => {
       const transaction = database.transaction(WEB_STORE_NAME, mode);
       const request = run(transaction.objectStore(WEB_STORE_NAME));
-      request.onsuccess = () => resolve(request.result);
+      let result: T;
+      request.onsuccess = () => { result = request.result; };
+      transaction.oncomplete = () => resolve(result);
       request.onerror = () => reject(request.error ?? new Error('MCP 授权存储操作失败。'));
+      transaction.onerror = () => reject(transaction.error ?? new Error('MCP 授权存储事务失败。'));
       transaction.onabort = () => reject(transaction.error ?? new Error('MCP 授权存储事务失败。'));
     });
   } finally {

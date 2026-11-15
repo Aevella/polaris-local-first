@@ -369,6 +369,19 @@ describe('persona LocalData persistence', () => {
       .toEqual([{ pattern: '', prompt: '紫色天空', alwaysOn: true, scanDepth: 8 }]);
   });
 
+  it('keeps a worldbook when a general save queues before its commit finishes', async () => {
+    await promotePersonaState({ personas: [persona('owner')], activeCollaboratorId: 'owner' });
+    await usePersonaStore.getState().hydrateFromDb();
+    const rules = [{ pattern: '', prompt: 'queued book', alwaysOn: true, scanDepth: 8 }];
+    await Promise.all([
+      usePersonaStore.getState().saveWorldBookRules('owner', rules),
+      usePersonaStore.getState().persistToDb()
+    ]);
+    usePersonaStore.setState({ personas: [], hydrated: false });
+    await usePersonaStore.getState().hydrateFromDb();
+    expect(JSON.parse(usePersonaStore.getState().personas[0]!.advanced.regexTriggers!)).toEqual(rules);
+  });
+
   it('keeps durable and live worldbooks on write failure and permits retry', async () => {
     const backend = createMemoryPersistenceBackend();
     setPersistenceBackendForTesting(backend);

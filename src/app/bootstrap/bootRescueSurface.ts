@@ -123,7 +123,7 @@ export function installBootRescueSurface({
             setStatus(status, `${progress.message}${suffix}`);
           }
         });
-        setStatus(status, result.target ? '备份已导出' : '导出未完成');
+        setStatus(status, result.saved ? '备份已导出' : '已取消导出');
       } catch (error) {
         setStatus(status, describeError(error) || '导出备份包失败。', true);
       } finally {

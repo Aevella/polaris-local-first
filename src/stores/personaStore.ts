@@ -437,7 +437,9 @@ export const usePersonaStore = create<PersonaState>((set, get) => ({
       ? { ...persona, advanced: { ...persona.advanced, regexTriggers } } : persona) }));
   }),
   persistToDb: async () => {
-    const { personas, activeCollaboratorId, seededDefaultPersonaIds } = get();
-    await writePersonaState({ personas, activeCollaboratorId, seededDefaultPersonaIds });
+    await writePersonaState(() => {
+      const { personas, activeCollaboratorId, seededDefaultPersonaIds } = get();
+      return { personas, activeCollaboratorId, seededDefaultPersonaIds };
+    });
   }
 }));

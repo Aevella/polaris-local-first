@@ -1,3 +1,4 @@
+import { reportPersistenceError } from '../../infrastructure/persistenceDiagnostics';
 import { isNativeBackupImportSource, readBackupImportSourceBytes, releaseBackupImportSource, type BackupImportSource } from '../../infrastructure/backupImportSource';
 import { useState } from 'react';
 import { isWebDavConfigured } from '../../engines/webdavBackup';
@@ -62,13 +63,14 @@ export function resolveMenuLocalBackupDetails(systemBackupAvailability: ReturnTy
 }
 
 async function importBackupData(file: BackupImportSource, onProgress: (progress: StoreTransferProgress) => void) {
-  const { importAllData } = await import('../../stores/spaceStoreDataTransfer');
-    if (!isNativeBackupImportSource(file)) return await importAllData(file, { onProgress });
   try {
+    const { importAllData } = await import('../../stores/spaceStoreDataTransfer');
+    if (!isNativeBackupImportSource(file)) return await importAllData(file, { onProgress });
     const bytes = await readBackupImportSourceBytes(file);
     return await importAllData(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: file.mimeType }), { onProgress });
   } finally {
-    await releaseBackupImportSource(file);
+    try { await releaseBackupImportSource(file); }
+    catch (error) { reportPersistenceError({ label: '[backup:cleanup]', store: 'import', operation: 'release-native-source' }, error); }
   }
 }
 

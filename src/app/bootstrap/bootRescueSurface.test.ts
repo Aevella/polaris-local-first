@@ -175,3 +175,12 @@ describe('installBootRescueSurface', () => {
     expect(collectText(root)).toContain('IndexedDB read failed');
   });
 });
+
+it('does not report a cancelled native export as saved', async () => {
+  vi.useFakeTimers(); const { root, emit } = createBrowserGlobals();
+  installBootRescueSurface({ root: root as unknown as HTMLElement,
+    exportPersistedBackup: async () => ({ target: 'native-file', saved: false }) });
+  emit('error', { error: new Error('boot failed') });
+  findButton(root, '导出本机数据')?.click(); await vi.runAllTimersAsync();
+  expect(collectText(root)).toContain('已取消导出'); expect(collectText(root)).not.toContain('备份已导出');
+});

@@ -167,8 +167,9 @@ async function exportCurrentPackageViaStreamingSystemFile(options: {
     }
     await flushQueuedChunks();
     options.onProgress?.({ message: '打开系统保存位置' });
-    await finishExportFileViaSystemFiles(exportId);
+    const saved = await finishExportFileViaSystemFiles(exportId);
     exportId = null;
+    return saved;
   } catch (error) {
     if (exportId) {
       await cancelExportFileViaSystemFiles(exportId);
@@ -222,8 +223,9 @@ async function exportCurrentPackageViaNativeZip(options: {
       throw new Error('系统文件导出会话尚未创建。');
     }
     options.onProgress?.({ message: '打开系统保存位置' });
-    await finishZipExportViaSystemFiles(exportId);
+    const saved = await finishZipExportViaSystemFiles(exportId);
     exportId = null;
+    return saved;
   } catch (error) {
     if (exportId) {
       await cancelZipExportViaSystemFiles(exportId);
@@ -234,6 +236,7 @@ async function exportCurrentPackageViaNativeZip(options: {
 
 export async function exportCompleteBackup(options: CompleteBackupExportOptions): Promise<{
   target: CompleteBackupExportTarget;
+  saved: boolean;
 }> {
   options.onProgress?.({ message: '读取对话和设置' });
   if (getSystemBackupAvailability() === 'unavailable') {
@@ -241,23 +244,23 @@ export async function exportCompleteBackup(options: CompleteBackupExportOptions)
   }
 
   if (canStreamNativeZipBackupFiles()) {
-    await exportCurrentPackageViaNativeZip(options);
-    return { target: 'native-stream' };
+    const saved = await exportCurrentPackageViaNativeZip(options);
+    return { target: 'native-stream', saved };
   }
 
   if (canStreamNativeSystemBackupFiles()) {
-    await exportCurrentPackageViaStreamingSystemFile(options);
-    return { target: 'native-stream' };
+    const saved = await exportCurrentPackageViaStreamingSystemFile(options);
+    return { target: 'native-stream', saved };
   }
 
   const { blob, fileName } = await buildCurrentExportPackage(options);
   if (canUseNativeSystemBackupFiles()) {
     options.onProgress?.({ message: '打开系统保存位置' });
-    await exportFileViaSystemFiles(blob, fileName);
-    return { target: 'native-file' };
+    const saved = await exportFileViaSystemFiles(blob, fileName);
+    return { target: 'native-file', saved };
   }
 
   options.onProgress?.({ message: '准备下载' });
   await options.downloadFile(blob, fileName);
-  return { target: 'browser-download' };
+  return { target: 'browser-download', saved: true };
 }

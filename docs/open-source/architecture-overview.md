@@ -113,7 +113,7 @@ MCP catalog/auth orchestration enters through `src/engines/mcpRuntime.ts`. Persi
 
 Provider reasoning metadata is replay evidence on messages. The existing public typed SQLite serializer persists the message payload; request normalization and native protocol replay live in `provider-runtime/`. Memory confirmation projection records the actual resolved outcome, including cancellation or failure.
 
-Worldbook field writes use the existing `personaPersistenceCommitQueue.ts` and the selected collaborator row through `personaWorldBookPersistence.ts`. The live projection changes only after the durable write succeeds. Timeline reading anchors belong to `TimelineScroll.ts`; viewport, keyboard, and world-presence ownership remain unchanged.
+Worldbook field writes use the existing `personaPersistenceCommitQueue.ts` and the selected collaborator row through `personaWorldBookPersistence.ts`. The live projection changes only after the durable write succeeds. General persona saves read the live projection inside that same queue, so snapshots captured before a worldbook commit cannot overwrite it. Timeline reading anchors belong to `TimelineScroll.ts`; viewport, keyboard, and world-presence ownership remain unchanged.
 
 See [the synchronization record](sync-2026-11-15.md) for scope and channel boundaries.
 
