@@ -81,7 +81,20 @@ export function isClaudeModel(modelId?: string | null) {
 export function isClaude46Model(modelId?: string | null) {
   const model = normalizeProviderText(modelId)
     .replace(/\./g, '-');
-  return model.includes('claude-opus-4-6') || model.includes('claude-sonnet-4-6');
+  return (
+    model.includes('claude-opus-4-6')
+    || model.includes('claude-sonnet-4-6')
+    || model.includes('claude-4-6-opus')
+    || model.includes('claude-4-6-sonnet')
+  );
+}
+
+export function isClaudeAdaptiveThinkingModel(modelId?: string | null) {
+  const model = normalizeProviderText(modelId).replace(/\./g, '-');
+  if (/claude-(?:opus|sonnet)-4-(?:[6-9]|\d{2,})/.test(model)) return true;
+  if (/claude-4-(?:[6-9]|\d{2,})-(?:opus|sonnet)/.test(model)) return true;
+  return /claude-(?:opus|sonnet)-[5-9](?:-|$)/.test(model)
+    || /claude-[5-9](?:-|$).*(?:opus|sonnet)/.test(model);
 }
 
 export function isGeminiModel(modelId?: string | null) {

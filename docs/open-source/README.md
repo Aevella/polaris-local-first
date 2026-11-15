@@ -28,3 +28,5 @@ Source code is licensed under AGPL-3.0-only.
 - Module ownership and responsibility boundaries
 - Command names, pass/fail status, invariant names, and aggregate counts
 - Source-readiness, publication-gate, and release-channel status
+
+- [2026-11-15 public source maintenance](sync-2026-11-15.md): applicable product fixes, deliberate SQLite boundaries, and verification status.

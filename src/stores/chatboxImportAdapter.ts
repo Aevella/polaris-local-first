@@ -1,9 +1,10 @@
-import JSZip from 'jszip';
 import { createPersonaTemplate } from '../config/persona/personaBuilder';
-import type { ChatMessage, Conversation } from '../types/domain';
+import type { ChatAttachment, ChatMessage, Conversation } from '../types/domain';
 import type { PersistedCollectionState } from './collectionStorePersistence';
 import { normalizeRuntimePayload } from './runtimeStorePersistence';
 import type { StructuredExportSnapshot } from './storeExportPackage';
+import type { ChatboxResolvedAsset } from './chatboxBackupArchive';
+import { collectChatboxSavedBranches } from './chatboxConversationBranches';
 
 type ChatboxRecord = Record<string, unknown>;
 
@@ -14,6 +15,8 @@ type ChatboxSessionSource = {
 
 type ChatboxMessageContentResult = {
   content: string;
+  thinkingText?: string;
+  attachments: ChatAttachment[];
   unsupportedParts: number;
 };
 
@@ -23,27 +26,31 @@ export type ChatboxImportConversionStats = {
   messages: number;
   skippedSessions: number;
   skippedMessages: number;
+  skippedBranches: number;
   threadConversations: number;
+  forkConversations: number;
   unsupportedParts: number;
+  skippedSourceAssets: number;
 };
 
 export type ChatboxStructuredExportConversion = {
   snapshot: StructuredExportSnapshot;
   stats: ChatboxImportConversionStats;
+  archiveEntryCount: number;
+};
+
+export type ChatboxSnapshotConversionMaterial = {
+  assetEntries: NonNullable<StructuredExportSnapshot['assetEntries']>;
+  assetByStorageKey: ReadonlyMap<string, ChatboxResolvedAsset>;
+  skippedSessionCount: number;
+  skippedAssetCount: number;
+  archiveEntryCount: number;
 };
 
 const CHATBOX_PERSONA_ID = 'chatbox-imported-assistant';
 
 function isRecord(value: unknown): value is ChatboxRecord {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
-
-function parseJson<T>(content: string, label: string): T {
-  try {
-    return JSON.parse(content) as T;
-  } catch {
-    throw new Error(`${label} 不是有效 JSON`);
-  }
 }
 
 function parseMaybeJson(value: unknown): unknown {
@@ -118,7 +125,7 @@ function safeJson(value: unknown) {
   }
 }
 
-function normalizeTopLevelPayload(payload: unknown) {
+export function normalizeChatboxPayload(payload: unknown) {
   if (!isRecord(payload)) {
     throw new Error('Chatbox 导出数据必须是 JSON 对象');
   }
@@ -129,17 +136,11 @@ function normalizeTopLevelPayload(payload: unknown) {
   return normalized;
 }
 
-function isLikelyChatboxPayload(payload: unknown) {
+export function isLikelyChatboxPayload(payload: unknown) {
   if (!isRecord(payload)) return false;
   if (Array.isArray(payload['chat-sessions']) || Array.isArray(payload['chat-sessions-list'])) return true;
   if (Array.isArray(payload.__exported_items) || typeof payload.__exported_at === 'string') return true;
   return Object.keys(payload).some((key) => key.startsWith('session:'));
-}
-
-function hasChatboxSessionFields(payload: ChatboxRecord) {
-  return Array.isArray(payload['chat-sessions'])
-    || Array.isArray(payload['chat-sessions-list'])
-    || Object.keys(payload).some((key) => key.startsWith('session:'));
 }
 
 function asRecordArray(value: unknown): ChatboxRecord[] {
@@ -214,11 +215,41 @@ function appendLine(lines: string[], value: string) {
   if (text) lines.push(text);
 }
 
-function convertContentParts(parts: ChatboxRecord[]): ChatboxMessageContentResult {
+function appendResolvedAttachment(
+  attachments: ChatAttachment[],
+  seenAssetIds: Set<string>,
+  assetByStorageKey: ReadonlyMap<string, ChatboxResolvedAsset>,
+  storageKey: string,
+  attachmentIdSeed: string,
+  preferredName?: string
+) {
+  const asset = assetByStorageKey.get(storageKey);
+  if (!asset || seenAssetIds.has(asset.assetId)) return false;
+  seenAssetIds.add(asset.assetId);
+  attachments.push({
+    id: buildStableId('chatbox-attachment', attachmentIdSeed),
+    assetId: asset.assetId,
+    kind: asset.kind,
+    name: preferredName?.trim() || asset.name,
+    mimeType: asset.mimeType,
+    size: asset.size,
+    ...(asset.textContent ? { textContent: asset.textContent } : {})
+  });
+  return true;
+}
+
+function convertContentParts(
+  parts: ChatboxRecord[],
+  assetByStorageKey: ReadonlyMap<string, ChatboxResolvedAsset>,
+  messageIdSeed: string,
+  attachments: ChatAttachment[],
+  seenAssetIds: Set<string>
+): ChatboxMessageContentResult {
   const lines: string[] = [];
+  const thinkingLines: string[] = [];
   let unsupportedParts = 0;
 
-  for (const part of parts) {
+  for (const [partIndex, part] of parts.entries()) {
     const type = readString(part.type);
     if (type === 'text') {
       appendLine(lines, readString(part.text));
@@ -232,8 +263,16 @@ function convertContentParts(parts: ChatboxRecord[]): ChatboxMessageContentResul
 
     if (type === 'image') {
       const storageKey = readString(part.storageKey);
-      appendLine(lines, storageKey ? `[Chatbox image: ${storageKey}]` : '[Chatbox image]');
-      unsupportedParts += 1;
+      if (!storageKey || !appendResolvedAttachment(
+        attachments,
+        seenAssetIds,
+        assetByStorageKey,
+        storageKey,
+        `${messageIdSeed}:part:${partIndex}`
+      )) {
+        appendLine(lines, storageKey ? `[Chatbox image: ${storageKey}]` : '[Chatbox image]');
+        unsupportedParts += 1;
+      }
       continue;
     }
 
@@ -245,12 +284,23 @@ function convertContentParts(parts: ChatboxRecord[]): ChatboxMessageContentResul
         result: part.result
       });
       appendLine(lines, `[Chatbox tool ${toolName}${state ? ` ${state}` : ''}]${detail ? `\n${detail}` : ''}`);
+      const resultStorageKey = readString(part.resultStorageKey);
+      if (resultStorageKey) {
+        appendResolvedAttachment(
+          attachments,
+          seenAssetIds,
+          assetByStorageKey,
+          resultStorageKey,
+          `${messageIdSeed}:tool:${partIndex}`,
+          `${toolName} 结果.txt`
+        );
+      }
       unsupportedParts += 1;
       continue;
     }
 
     if (type === 'reasoning') {
-      unsupportedParts += 1;
+      appendLine(thinkingLines, readString(part.text));
       continue;
     }
 
@@ -263,19 +313,45 @@ function convertContentParts(parts: ChatboxRecord[]): ChatboxMessageContentResul
 
   return {
     content: lines.join('\n\n').trim(),
+    thinkingText: thinkingLines.join('\n\n').trim() || undefined,
+    attachments,
     unsupportedParts
   };
 }
 
-function appendLegacyAttachments(lines: string[], message: ChatboxRecord) {
-  for (const picture of asRecordArray(message.pictures)) {
+function appendLegacyAttachments(
+  lines: string[],
+  message: ChatboxRecord,
+  assetByStorageKey: ReadonlyMap<string, ChatboxResolvedAsset>,
+  messageIdSeed: string,
+  attachments: ChatAttachment[],
+  seenAssetIds: Set<string>
+) {
+  for (const [index, picture] of asRecordArray(message.pictures).entries()) {
     const storageKey = readString(picture.storageKey) || readString(picture.url) || readString(picture.path);
-    appendLine(lines, storageKey ? `[Chatbox image: ${storageKey}]` : '[Chatbox image]');
+    if (!storageKey || !appendResolvedAttachment(
+      attachments,
+      seenAssetIds,
+      assetByStorageKey,
+      storageKey,
+      `${messageIdSeed}:picture:${index}`
+    )) {
+      appendLine(lines, storageKey ? `[Chatbox image: ${storageKey}]` : '[Chatbox image]');
+    }
   }
 
-  for (const file of asRecordArray(message.files)) {
+  for (const [index, file] of asRecordArray(message.files).entries()) {
     const name = readString(file.name) || readString(file.filename) || readString(file.path);
-    appendLine(lines, name ? `[Chatbox file: ${name}]` : '[Chatbox file]');
+    const storageKeys = [readString(file.rawStorageKey), readString(file.storageKey)].filter(Boolean);
+    const attached = storageKeys.some((storageKey) => appendResolvedAttachment(
+      attachments,
+      seenAssetIds,
+      assetByStorageKey,
+      storageKey,
+      `${messageIdSeed}:file:${index}`,
+      name
+    ));
+    if (!attached) appendLine(lines, name ? `[Chatbox file: ${name}]` : '[Chatbox file]');
   }
 
   for (const link of asRecordArray(message.links)) {
@@ -285,17 +361,26 @@ function appendLegacyAttachments(lines: string[], message: ChatboxRecord) {
   }
 }
 
-function convertMessageContent(message: ChatboxRecord): ChatboxMessageContentResult {
+function convertMessageContent(
+  message: ChatboxRecord,
+  assetByStorageKey: ReadonlyMap<string, ChatboxResolvedAsset>,
+  messageIdSeed: string
+): ChatboxMessageContentResult {
   const parts = readChatboxContentParts(message);
+  const attachments: ChatAttachment[] = [];
+  const seenAssetIds = new Set<string>();
   const converted = parts.length > 0
-    ? convertContentParts(parts)
-    : { content: readString(message.content), unsupportedParts: 0 };
+    ? convertContentParts(parts, assetByStorageKey, messageIdSeed, attachments, seenAssetIds)
+    : { content: readString(message.content), attachments, unsupportedParts: 0 };
 
   const lines = [converted.content].filter(Boolean);
-  appendLegacyAttachments(lines, message);
+  appendLegacyAttachments(lines, message, assetByStorageKey, messageIdSeed, attachments, seenAssetIds);
+  const thinkingText = converted.thinkingText || readString(message.reasoningContent) || undefined;
 
   return {
     content: lines.join('\n\n').trim(),
+    thinkingText,
+    attachments,
     unsupportedParts: converted.unsupportedParts
   };
 }
@@ -304,17 +389,18 @@ function convertMessages(
   sessionId: string,
   messages: ChatboxRecord[],
   stats: ChatboxImportConversionStats,
-  fallbackTimestamp: number
+  fallbackTimestamp: number,
+  assetByStorageKey: ReadonlyMap<string, ChatboxResolvedAsset>
 ): ChatMessage[] {
   return messages.flatMap((message, index) => {
-    const converted = convertMessageContent(message);
+    const rawMessageId = readString(message.id) || `${index}`;
+    const converted = convertMessageContent(message, assetByStorageKey, `${sessionId}:${rawMessageId}:${index}`);
     stats.unsupportedParts += converted.unsupportedParts;
-    if (!converted.content) {
+    if (!converted.content && converted.attachments.length === 0 && !converted.thinkingText) {
       stats.skippedMessages += 1;
       return [];
     }
 
-    const rawMessageId = readString(message.id) || `${index}`;
     const role = readChatboxMessageRole(message.role);
     const timestamp = parseTimestamp(message.timestamp ?? message.createdAt ?? message.updatedAt, fallbackTimestamp + index);
     stats.messages += 1;
@@ -327,7 +413,9 @@ function convertMessages(
         : converted.content,
       timestamp,
       origin: role === 'user' ? 'user-input' : role === 'assistant' ? 'assistant-reply' : 'system-note',
-      model: readString(message.model) || undefined
+      model: readString(message.model) || undefined,
+      ...(converted.thinkingText ? { thinkingText: converted.thinkingText } : {}),
+      ...(converted.attachments.length > 0 ? { attachments: converted.attachments } : {})
     } satisfies ChatMessage];
   });
 }
@@ -367,7 +455,8 @@ function collectThreadConversations(
   session: ChatboxRecord,
   sessionId: string,
   sessionTitle: string,
-  stats: ChatboxImportConversionStats
+  stats: ChatboxImportConversionStats,
+  assetByStorageKey: ReadonlyMap<string, ChatboxResolvedAsset>
 ) {
   const conversations: Conversation[] = [];
   const threads = asRecordArray(session.threads);
@@ -377,7 +466,8 @@ function collectThreadConversations(
       `${sessionId}:thread:${index}`,
       asRecordArray(thread.messages),
       stats,
-      parseTimestamp(thread.createdAt ?? session.createdAt, Date.now())
+      parseTimestamp(thread.createdAt ?? session.createdAt, Date.now()),
+      assetByStorageKey
     );
     if (messages.length === 0) return;
 
@@ -396,6 +486,38 @@ function collectThreadConversations(
   });
 
   return conversations;
+}
+
+function collectForkConversations(
+  session: ChatboxRecord,
+  sessionId: string,
+  sessionTitle: string,
+  stats: ChatboxImportConversionStats,
+  assetByStorageKey: ReadonlyMap<string, ChatboxResolvedAsset>
+) {
+  const collected = collectChatboxSavedBranches(session);
+  stats.skippedBranches += collected.skippedBranchCount;
+  return collected.branches.flatMap((branch): Conversation[] => {
+    const messages = convertMessages(
+      `${sessionId}:fork:${branch.idSeed}`,
+      branch.messages,
+      stats,
+      parseTimestamp(branch.createdAt ?? session.createdAt, Date.now()),
+      assetByStorageKey
+    );
+    if (messages.length === 0) {
+      stats.skippedBranches += 1;
+      return [];
+    }
+    stats.forkConversations += 1;
+    const title = `${sessionTitle} / ${branch.titleSuffix}`;
+    return [buildConversation(
+      { name: title, createdAt: branch.createdAt, starred: session.starred },
+      messages,
+      title,
+      `${sessionId}:fork:${branch.idSeed}`
+    )];
+  });
 }
 
 function buildCollectionState(): PersistedCollectionState {
@@ -424,9 +546,16 @@ function buildChatboxPersona() {
 }
 
 export function convertChatboxExportToStructuredExportSnapshot(
-  payload: unknown
+  payload: unknown,
+  material: ChatboxSnapshotConversionMaterial = {
+    assetEntries: [],
+    assetByStorageKey: new Map(),
+    skippedSessionCount: 0,
+    skippedAssetCount: 0,
+    archiveEntryCount: 0
+  }
 ): ChatboxStructuredExportConversion {
-  const normalizedPayload = normalizeTopLevelPayload(payload);
+  const normalizedPayload = normalizeChatboxPayload(payload);
   if (!isLikelyChatboxPayload(normalizedPayload)) {
     throw new Error('没有识别到 Chatbox 会话数据');
   }
@@ -435,10 +564,13 @@ export function convertChatboxExportToStructuredExportSnapshot(
     sessions: 0,
     conversations: 0,
     messages: 0,
-    skippedSessions: 0,
+    skippedSessions: material.skippedSessionCount,
     skippedMessages: 0,
+    skippedBranches: 0,
     threadConversations: 0,
-    unsupportedParts: 0
+    forkConversations: 0,
+    unsupportedParts: 0,
+    skippedSourceAssets: material.skippedAssetCount
   };
   const conversations: Conversation[] = [];
 
@@ -453,7 +585,8 @@ export function convertChatboxExportToStructuredExportSnapshot(
       rawSessionId,
       asRecordArray(record.messages),
       stats,
-      parseTimestamp(record.createdAt ?? record.updatedAt, Date.now())
+      parseTimestamp(record.createdAt ?? record.updatedAt, Date.now()),
+      material.assetByStorageKey
     );
     if (messages.length === 0) {
       stats.skippedSessions += 1;
@@ -467,7 +600,20 @@ export function convertChatboxExportToStructuredExportSnapshot(
       sessionTitle,
       rawSessionId
     ));
-    conversations.push(...collectThreadConversations(record, rawSessionId, sessionTitle, stats));
+    conversations.push(...collectThreadConversations(
+      record,
+      rawSessionId,
+      sessionTitle,
+      stats,
+      material.assetByStorageKey
+    ));
+    conversations.push(...collectForkConversations(
+      record,
+      rawSessionId,
+      sessionTitle,
+      stats,
+      material.assetByStorageKey
+    ));
     stats.sessions += 1;
   }
 
@@ -490,54 +636,9 @@ export function convertChatboxExportToStructuredExportSnapshot(
       },
       personaMemoryDocContent: { version: 1, docs: {} },
       runtimeState: normalizeRuntimePayload({ providers: [] }),
-      assetEntries: []
+      assetEntries: material.assetEntries
     },
-    stats
+    stats,
+    archiveEntryCount: material.archiveEntryCount
   };
-}
-
-export async function parseChatboxExportPayloadFromBlob(file: Blob): Promise<ChatboxRecord> {
-  const bytes = new Uint8Array(await file.slice(0, 4).arrayBuffer());
-  const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b;
-
-  if (!isZip) {
-    return normalizeTopLevelPayload(parseJson(await file.text(), 'Chatbox 导出文件'));
-  }
-
-  const zip = await JSZip.loadAsync(await file.arrayBuffer());
-  const candidates = Object.values(zip.files)
-    .filter((entry) => !entry.dir && entry.name.toLowerCase().endsWith('.json'))
-    .sort((left, right) => {
-      const leftPreferred = /chatbox-exported-data/i.test(left.name) ? 0 : 1;
-      const rightPreferred = /chatbox-exported-data/i.test(right.name) ? 0 : 1;
-      return leftPreferred - rightPreferred || left.name.localeCompare(right.name);
-    });
-
-  let firstInvalidCandidateError: Error | null = null;
-  let metadataOnlyCandidate: ChatboxRecord | null = null;
-  for (const candidate of candidates) {
-    const contents = await candidate.async('string');
-    let normalized: ChatboxRecord;
-    try {
-      normalized = normalizeTopLevelPayload(parseJson(contents, candidate.name));
-    } catch (error) {
-      firstInvalidCandidateError ??= error instanceof Error ? error : new Error(String(error));
-      continue;
-    }
-
-    if (!isLikelyChatboxPayload(normalized)) continue;
-    if (hasChatboxSessionFields(normalized)) return normalized;
-    metadataOnlyCandidate ??= normalized;
-  }
-
-  if (metadataOnlyCandidate) return metadataOnlyCandidate;
-  if (firstInvalidCandidateError) throw firstInvalidCandidateError;
-  throw new Error('压缩包里没有找到 Chatbox 导出的会话 JSON');
-}
-
-export async function convertChatboxExportBlobToStructuredExportSnapshot(
-  file: Blob
-): Promise<ChatboxStructuredExportConversion> {
-  const payload = await parseChatboxExportPayloadFromBlob(file);
-  return convertChatboxExportToStructuredExportSnapshot(payload);
 }

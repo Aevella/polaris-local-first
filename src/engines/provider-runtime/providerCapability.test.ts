@@ -76,7 +76,8 @@ describe('resolveProviderCapability', () => {
     expect(capability.tools.choiceControl).toBe('none');
     expect(capability.thinking).toEqual({
       sendBudget: false,
-      effortMapping: 'none'
+      effortMapping: 'none',
+      requestTransport: 'none'
     });
     expect(capability.output.reasoning).toEqual({
       mode: 'text',
@@ -190,7 +191,7 @@ describe('resolveProviderCapability', () => {
     })).input.images).toBe('none');
   });
 
-  it('centralizes SiliconFlow Kimi execution and streaming policy', () => {
+  it('keeps SiliconFlow Kimi tool requests streamable', () => {
     const capability = resolveProviderCapability(createProviderRuntimeTestProvider({
       baseUrl: 'https://api.siliconflow.cn/v1',
       model: 'moonshotai/Kimi-K2-Instruct',
@@ -202,7 +203,7 @@ describe('resolveProviderCapability', () => {
     }));
 
     expect(capability.route.isMirrorAggregator).toBe(true);
-    expect(capability.streaming.disableWhenToolsPresent).toBe(true);
+    expect(capability.streaming.disableWhenToolsPresent).toBe(false);
     expect(capability.execution).toEqual(expect.objectContaining({
       maxAttempts: 2,
       streamIdleTimeoutMs: 45_000,

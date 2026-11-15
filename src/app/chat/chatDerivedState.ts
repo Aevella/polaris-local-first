@@ -19,7 +19,7 @@ import type {
 } from '../../types/domain';
 import type { ChatStreamingState } from './chatStreamingDisplay';
 import { resolveChatStreamingPresentation } from './chatStreamingDisplay';
-import { hasOnlyThemeCssCodeBlocks, hasThemeCssProjectionToolCall } from './chatCodeBlockSemantics';
+import { isThemeCssCodeBlock, readMessageCodeBlocks, hasThemeCssProjectionToolCall } from './chatCodeBlockSemantics';
 import { resolveContinuationCodeBlockState } from './chatMessageCardReference';
 
 export type CodeCardActionMode = 'hidden' | 'save' | 'open';
@@ -199,18 +199,16 @@ export function useChatDerived({
     () => [...messages].reverse().find((message) => message.role === 'assistant' && !message.toolInvocation)?.id ?? null,
     [messages]
   );
-  const codeCardActionModeByMessageId = useMemo(() => {
-    if (!activeConversation) return {};
+  const { codeCardActionModeByMessageId, codeCardProgressByMessageId } = useMemo(() => {
+    const modes: Record<string, CodeCardActionMode> = {};
+    const progress: Record<string, CodeCardMessageProgress> = {};
+    if (!activeConversation) return { codeCardActionModeByMessageId: modes, codeCardProgressByMessageId: progress };
 
-    return messages.reduce<Record<string, CodeCardActionMode>>((acc, message) => {
-      if (message.role !== 'assistant' || message.toolInvocation) return acc;
-      if (hasOnlyThemeCssCodeBlocks(message.content) && hasThemeCssProjectionToolCall(message.nativeToolCalls)) {
-        acc[message.id] = 'hidden';
-        return acc;
-      }
-      const codeBlocks = extractCodeBlocksFromMessage(message.content);
-      if (codeBlocks.length === 0) return acc;
-
+    for (const message of messages) {
+      if (message.role !== 'assistant' || message.toolInvocation) continue;
+      const codeBlocks = readMessageCodeBlocks(message);
+      if (codeBlocks.length === 0) continue;
+      const hidden = codeBlocks.every(isThemeCssCodeBlock) && hasThemeCssProjectionToolCall(message.nativeToolCalls);
       const continuation = resolveContinuationCodeBlockState({
         messages,
         assistantMessageId: message.id,
@@ -218,50 +216,14 @@ export function useChatDerived({
         cardsById: savedCodeCardIndex.cardsById,
         codeBlocks
       });
-      if (continuation) {
-        acc[message.id] = continuation.isSynced ? 'open' : 'save';
-        return acc;
-      }
-
-      acc[message.id] = codeBlocks.every(
-        (candidate) => isCodeBlockSaved(savedCodeCardIndex, activeConversation.id, message.id, candidate)
-      )
-        ? 'open'
-        : 'save';
-      return acc;
-    }, {});
-  }, [activeConversation, collectionCards, messages, savedCodeCardIndex]);
-  const codeCardProgressByMessageId = useMemo(() => {
-    if (!activeConversation) return {};
-
-    return messages.reduce<Record<string, CodeCardMessageProgress>>((acc, message) => {
-      if (message.role !== 'assistant' || message.toolInvocation) return acc;
-      const codeBlocks = extractCodeBlocksFromMessage(message.content);
-      if (codeBlocks.length === 0) return acc;
-
-      const continuation = resolveContinuationCodeBlockState({
-        messages,
-        assistantMessageId: message.id,
-        cards: collectionCards,
-        cardsById: savedCodeCardIndex.cardsById,
-        codeBlocks
-      });
-      if (continuation) {
-        acc[message.id] = {
-          saved: continuation.isSynced ? 1 : 0,
-          total: 1
-        };
-        return acc;
-      }
-
-      acc[message.id] = {
-        saved: codeBlocks.filter(
-          (candidate) => isCodeBlockSaved(savedCodeCardIndex, activeConversation.id, message.id, candidate)
-        ).length,
-        total: codeBlocks.length
-      };
-      return acc;
-    }, {});
+      const saved = continuation
+        ? Number(continuation.isSynced)
+        : codeBlocks.filter(candidate => isCodeBlockSaved(savedCodeCardIndex, activeConversation.id, message.id, candidate)).length;
+      const total = continuation ? 1 : codeBlocks.length;
+      modes[message.id] = hidden ? 'hidden' : saved === total ? 'open' : 'save';
+      progress[message.id] = { saved, total };
+    }
+    return { codeCardActionModeByMessageId: modes, codeCardProgressByMessageId: progress };
   }, [activeConversation, collectionCards, messages, savedCodeCardIndex]);
 
   return {

@@ -23,11 +23,5 @@
   .ps-avatar { width: 44px; height: 44px; border-radius: 11px; }
   .ps-avatar-initial { font-size: 17px; }
   .ps-identity-name { font-size: 17px; }
-  .theme-tool-mode-warning-overlay {
-    padding:
-      max(18px, calc(env(safe-area-inset-top, 0px) + 18px))
-      18px
-      max(112px, calc(env(safe-area-inset-bottom, 0px) + 112px));
-  }
-  .theme-tool-mode-warning-card { padding: 16px; border-radius: 22px; }
+
 }

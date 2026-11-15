@@ -40,6 +40,7 @@ export const PERSONA_MEMORY_DOC_CONTENT_PATH = 'stores/persona-memory-doc-conten
 export const EXPORT_REPORT_PATH = 'export-report.json';
 
 export type ExportManifest = {
+  completeness?: 'complete' | 'partial';
   format: 'polaris-export';
   version: 1;
   createdAt: number;
@@ -276,7 +277,9 @@ async function readStructuredExportStores(
   snapshot: StructuredExportSnapshot = {},
   options: StructuredExportPackageOptions = {}
 ) {
-  await assertDocumentLocalDataStrictlyReadableIfActive();
+  if (!snapshot.personaState || snapshot.personaMemoryDocContent === undefined || !snapshot.collectionState) {
+    await assertDocumentLocalDataStrictlyReadableIfActive();
+  }
   const now = new Date();
   const timestampLabel = buildExportTimestamp(now);
   options.onProgress?.({ message: '读取对话和设置' });
@@ -588,18 +591,15 @@ async function streamPersistedAssets(
     }
     if (paths.previewPath) {
       const wrotePreview = await writeStoredBinaryEntry(handlers, ASSET_PREVIEW_STORE, storageKey, paths.previewPath);
+      if (!wrotePreview && !previewBlob && shouldReadPersistedAssetBlob(handlers, asset, 'preview')) {
+        previewBlob = await getAssetPreviewBlob(asset.id);
+      }
       if (wrotePreview) {
         // NativePersistence streamed the preview directly into the ZIP.
       } else if (previewBlob) {
         await writeBlobEntry(handlers, paths.previewPath, previewBlob);
       } else {
         const wroteBinaryAsPreview = await writeStoredBinaryEntry(handlers, ASSET_BINARY_STORE, storageKey, paths.previewPath);
-        report.issues.push({
-          severity: 'warning',
-          kind: 'asset-missing-preview',
-          assetId: asset.id,
-          message: `图片资产 ${asset.id} 缺少预览，已用原图作为预览导出。`
-        });
         if (!wroteBinaryAsPreview && exportBlob) {
           await writeBlobEntry(handlers, paths.previewPath, exportBlob);
         }
@@ -646,6 +646,7 @@ export async function streamStructuredExportPackageEntries(
 
   const manifest: ExportManifest = {
     format: 'polaris-export',
+    completeness: report.issues.length ? 'partial' : 'complete',
     version: 1,
     createdAt: stores.now.getTime(),
     appVersion: packageJson.version,

@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import {
   parseRegexTriggers,
   parseWorldBookRegexTriggers,
+  DEFAULT_WORLD_BOOK_SCAN_DEPTH,
   type RegexTriggerRule
 } from '../../../../engines/regexTriggerProcessor';
 import { canUseNativeSystemFilePicker, pickNativeSystemFiles } from '../../../../native/systemPickedFiles';
 import { Icon } from '../../../Icon';
 import { resolveDocumentFilePickerAccept } from '../../../filePickerAccept';
 import { type PersonaTabProps } from '../personaUiShared';
+import { WorldBookEntryEditor } from './WorldBookEntryEditor';
+import { usePersonaStore } from '../../../../stores/personaStore';
 
 type RegexTriggerDraft = RegexTriggerRule & { id: number };
 
@@ -24,14 +27,16 @@ function serializeRegexTriggers(rules: RegexTriggerDraft[]): string {
       priority: Number(priority)
     }))
     .filter((rule) => (rule.pattern.length > 0 || rule.alwaysOn) && rule.prompt.length > 0)
-    .map((rule) => ({
-      pattern: rule.pattern,
-      prompt: rule.prompt,
-      ...(rule.flags ? { flags: rule.flags } : {}),
-      ...(Number.isFinite(rule.scanDepth) && rule.scanDepth > 0 ? { scanDepth: Math.floor(rule.scanDepth) } : {}),
-      ...(rule.alwaysOn ? { alwaysOn: true } : {}),
-      ...(Number.isFinite(rule.priority) && rule.priority !== 0 ? { priority: Math.trunc(rule.priority) } : {})
-    }));
+    .map((rule) => (
+      {
+        pattern: rule.pattern,
+        prompt: rule.prompt,
+        ...(rule.flags ? { flags: rule.flags } : {}),
+        ...(Number.isFinite(rule.scanDepth) && rule.scanDepth > 0 ? { scanDepth: Math.floor(rule.scanDepth) } : {}),
+        ...(rule.alwaysOn ? { alwaysOn: true } : {}),
+        ...(Number.isFinite(rule.priority) && rule.priority !== 0 ? { priority: Math.trunc(rule.priority) } : {})
+      }
+    ));
 
   if (!normalized.length) return '';
   return JSON.stringify(normalized, null, 2);
@@ -39,158 +44,25 @@ function serializeRegexTriggers(rules: RegexTriggerDraft[]): string {
 
 function CompactRegexTrigger({
   rule,
-  active,
   onEdit,
   onRemove
 }: {
   rule: RegexTriggerDraft;
-  active: boolean;
   onEdit: () => void;
   onRemove: () => void;
 }) {
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      className={`ps-rx-row ${active ? 'ps-rx-row--active' : ''}`}
-      onClick={onEdit}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onEdit();
-        }
-      }}
-    >
-      <span className="ps-rx-scope">{rule.alwaysOn ? '常驻' : '触发'}</span>
-      <span className="ps-rx-arrow">→</span>
-      <code className="ps-rx-pat">{rule.alwaysOn ? 'always' : `/${rule.pattern}/${rule.flags || ''}`}</code>
-      <span className="ps-rx-arrow">→</span>
-      <span className="ps-rx-rep">{rule.prompt}</span>
-      <span className="ps-rx-scope">深度 {rule.scanDepth ?? 4}</span>
-      <span className="ps-rx-row-spacer" />
-      <button
-        type="button"
-        className="ps-rx-row-remove"
-        onClick={(event) => {
-          event.stopPropagation();
-          onRemove();
-        }}
-        aria-label="删除正则触发"
-      >
-        ×
-      </button>
-    </div>
-  );
-}
-
-function RegexTriggerEditor({
-  rule,
-  onChange,
-  onConfirm,
-  onRemove
-}: {
-  rule: RegexTriggerDraft;
-  onChange: (patch: Partial<Omit<RegexTriggerDraft, 'id'>>) => void;
-  onConfirm: () => void;
-  onRemove?: () => void;
-}) {
-  const canConfirm = (rule.pattern.trim().length > 0 || Boolean(rule.alwaysOn)) && rule.prompt.trim().length > 0;
-
-  return (
-    <div className="ps-rx-card ps-rx-card--active">
-      <div className="ps-rx-card-head">
-        <div className="ps-rx-card-preview">
-          <span className="ps-rx-scope">{rule.alwaysOn ? '常驻' : '触发'}</span>
-          <code className="ps-rx-pat">{rule.alwaysOn ? 'always' : `/${rule.pattern || 'pattern'}/${rule.flags || ''}`}</code>
-          <span className="ps-rx-arrow">→</span>
-          <span className="ps-rx-rep">{rule.prompt || '补充给模型的上下文'}</span>
-        </div>
-        <div className="ps-rx-card-actions">
-          {onRemove ? (
-            <button
-              type="button"
-              className="ps-rx-remove"
-              onClick={onRemove}
-              aria-label="删除正则触发"
-            >
-              ×
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="ps-rx-confirm"
-            onClick={onConfirm}
-            disabled={!canConfirm}
-            aria-label="确认正则触发"
-          >
-            ✓
-          </button>
-        </div>
+    <div role="button" tabIndex={0} className="ps-worldbook-entry" onClick={onEdit}
+      onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onEdit(); } }}>
+      <div className="ps-worldbook-entry-head">
+        <span className={`ps-worldbook-badge ${rule.alwaysOn ? 'is-constant' : ''}`}>{rule.alwaysOn ? '常驻' : '关键词'}</span>
+        <span>{rule.prompt.length.toLocaleString()} 字符</span>
+        <button type="button" className="ps-rx-row-remove" onClick={(event) => { event.stopPropagation(); onRemove(); }} aria-label="删除世界书条目">×</button>
       </div>
-
-      <div className="ps-rx-grid ps-rx-grid--trigger">
-        <label className="ps-rx-field ps-rx-field--wide">
-          <span className="ps-rx-field-label">匹配</span>
-          <input
-            className="ps-rx-input ps-rx-input--mono"
-            value={rule.pattern}
-            onChange={(event) => onChange({ pattern: event.target.value })}
-            disabled={Boolean(rule.alwaysOn)}
-            placeholder="角色名|地点名|章节关键词"
-          />
-        </label>
-
-        <label className="ps-rx-field ps-rx-field--wide">
-          <span className="ps-rx-field-label">触发后补充</span>
-          <input
-            className="ps-rx-input"
-            value={rule.prompt}
-            onChange={(event) => onChange({ prompt: event.target.value })}
-            placeholder="命中后把这段设定或提醒带给模型"
-          />
-        </label>
-
-        <label className="ps-rx-field">
-          <span className="ps-rx-field-label">Flags</span>
-          <input
-            className="ps-rx-input ps-rx-input--mono"
-            value={rule.flags ?? ''}
-            onChange={(event) => onChange({ flags: event.target.value })}
-            disabled={Boolean(rule.alwaysOn)}
-            placeholder="i"
-          />
-        </label>
-
-        <label className="ps-rx-field">
-          <span className="ps-rx-field-label">扫描深度</span>
-          <input
-            className="ps-rx-input ps-rx-input--mono"
-            type="number"
-            min={1}
-            value={rule.scanDepth ?? 4}
-            onChange={(event) => onChange({ scanDepth: Number(event.target.value) || 1 })}
-          />
-        </label>
-
-        <label className="ps-rx-field">
-          <span className="ps-rx-field-label">优先级</span>
-          <input
-            className="ps-rx-input ps-rx-input--mono"
-            type="number"
-            value={rule.priority ?? 0}
-            onChange={(event) => onChange({ priority: Number(event.target.value) || 0 })}
-          />
-        </label>
-
-        <label className="ps-rx-field ps-rx-field--toggle">
-          <span className="ps-rx-field-label">常驻</span>
-          <input
-            className="ps-rx-toggle"
-            type="checkbox"
-            checked={Boolean(rule.alwaysOn)}
-            onChange={(event) => onChange({ alwaysOn: event.target.checked })}
-          />
-        </label>
+      <p>{rule.prompt}</p>
+      <div className="ps-worldbook-entry-foot">
+        <span>{rule.alwaysOn ? '每轮生效' : `/${rule.pattern}/${rule.flags || ''} · 最近 ${rule.scanDepth ?? DEFAULT_WORLD_BOOK_SCAN_DEPTH} 条`}</span>
+        <span>编辑 →</span>
       </div>
     </div>
   );
@@ -198,15 +70,18 @@ function RegexTriggerEditor({
 
 export function RegexTriggerRulesField({
   activeCollaboratorId,
-  activePersona,
-  onUpdatePersona
+  activePersona
 }: PersonaTabProps) {
   const nextRegexTriggerIdRef = useRef(0);
+  const editingPreviousRef = useRef('');
   const [regexTriggers, setRegexTriggers] = useState<RegexTriggerDraft[]>([]);
   const [editingTrigger, setEditingTrigger] = useState<RegexTriggerDraft | null>(null);
+  const [saving, setSaving] = useState(false);
   const [importingWorldBook, setImportingWorldBook] = useState(false);
   const [worldBookImportMessage, setWorldBookImportMessage] = useState<string | null>(null);
   const [worldBookImportError, setWorldBookImportError] = useState<string | null>(null);
+  const activeCollaboratorIdRef = useRef(activeCollaboratorId);
+  activeCollaboratorIdRef.current = activeCollaboratorId;
   const worldBookFileInputRef = useRef<HTMLInputElement | null>(null);
   const worldBookImportAccept = resolveDocumentFilePickerAccept(WORLD_BOOK_IMPORT_ACCEPT);
 
@@ -217,8 +92,8 @@ export function RegexTriggerRulesField({
       id,
       pattern: rule?.pattern ?? '',
       prompt: rule?.prompt ?? '',
-      flags: rule?.flags ?? 'i',
-      scanDepth: rule?.scanDepth ?? 4,
+      flags: rule ? rule.flags ?? '' : 'i',
+      scanDepth: rule?.scanDepth ?? DEFAULT_WORLD_BOOK_SCAN_DEPTH,
       alwaysOn: rule?.alwaysOn ?? false,
       priority: rule?.priority ?? 0
     };
@@ -226,22 +101,38 @@ export function RegexTriggerRulesField({
 
   useEffect(() => {
     nextRegexTriggerIdRef.current = 0;
-    setRegexTriggers(parseRegexTriggers(activePersona?.advanced.regexTriggers).map((rule) => createRegexTriggerDraft(rule)));
+    setRegexTriggers([]);
     setEditingTrigger(null);
+    setWorldBookImportError(null);
   }, [activeCollaboratorId]);
 
-  const persistRegexTriggers = (nextRules: RegexTriggerDraft[]) => {
-    setRegexTriggers(nextRules);
-    onUpdatePersona({ advanced: { regexTriggers: serializeRegexTriggers(nextRules) } });
+  useEffect(() => {
+    const rules = parseRegexTriggers(activePersona?.advanced.regexTriggers);
+    setRegexTriggers((previous) => rules.map((rule, index) => ({
+      ...createRegexTriggerDraft(rule), id: previous[index]?.id ?? nextRegexTriggerIdRef.current - 1
+    })));
+  }, [activeCollaboratorId, activePersona?.advanced.regexTriggers]);
+
+  const persistRegexTriggers = async (nextRules: RegexTriggerDraft[]) => {
+    if (!activeCollaboratorId) throw new Error('请先选择协作者。');
+    await usePersonaStore.getState().saveWorldBookRules(activeCollaboratorId,
+      parseRegexTriggers(serializeRegexTriggers(nextRules)),
+      { expectedPrevious: editingTrigger ? editingPreviousRef.current : activePersona?.advanced.regexTriggers ?? '' });
   };
 
-  const beginCreateRegexTrigger = () => {
-    setEditingTrigger(createRegexTriggerDraft());
+  const beginCreateRegexTrigger = (alwaysOn = false) => {
+    if (saving) return;
+    editingPreviousRef.current = activePersona?.advanced.regexTriggers ?? '';
+    setWorldBookImportError(null);
+    setEditingTrigger(createRegexTriggerDraft({ alwaysOn, flags: 'i' }));
   };
 
   const beginEditRegexTrigger = (ruleId: number) => {
+    if (saving) return;
     const target = regexTriggers.find((rule) => rule.id === ruleId);
     if (!target) return;
+    editingPreviousRef.current = activePersona?.advanced.regexTriggers ?? '';
+    setWorldBookImportError(null);
     setEditingTrigger({ ...target });
   };
 
@@ -250,15 +141,23 @@ export function RegexTriggerRulesField({
     setEditingTrigger({ ...editingTrigger, ...patch });
   };
 
-  const confirmEditingTrigger = () => {
+  const confirmEditingTrigger = async () => {
+    if (saving) return;
     if (!editingTrigger || (!editingTrigger.pattern.trim() && !editingTrigger.alwaysOn) || !editingTrigger.prompt.trim()) return;
+    if (!editingTrigger.alwaysOn) {
+      try { new RegExp(editingTrigger.pattern.trim(), editingTrigger.flags?.trim()); } catch {
+        setWorldBookImportError('匹配表达式或 Flags 无效，请修改后再保存。');
+        return;
+      }
+    }
+    setWorldBookImportError(null);
     const existingIndex = regexTriggers.findIndex((rule) => rule.id === editingTrigger.id);
     const normalizedRule = {
       ...editingTrigger,
       pattern: editingTrigger.alwaysOn ? '' : editingTrigger.pattern.trim(),
       prompt: editingTrigger.prompt.trim(),
       flags: editingTrigger.alwaysOn ? '' : editingTrigger.flags?.trim() ?? '',
-      scanDepth: Math.max(1, Math.floor(Number(editingTrigger.scanDepth) || 4)),
+      scanDepth: Math.max(1, Math.floor(Number(editingTrigger.scanDepth) || DEFAULT_WORLD_BOOK_SCAN_DEPTH)),
       priority: Math.trunc(Number(editingTrigger.priority) || 0)
     };
 
@@ -267,33 +166,52 @@ export function RegexTriggerRulesField({
         ? regexTriggers.map((rule) => (rule.id === editingTrigger.id ? normalizedRule : rule))
         : [...regexTriggers, normalizedRule];
 
-    persistRegexTriggers(nextRules);
-    setEditingTrigger(null);
+    const targetId = activeCollaboratorId;
+    setSaving(true);
+    try {
+      await persistRegexTriggers(nextRules);
+      if (activeCollaboratorIdRef.current !== targetId) return;
+      setEditingTrigger(null);
+    } catch (error) {
+      if (activeCollaboratorIdRef.current !== targetId) return;
+      setWorldBookImportError(`未保存：${error instanceof Error ? error.message : '存储写入失败'}。正文已保留，可以重试或复制后退出。`);
+    } finally { setSaving(false); }
   };
 
-  const removeRegexTrigger = (ruleId: number) => {
-    const nextRules = regexTriggers.filter((rule) => rule.id !== ruleId);
-    persistRegexTriggers(nextRules);
-    if (editingTrigger?.id === ruleId) {
-      setEditingTrigger(null);
-    }
+  const removeRegexTrigger = async (ruleId: number) => {
+    if (saving) return;
+    const targetId = activeCollaboratorId;
+    setSaving(true);
+    try {
+      await persistRegexTriggers(regexTriggers.filter((rule) => rule.id !== ruleId));
+      if (activeCollaboratorIdRef.current !== targetId) return;
+      if (editingTrigger?.id === ruleId) setEditingTrigger(null);
+      setWorldBookImportError(null);
+    } catch (error) {
+      if (activeCollaboratorIdRef.current !== targetId) return;
+      setWorldBookImportError(`未删除：${error instanceof Error ? error.message : '存储写入失败'}。原条目已保留。`);
+    } finally { setSaving(false); }
   };
 
   const importWorldBookFiles = async (files: FileList | File[] | null) => {
     const selectedFiles = files ? Array.from(files) : [];
     if (!selectedFiles.length || importingWorldBook) return;
 
+    const targetCollaboratorId = activeCollaboratorId;
     setImportingWorldBook(true);
     setWorldBookImportMessage(null);
     setWorldBookImportError(null);
     try {
-      const importedRules: RegexTriggerDraft[] = [];
+      const importedRules: RegexTriggerRule[] = [];
       const failedMessages: string[] = [];
+      let skippedCount = 0;
 
       for (const file of selectedFiles) {
         try {
           const result = parseWorldBookRegexTriggers(await file.text());
-          importedRules.push(...result.rules.map((rule) => createRegexTriggerDraft(rule)));
+          skippedCount += result.skippedCount;
+          failedMessages.push(...result.warnings.map((message) => `${file.name || '未命名文件'}：${message}`));
+          importedRules.push(...result.rules);
           if (result.rules.length === 0) {
             failedMessages.push(`${file.name || '未命名文件'} 没有可导入的世界书条目`);
           }
@@ -303,12 +221,17 @@ export function RegexTriggerRulesField({
       }
 
       if (importedRules.length > 0) {
-        persistRegexTriggers([...regexTriggers, ...importedRules]);
-        setEditingTrigger(null);
-        setWorldBookImportMessage(`已导入 ${importedRules.length} 条世界书`);
+        if (!targetCollaboratorId) throw new Error('请先选择协作者。');
+        await usePersonaStore.getState().saveWorldBookRules(targetCollaboratorId, importedRules, { append: true });
+        if (activeCollaboratorIdRef.current !== targetCollaboratorId) return;
+        setWorldBookImportMessage(`已导入 ${importedRules.length} 条世界书${skippedCount > 0 ? `；跳过 ${skippedCount} 条停用、无效或不支持的条目` : ''}`);
       }
       if (failedMessages.length > 0) {
         setWorldBookImportError(failedMessages.join('；'));
+      }
+    } catch (error) {
+      if (activeCollaboratorIdRef.current === targetCollaboratorId) {
+        setWorldBookImportError(`未导入：${error instanceof Error ? error.message : '存储写入失败'}。原世界书未覆盖，可以重新选择文件重试。`);
       }
     } finally {
       setImportingWorldBook(false);
@@ -332,67 +255,29 @@ export function RegexTriggerRulesField({
   };
 
   return (
-    <div className="ps-field">
-      <div className="ps-field-head ps-field-head--meta-right">
-        <span className="ps-field-label">世界书触发</span>
-        <span className="ps-field-hint">{regexTriggers.length} 条 · 命中后补充本轮上下文</span>
-      </div>
-
-      <div className="memory-doc-import-row">
-        <button
-          type="button"
-          className="memory-doc-import-btn"
-          onClick={() => {
-            void openWorldBookImportPicker();
-          }}
-          disabled={importingWorldBook}
-        >
-          <Icon name="filePlus" size={14} />
-          <span>{importingWorldBook ? '导入中…' : '导入世界书'}</span>
+    <section className="ps-worldbook-page" aria-label="世界书条目">
+      {editingTrigger ? <WorldBookEntryEditor key={editingTrigger.id} rule={editingTrigger} onChange={updateEditingTrigger}
+        onConfirm={confirmEditingTrigger} onCancel={() => { setEditingTrigger(null); setWorldBookImportError(null); }}
+        error={worldBookImportError} saving={saving}
+        onRemove={regexTriggers.some((rule) => rule.id === editingTrigger.id) ? () => removeRegexTrigger(editingTrigger.id) : undefined} /> : null}
+      <div className="ps-worldbook-toolbar">
+        <button type="button" className="memory-doc-import-btn" onClick={() => beginCreateRegexTrigger(true)}>+ 常驻设定</button>
+        <button type="button" className="ps-rx-add" onClick={() => beginCreateRegexTrigger()}>+ 关键词设定</button>
+        <button type="button" className="ps-rx-add" onClick={() => { void openWorldBookImportPicker(); }} disabled={importingWorldBook}>
+          <Icon name="filePlus" size={14} /> {importingWorldBook ? '导入中…' : '导入世界书'}
         </button>
-        <span className="memory-doc-import-hint">支持 Kelivo/RikkaHub 风格 JSON 或文本；关键词会变成匹配，正文会变成命中后补充。</span>
-        <input
-          ref={worldBookFileInputRef}
-          className="memory-doc-import-input"
-          type="file"
-          multiple
-          accept={worldBookImportAccept}
-          onChange={(event) => {
-            void importWorldBookFiles(event.currentTarget.files);
-          }}
-        />
+        <input ref={worldBookFileInputRef} className="memory-doc-import-input" type="file" multiple accept={worldBookImportAccept}
+          onChange={(event) => { void importWorldBookFiles(event.currentTarget.files); }} />
       </div>
-      {worldBookImportMessage ? (
-        <div className="memory-doc-import-hint">{worldBookImportMessage}</div>
-      ) : null}
-      {worldBookImportError ? (
-        <div className="memory-doc-import-error">{worldBookImportError}</div>
-      ) : null}
-
-      <div className="ps-rx-list">
-        {regexTriggers.map((rule) => (
-          <CompactRegexTrigger
-            key={rule.id}
-            rule={rule}
-            active={editingTrigger?.id === rule.id}
-            onEdit={() => beginEditRegexTrigger(rule.id)}
-            onRemove={() => removeRegexTrigger(rule.id)}
-          />
-        ))}
-      </div>
-
-      {editingTrigger ? (
-        <RegexTriggerEditor
-          rule={editingTrigger}
-          onChange={updateEditingTrigger}
-          onConfirm={confirmEditingTrigger}
-          onRemove={regexTriggers.some((rule) => rule.id === editingTrigger.id) ? () => removeRegexTrigger(editingTrigger.id) : undefined}
-        />
-      ) : null}
-
-      <button type="button" className="ps-rx-add" onClick={beginCreateRegexTrigger}>
-        + 添加触发
-      </button>
-    </div>
+      {worldBookImportMessage ? <div className="memory-doc-import-hint" role="status">{worldBookImportMessage}</div> : null}
+      {worldBookImportError ? <div className="memory-doc-import-error" role="alert">{worldBookImportError}</div> : null}
+      {regexTriggers.length ? <div className="ps-worldbook-library">
+        {regexTriggers.map((rule) => <CompactRegexTrigger key={rule.id} rule={rule}
+          onEdit={() => beginEditRegexTrigger(rule.id)} onRemove={() => removeRegexTrigger(rule.id)} />)}
+      </div> : <div className="ps-worldbook-empty">
+        <span>暂无条目</span>
+        <button type="button" className="memory-doc-import-btn" onClick={() => beginCreateRegexTrigger(true)}>写第一条常驻设定</button>
+      </div>}
+    </section>
   );
 }

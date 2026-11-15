@@ -1,6 +1,7 @@
 import type { AssistantReply, RequestAssistantReplyParams } from './chat-api/chatApiTypes';
 import { requestAssistantReply } from './chatApi';
 import {
+  classifyMemoryVectorEmbeddingError,
   requestMemoryVectorEmbeddings,
   type MemoryVectorEmbeddingRequest
 } from './memoryVectorEmbeddingClient';
@@ -54,6 +55,10 @@ export type MemoryVectorIndexPreparationResult = {
   totalChunkCount: number;
   preparedChunkCount: number;
   embeddedChunkCount: number;
+  /** Chunks the embedding provider kept rejecting in this run; they stay unembedded and are retried next run. */
+  skippedChunkCount: number;
+  /** Provider wording for the last rejection, for the settings surface. */
+  skipReason: string | null;
   generatedAt: number;
   metadata: MemoryVectorIndexMetadata | null;
 };
@@ -88,6 +93,8 @@ export const MEMORY_VECTOR_SEMANTIC_PREPARATION_SOURCE_CHARS = 8_000;
 export const MEMORY_VECTOR_EMBEDDING_BATCH_TARGET_INPUT_CHARS = 8_000;
 export const MEMORY_VECTOR_EMBEDDING_BATCH_MAX_INPUTS = 10;
 export const MEMORY_VECTOR_EMBEDDING_INPUT_TARGET_CHARS = 7_200;
+export const MEMORY_VECTOR_EMBEDDING_INPUT_MIN_CHARS = 800;
+export const MEMORY_VECTOR_EMBEDDING_INPUT_SHRINK_RATIO = 0.6;
 
 function resolvePreparationProvider(args: {
   providers: ProviderProfile[];
@@ -120,27 +127,28 @@ function embeddingInputLength(chunk: MemorySemanticPreparedChunk) {
   return Math.max(1, chunk.semanticText.length);
 }
 
-function isSkippableEmbeddingInputError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes('input length')
-    || normalized.includes('context length')
-    || normalized.includes('maximum context')
-    || normalized.includes('too many tokens')
-    || normalized.includes('too long')
-  );
+function embeddingErrorReason(error: unknown) {
+  if (error && typeof error === 'object' && 'reason' in error && typeof (error as { reason: unknown }).reason === 'string') {
+    return (error as { reason: string }).reason;
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
-function isRetryableEmbeddingBatchError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes('batch size')
-    || normalized.includes('input.contents')
-    || normalized.includes('too many inputs')
-    || normalized.includes('too many input')
+function truncateEmbeddingInput(text: string, budgetChars: number) {
+  return text.length <= budgetChars ? text : text.slice(0, budgetChars).trim();
+}
+
+/**
+ * Shrinks the per-input character budget after a provider rejected an input of
+ * `rejectedLength` characters. Returns null when the budget cannot shrink any
+ * further, which means the input should be skipped instead of retried.
+ */
+export function shrinkEmbeddingInputBudget(rejectedLength: number, currentBudget: number) {
+  const next = Math.max(
+    MEMORY_VECTOR_EMBEDDING_INPUT_MIN_CHARS,
+    Math.floor(Math.min(rejectedLength, currentBudget) * MEMORY_VECTOR_EMBEDDING_INPUT_SHRINK_RATIO)
   );
+  return next < rejectedLength && next < currentBudget ? next : null;
 }
 
 function splitTextForEmbeddingInput(text: string, targetChars = MEMORY_VECTOR_EMBEDDING_INPUT_TARGET_CHARS) {
@@ -384,6 +392,8 @@ export async function runMemoryVectorIndexPreparation(
       totalChunkCount,
       preparedChunkCount: 0,
       embeddedChunkCount: 0,
+      skippedChunkCount: 0,
+      skipReason: null,
       generatedAt: now,
       metadata: null
     };
@@ -452,6 +462,13 @@ export async function runMemoryVectorIndexPreparation(
     });
   };
 
+  // Per-run character budget for one embedding input. It starts at the shared
+  // target and shrinks the first time a provider rejects an input, so later
+  // chunks stop hitting the same wall instead of failing one by one.
+  let embeddingInputBudget = MEMORY_VECTOR_EMBEDDING_INPUT_TARGET_CHARS;
+  const skippedSourceChunkIds = new Set<string>();
+  let lastSkipReason: string | null = null;
+
   const embedPreparedChunks = async (nextPreparedChunks: MemorySemanticPreparedChunk[]) => {
     const vectorApi = params.vectorApi;
     const vectorModel = params.vectorModel;
@@ -463,7 +480,7 @@ export async function runMemoryVectorIndexPreparation(
         api: vectorApi,
         model: vectorModel.model,
         dimensions: vectorModel.dimensions,
-        inputs: chunks.map((chunk) => chunk.semanticText),
+        inputs: chunks.map((chunk) => truncateEmbeddingInput(chunk.semanticText, embeddingInputBudget)),
         signal: params.signal
       });
       const embeddingsBySourceChunkId = new Map<string, MemoryVectorIndexEmbedding>();
@@ -478,7 +495,36 @@ export async function runMemoryVectorIndexPreparation(
       });
       return embeddingsBySourceChunkId;
     };
-    const embeddingBatches = resolveMemoryVectorEmbeddingBatches({ chunks: nextPreparedChunks });
+    const rethrowUnlessRecoverable = (error: unknown) => {
+      const kind = classifyMemoryVectorEmbeddingError(error);
+      if (kind === 'aborted' || kind === 'route') throw error;
+      return kind;
+    };
+    const embedSingleChunk = async (chunk: MemorySemanticPreparedChunk) => {
+      // Retry with a shrinking budget until the provider accepts the input or
+      // the budget cannot shrink any further; only then give up on this chunk.
+      for (;;) {
+        assertNotAborted(params.signal);
+        try {
+          return await requestEmbeddingBatch([chunk]);
+        } catch (error) {
+          rethrowUnlessRecoverable(error);
+          const sentLength = truncateEmbeddingInput(chunk.semanticText, embeddingInputBudget).length;
+          const nextBudget = shrinkEmbeddingInputBudget(sentLength, embeddingInputBudget);
+          if (nextBudget === null) {
+            skippedSourceChunkIds.add(chunk.sourceChunkId);
+            lastSkipReason = embeddingErrorReason(error);
+            return new Map<string, MemoryVectorIndexEmbedding>();
+          }
+          embeddingInputBudget = nextBudget;
+        }
+      }
+    };
+    const embeddingBatches = resolveMemoryVectorEmbeddingBatches({
+      chunks: nextPreparedChunks.filter((chunk) => chunk.semanticText.trim().length > 0)
+    });
+    const emptyChunks = nextPreparedChunks.filter((chunk) => chunk.semanticText.trim().length === 0);
+    emptyChunks.forEach((chunk) => processedSourceChunkIds.add(chunk.sourceChunkId));
     for (const embeddingBatch of embeddingBatches) {
       assertNotAborted(params.signal);
       await yieldToForeground();
@@ -486,22 +532,13 @@ export async function runMemoryVectorIndexPreparation(
       try {
         batchEmbeddingsBySourceChunkId = await requestEmbeddingBatch(embeddingBatch.chunks);
       } catch (error) {
-        if (!isSkippableEmbeddingInputError(error) && !isRetryableEmbeddingBatchError(error)) {
-          throw error;
-        }
+        rethrowUnlessRecoverable(error);
         batchEmbeddingsBySourceChunkId = new Map();
         for (const chunk of embeddingBatch.chunks) {
-          assertNotAborted(params.signal);
-          try {
-            const chunkEmbedding = await requestEmbeddingBatch([chunk]);
-            chunkEmbedding.forEach((embedding, sourceChunkId) => {
-              batchEmbeddingsBySourceChunkId.set(sourceChunkId, embedding);
-            });
-          } catch (chunkError) {
-            if (!isSkippableEmbeddingInputError(chunkError)) {
-              throw chunkError;
-            }
-          }
+          const chunkEmbedding = await embedSingleChunk(chunk);
+          chunkEmbedding.forEach((embedding, sourceChunkId) => {
+            batchEmbeddingsBySourceChunkId.set(sourceChunkId, embedding);
+          });
         }
       }
       embeddingBatch.chunks.forEach((chunk) => {
@@ -624,6 +661,8 @@ export async function runMemoryVectorIndexPreparation(
     totalChunkCount,
     preparedChunkCount: metadata.entryCount,
     embeddedChunkCount: metadata.embeddedCount,
+    skippedChunkCount: skippedSourceChunkIds.size,
+    skipReason: lastSkipReason,
     generatedAt: now,
     metadata
   };

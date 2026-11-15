@@ -210,6 +210,26 @@ describe('workspaceReferenceDocContentPersistence', () => {
     }))).rejects.toThrow('Workspace reference document content chunk is missing');
   });
 
+  it('reads the valid persisted body when staged content does not match the current directory', async () => {
+    const body = 'current complete document';
+    stageWorkspaceReferenceDocContent('doc-current', 'old');
+    persistence.kvKeys.mockResolvedValue(['workspace-reference-doc-content-v1:doc-current']);
+    persistence.kvGet.mockResolvedValue(body);
+    await expect(readWorkspaceReferenceDocContent(makeDoc({
+      id: 'doc-current', content: '', charCount: body.length, contentLoaded: false
+    }))).resolves.toBe(body);
+    expect(persistence.kvApplyMutations).not.toHaveBeenCalled();
+  });
+
+  it('does not turn invalid staged content into an empty or truncated backup when disk is also missing', async () => {
+    stageWorkspaceReferenceDocContent('doc-current', 'old');
+    persistence.kvKeys.mockResolvedValue([]);
+    persistence.kvGet.mockResolvedValue(null);
+    await expect(readWorkspaceReferenceDocContent(makeDoc({
+      id: 'doc-current', content: '', charCount: 42, contentLoaded: false
+    }))).rejects.toThrow('Workspace reference document content is missing');
+  });
+
   it('throws instead of treating an unloaded missing document body as empty', async () => {
     persistence.kvKeys.mockResolvedValue([]);
     persistence.kvGet.mockResolvedValue(null);

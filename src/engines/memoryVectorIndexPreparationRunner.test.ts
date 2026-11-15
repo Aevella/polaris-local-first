@@ -40,6 +40,11 @@ import {
   runMemoryVectorIndexPreparation
 } from './memoryVectorIndexPreparationRunner';
 import { buildConversationSemanticChunks } from './memoryRetrievalIndex';
+import { MemoryVectorEmbeddingRequestError } from './memoryVectorEmbeddingClient';
+
+const ZHIPU_PARAMETER_ERROR_BODY = JSON.stringify({
+  error: { code: '1210', message: 'API 调用参数有误，请检查文档。' }
+});
 
 const baseProvider: ProviderProfile = {
   id: 'main-provider',
@@ -810,5 +815,110 @@ describe('runMemoryVectorIndexPreparation', () => {
       requestEmbeddings,
       now: 8901
     })).rejects.toThrow('invalid api key');
+  });
+
+  it('shrinks the per-input budget after a provider rejects a long input and embeds it truncated', async () => {
+    const providerInputCap = 1_000;
+    const longContent = '这是一段会超过智谱 embedding-3 单条上限的旧对话。'.repeat(120);
+    const sentLengths: number[][] = [];
+    const requestEmbeddings = vi.fn<MemoryVectorIndexEmbeddingRequest>(async (params) => {
+      sentLengths.push(params.inputs.map((input) => input.length));
+      if (params.inputs.some((input) => input.length > providerInputCap)) {
+        throw new MemoryVectorEmbeddingRequestError(400, ZHIPU_PARAMETER_ERROR_BODY);
+      }
+      return params.inputs.map(() => [0.1, 0.2, 0.3]);
+    });
+
+    const result = await runMemoryVectorIndexPreparation({
+      collaboratorId: 'aa',
+      conversations: [
+        conversation({ id: 'c1', collaboratorId: 'aa', content: '短的一条，直接能过。', timestamp: 1 }),
+        conversation({ id: 'c2', collaboratorId: 'aa', content: longContent, timestamp: 2 })
+      ],
+      settings: { enabled: false },
+      providers: [smallProvider],
+      globalApi: baseProvider,
+      vectorApi: { ...baseProvider, id: 'embed-provider' },
+      vectorModel: { providerId: 'embed-provider', model: 'embedding-3', dimensions: null },
+      requestEmbeddings,
+      now: 9100
+    });
+
+    expect(result).toMatchObject({
+      status: 'completed',
+      totalChunkCount: 2,
+      embeddedChunkCount: 2,
+      skippedChunkCount: 0,
+      skipReason: null
+    });
+    // batch → short alone → long input shrinks by the ratio each retry until the provider accepts it
+    expect(sentLengths[0]).toHaveLength(2);
+    const longAttempts = sentLengths.slice(1).flat().filter((length) => length > 20);
+    expect(longAttempts.length).toBeGreaterThanOrEqual(3);
+    expect(longAttempts[0]).toBeGreaterThan(providerInputCap);
+    longAttempts.slice(1).forEach((length, index) => {
+      expect(length).toBeLessThan(longAttempts[index]!);
+      expect(length).toBeGreaterThanOrEqual(800);
+    });
+    expect(longAttempts[longAttempts.length - 1]).toBeLessThanOrEqual(providerInputCap);
+    const entries = Array.from(storageMocks.entries.values());
+    expect(entries.filter((entry) => Boolean(entry.embedding))).toHaveLength(2);
+  });
+
+  it('skips an input the provider keeps rejecting at the minimum budget and reports it without failing the run', async () => {
+    const requestEmbeddings = vi.fn<MemoryVectorIndexEmbeddingRequest>(async (params) => {
+      if (params.inputs.some((input) => input.includes('被拒'))) {
+        throw new MemoryVectorEmbeddingRequestError(400, ZHIPU_PARAMETER_ERROR_BODY);
+      }
+      return params.inputs.map(() => [0.1, 0.2, 0.3]);
+    });
+
+    const result = await runMemoryVectorIndexPreparation({
+      collaboratorId: 'aa',
+      conversations: [
+        conversation({ id: 'c1', collaboratorId: 'aa', content: '正常的一条。', timestamp: 1 }),
+        conversation({ id: 'c2', collaboratorId: 'aa', content: '这一条总是被拒。', timestamp: 2 }),
+        conversation({ id: 'c3', collaboratorId: 'aa', content: '后面的一条也要继续。', timestamp: 3 })
+      ],
+      settings: { enabled: false },
+      providers: [smallProvider],
+      globalApi: baseProvider,
+      vectorApi: { ...baseProvider, id: 'embed-provider' },
+      vectorModel: { providerId: 'embed-provider', model: 'embedding-3', dimensions: null },
+      requestEmbeddings,
+      now: 9200
+    });
+
+    expect(result).toMatchObject({
+      status: 'completed',
+      totalChunkCount: 3,
+      embeddedChunkCount: 2,
+      skippedChunkCount: 1,
+      skipReason: '1210 API 调用参数有误，请检查文档。'
+    });
+    const entries = Array.from(storageMocks.entries.values());
+    expect(entries.find((entry) => entry.semanticText.includes('被拒'))?.embedding).toBeUndefined();
+    expect(entries.filter((entry) => Boolean(entry.embedding))).toHaveLength(2);
+  });
+
+  it('stops the run on route-level embedding failures such as rate limits', async () => {
+    const requestEmbeddings = vi.fn<MemoryVectorIndexEmbeddingRequest>(async () => {
+      throw new MemoryVectorEmbeddingRequestError(429, '{"error":{"code":"1302","message":"您的请求过于频繁"}}');
+    });
+
+    await expect(runMemoryVectorIndexPreparation({
+      collaboratorId: 'aa',
+      conversations: [
+        conversation({ id: 'c1', collaboratorId: 'aa', content: '限流不能被当成输入问题跳过。', timestamp: 1 })
+      ],
+      settings: { enabled: false },
+      providers: [smallProvider],
+      globalApi: baseProvider,
+      vectorApi: { ...baseProvider, id: 'embed-provider' },
+      vectorModel: { providerId: 'embed-provider', model: 'embedding-3', dimensions: null },
+      requestEmbeddings,
+      now: 9300
+    })).rejects.toThrow('embedding API 429');
+    expect(requestEmbeddings).toHaveBeenCalledTimes(1);
   });
 });

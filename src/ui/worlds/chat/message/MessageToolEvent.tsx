@@ -46,8 +46,12 @@ export function MessageToolEvent({
   const tool = message.toolInvocation;
   if (!tool) return null;
 
-  const canApply = tool.status === 'preview';
-  const canRollback = tool.status === 'preview';
+  const retryMemory = tool.status === 'failed' && (
+    (tool.kind === 'writeMemory' && Boolean(tool.memoryItems?.length))
+    || (tool.kind === 'writeMemoryDoc' && Boolean(tool.memoryDocTitle && tool.memoryDocContent))
+  );
+  const canApply = tool.status === 'preview' || retryMemory;
+  const canRollback = tool.status === 'preview' || retryMemory;
   const memoryItems = tool.kind === 'writeMemory' ? tool.memoryItems ?? [] : [];
   const memoryDocTitle = tool.kind === 'writeMemoryDoc' ? tool.memoryDocTitle?.trim() : undefined;
   const memoryDocSummary = tool.kind === 'writeMemoryDoc' ? tool.memoryDocSummary?.trim() : undefined;
@@ -341,7 +345,7 @@ export function MessageToolEvent({
                     onApplyToolPreview(message);
                   }}
                 >
-                  {t('chat.toolEvent.apply')}
+                  {retryMemory ? t('chat.toolEvent.retryMemory') : t('chat.toolEvent.apply')}
                 </button>
               ) : null}
               {canSaveThemePreview ? (

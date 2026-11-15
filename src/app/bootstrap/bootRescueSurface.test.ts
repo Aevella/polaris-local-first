@@ -105,16 +105,24 @@ describe('installBootRescueSurface', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders a persisted backup rescue card when the root stays empty past startup timeout', () => {
+  it('does not turn slow startup into a data warning', () => {
     vi.useFakeTimers();
     const { root } = createBrowserGlobals();
+    const rescue = installBootRescueSurface({ root: root as unknown as HTMLElement });
+    rescue.watchReactRoot();
+    vi.advanceTimersByTime(60000);
+    expect(root.childElementCount).toBe(0);
+    rescue.dispose();
+  });
 
-    installBootRescueSurface({ root: root as unknown as HTMLElement, timeoutMs: 10 });
-    vi.advanceTimersByTime(10);
-
-    expect(collectText(root)).toContain('先把数据救出来');
-    expect(collectText(root)).toContain('boot-timeout');
-    expect(findButton(root, '导出完整备份')).not.toBeNull();
+  it('offers reload after an actual startup failure', () => {
+    const { root, emit } = createBrowserGlobals();
+    const rescue = installBootRescueSurface({ root: root as unknown as HTMLElement });
+    emit('error', { error: new Error('module load failed') });
+    expect(collectText(root)).toContain('应用没有打开');
+    findButton(root, '重新打开')?.click();
+    expect(window.location.reload).toHaveBeenCalledOnce();
+    rescue.dispose();
   });
 
   it('does not replace the root after React content has mounted', () => {
@@ -124,7 +132,7 @@ describe('installBootRescueSurface', () => {
     mounted.textContent = 'Polaris 已挂载';
     root.replaceChildren(mounted);
 
-    const rescue = installBootRescueSurface({ root: root as unknown as HTMLElement, timeoutMs: 10 });
+    const rescue = installBootRescueSurface({ root: root as unknown as HTMLElement });
     rescue.watchReactRoot();
     emit('error', { error: new Error('late render crash') });
     vi.advanceTimersByTime(10);
@@ -135,7 +143,7 @@ describe('installBootRescueSurface', () => {
   it('does not mistake an early post-mount rejection for a boot failure', () => {
     vi.useFakeTimers();
     const { root, emit } = createBrowserGlobals();
-    const rescue = installBootRescueSurface({ root: root as unknown as HTMLElement, timeoutMs: 10 });
+    const rescue = installBootRescueSurface({ root: root as unknown as HTMLElement });
     const mounted = new FakeElement('main');
     mounted.textContent = 'Polaris 已挂载';
     root.replaceChildren(mounted);
@@ -149,22 +157,21 @@ describe('installBootRescueSurface', () => {
 
   it('keeps the rescue card alive when persisted backup export fails', async () => {
     vi.useFakeTimers();
-    const { root } = createBrowserGlobals();
+    const { root, emit } = createBrowserGlobals();
     const exportPersistedBackup = vi.fn(async () => {
       throw new Error('IndexedDB read failed');
     });
 
     installBootRescueSurface({
       root: root as unknown as HTMLElement,
-      timeoutMs: 10,
       exportPersistedBackup
     });
-    vi.advanceTimersByTime(10);
-    findButton(root, '导出完整备份')?.click();
+    emit('error', { error: new Error('boot failed') });
+    findButton(root, '导出本机数据')?.click();
     await vi.runAllTicks();
 
     expect(exportPersistedBackup).toHaveBeenCalledTimes(1);
-    expect(collectText(root)).toContain('先把数据救出来');
+    expect(collectText(root)).toContain('应用没有打开');
     expect(collectText(root)).toContain('IndexedDB read failed');
   });
 });

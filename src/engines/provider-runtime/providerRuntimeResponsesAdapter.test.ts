@@ -58,13 +58,14 @@ const parityCases: ResponsesAdapterParityCase[] = [
     verify(request) {
       expect(request.provider).toBe('openai-responses');
       expect(request.body.max_output_tokens).toBe(128);
-      expect(request.body.temperature).toBe(0.7);
+      expect(request.body.temperature).toBeUndefined();
       expect(request.body.stream).toBe(true);
       expect(request.body.tool_choice).toBe('required');
       expect(request.body.tools).toEqual([{
         type: 'function',
         name: 'patchRawCss',
         description: 'Provider runtime conformance fixture tool.',
+        strict: false,
         parameters: {
           type: 'object',
           additionalProperties: false,
@@ -81,8 +82,8 @@ const parityCases: ResponsesAdapterParityCase[] = [
     },
     verifyCapabilities: expect.objectContaining({
       input: expect.objectContaining({ images: 'data-url' }),
-      output: expect.objectContaining({ nativeToolCalls: false, reasoning: 'none' }),
-      tools: expect.objectContaining({ mode: 'transcript', choiceControl: 'required' }),
+      output: expect.objectContaining({ nativeToolCalls: true, reasoning: 'none' }),
+      tools: expect.objectContaining({ mode: 'native', choiceControl: 'required' }),
       budgets: expect.objectContaining({ outputTokenField: 'max_output_tokens', promptBudgetPolicy: 'enforced' })
     })
   },
@@ -106,15 +107,13 @@ const parityCases: ResponsesAdapterParityCase[] = [
     verify(request) {
       expect(request.body.max_output_tokens).toBe(144);
       expect(request.body.reasoning).toEqual({ effort: 'medium' });
-      expect(String(assistantEntry(request)?.content)).toContain('[assistant_tool_calls]');
-      expect(userEntries(request).map((entry) => String(entry.content))).toEqual(expect.arrayContaining([
-        expect.stringContaining('[tool_result:patchRawCss]')
-      ]));
+      expect(responsesInput(request).some(item => item.type === 'function_call')).toBe(true);
+      expect(responsesInput(request).some(item => item.type === 'function_call_output')).toBe(true);
     },
     verifyCapabilities: expect.objectContaining({
-      output: expect.objectContaining({ nativeToolCalls: false, reasoning: 'summary' }),
+      output: expect.objectContaining({ nativeToolCalls: true, reasoning: 'summary' }),
       streaming: expect.objectContaining({ text: true, reasoning: true }),
-      tools: expect.objectContaining({ mode: 'transcript' }),
+      tools: expect.objectContaining({ mode: 'native' }),
       budgets: expect.objectContaining({ reasoningBudget: true })
     })
   },
@@ -169,7 +168,7 @@ const parityCases: ResponsesAdapterParityCase[] = [
       expect(request.body.stream).toBe(true);
     },
     verifyCapabilities: expect.objectContaining({
-      tools: expect.objectContaining({ mode: 'transcript', choiceControl: 'auto', requiredChoice: false }),
+      tools: expect.objectContaining({ mode: 'native', choiceControl: 'auto', requiredChoice: false }),
       budgets: expect.objectContaining({ promptBudgetPolicy: 'advisory', reasoningBudget: true })
     })
   }
@@ -188,7 +187,7 @@ describe('openAiResponsesAdapter', () => {
     }
   });
 
-  it('preserves legacy Responses request output exactly', () => {
+  it('builds Responses requests with native tools and supported parameters', () => {
     for (const testCase of parityCases) {
       const adapterRequest = openAiResponsesAdapter.buildRequest(testCase.input);
       const directRequest = buildResponsesRequest(testCase.input);
@@ -198,7 +197,7 @@ describe('openAiResponsesAdapter', () => {
     }
   });
 
-  it('archives Responses capability quirks beside adapter parity fixtures', () => {
+  it('exposes native Responses capabilities', () => {
     for (const testCase of parityCases) {
       if (!testCase.verifyCapabilities) continue;
       expect(

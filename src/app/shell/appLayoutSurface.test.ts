@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isSidebarLayoutSurface,
   isWideLayoutSurface,
+  NATIVE_IOS_TABLET_LAYOUT_QUERY,
   normalizeAppLayoutSurface,
   resolveAppLayoutSurfaceFromMatches,
   shouldShowDesktopSidebar
@@ -25,6 +26,10 @@ describe('normalizeAppLayoutSurface', () => {
 });
 
 describe('resolveAppLayoutSurfaceFromMatches', () => {
+  it('does not require landscape orientation for native ios tablet geometry', () => {
+    expect(NATIVE_IOS_TABLET_LAYOUT_QUERY).not.toContain('orientation');
+  });
+
   it('uses the tablet shell for ordinary wide browser layouts even when hover is available', () => {
     expect(resolveAppLayoutSurfaceFromMatches({ desktop: true, tablet: true })).toBe('tablet');
   });
@@ -41,22 +46,22 @@ describe('resolveAppLayoutSurfaceFromMatches', () => {
     expect(resolveAppLayoutSurfaceFromMatches({ desktop: false, tablet: false })).toBe('phone');
   });
 
-  it('keeps native ios portrait and compact windows on the phone shell', () => {
-    expect(resolveAppLayoutSurfaceFromMatches({
-      desktop: false,
-      nativeIos: true,
-      nativeIosTablet: false,
-      tablet: true
-    })).toBe('phone');
-  });
-
-  it('uses the tablet shell for a wide native ios landscape window', () => {
+  it('uses the tablet shell for native ios portrait windows with tablet-class geometry', () => {
     expect(resolveAppLayoutSurfaceFromMatches({
       desktop: false,
       nativeIos: true,
       nativeIosTablet: true,
       tablet: true
     })).toBe('tablet');
+  });
+
+  it('keeps compact native ios windows on the phone shell', () => {
+    expect(resolveAppLayoutSurfaceFromMatches({
+      desktop: false,
+      nativeIos: true,
+      nativeIosTablet: false,
+      tablet: true
+    })).toBe('phone');
   });
 });
 

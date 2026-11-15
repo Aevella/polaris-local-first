@@ -14,6 +14,7 @@ export type ProviderModelOption = {
   id: string;
   label?: string;
   ownedBy?: string;
+  maxOutputTokens?: number;
 };
 
 export type ProviderModelDiscoveryResult =
@@ -51,6 +52,20 @@ function readObjectArray(payload: ProviderModelListPayload, key: 'data' | 'model
   return Array.isArray(value) ? value : [];
 }
 
+function readPositiveInteger(value: unknown) {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? value
+    : undefined;
+}
+
+function readOpenRouterMaxOutputTokens(item: Record<string, unknown>) {
+  const topProvider = item.top_provider;
+  if (!topProvider || typeof topProvider !== 'object' || Array.isArray(topProvider)) {
+    return undefined;
+  }
+  return readPositiveInteger((topProvider as Record<string, unknown>).max_completion_tokens);
+}
+
 function normalizeOpenAiCompatibleModels(payload: ProviderModelListPayload): ProviderModelOption[] {
   return uniqueModels(
     readObjectArray(payload, 'data').flatMap((entry) => {
@@ -59,7 +74,8 @@ function normalizeOpenAiCompatibleModels(payload: ProviderModelListPayload): Pro
       return typeof item.id === 'string'
         ? [{
             id: item.id,
-            ownedBy: typeof item.owned_by === 'string' ? item.owned_by : undefined
+            ownedBy: typeof item.owned_by === 'string' ? item.owned_by : undefined,
+            maxOutputTokens: readOpenRouterMaxOutputTokens(item)
           }]
         : [];
     })
@@ -74,7 +90,8 @@ function normalizeAnthropicModels(payload: ProviderModelListPayload): ProviderMo
       return typeof item.id === 'string'
         ? [{
             id: item.id,
-            label: typeof item.display_name === 'string' ? item.display_name : undefined
+            label: typeof item.display_name === 'string' ? item.display_name : undefined,
+            maxOutputTokens: readOpenRouterMaxOutputTokens(item)
           }]
         : [];
     })

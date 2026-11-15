@@ -99,7 +99,7 @@ export function buildConversationMessageSearchIndex(
   return Object.fromEntries(
     conversations
       .map((conversation) => {
-        const result = buildConversationMessageSearchMatches(conversation, query);
+        const result = buildConversationMessageSearchMatches(conversation, query, Number.POSITIVE_INFINITY);
         return result.total > 0 ? [conversation.id, result] as const : null;
       })
       .filter((entry): entry is readonly [string, ConversationMessageSearchResult] => Boolean(entry))

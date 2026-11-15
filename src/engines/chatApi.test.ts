@@ -8,6 +8,7 @@ import {
   testApiConnection
 } from './chatApi';
 import { clearProviderRuntimeCompatibilityCache } from './provider-runtime/providerRuntimeCompatibility';
+import { clearProviderRuntimeModelLimitCache } from './provider-runtime/providerRuntimeModelLimits';
 
 const capacitorRuntime = vi.hoisted(() => ({
   nativePlatform: false,
@@ -37,6 +38,7 @@ beforeEach(() => {
   nativeProviderRuntime.execute.mockReset();
   vi.unstubAllEnvs();
   clearProviderRuntimeCompatibilityCache();
+  clearProviderRuntimeModelLimitCache();
 });
 
 function createProvider(overrides: Partial<ProviderProfile> = {}): ProviderProfile {
@@ -219,6 +221,62 @@ describe('resolveConnectionTestTimeoutMs', () => {
 });
 
 describe('testApiConnection', () => {
+  it('validates OpenRouter Anthropic model metadata before the smoke request', async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const restoreGlobals = installWindowTestGlobals();
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url.endsWith('/models')) {
+        return new Response(JSON.stringify({
+          data: [{
+            id: 'anthropic/claude-sonnet-4',
+            top_provider: {
+              max_completion_tokens: 64_000
+            }
+          }]
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        id: 'msg-openrouter-test',
+        content: [{ type: 'text', text: 'pong' }]
+      }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json'
+        }
+      });
+    }) as typeof fetch;
+
+    try {
+      const result = await testApiConnection({
+        api: createProvider({
+          protocol: 'anthropic-messages',
+          baseUrl: 'https://openrouter.ai/api/v1',
+          path: '/messages',
+          model: 'anthropic/claude-sonnet-4',
+          capabilities: {
+            images: true,
+            streaming: false,
+            thinking: false
+          }
+        })
+      });
+
+      expect(result.ok).toBe(true);
+      expect(calls.map((call) => call.url)).toEqual([
+        'https://openrouter.ai/api/v1/models',
+        'https://openrouter.ai/api/v1/messages'
+      ]);
+      expect(calls[0]?.init?.method).toBe('GET');
+      expect(unwrapRequestBody(calls[1]?.init).max_tokens).toBe(32);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreGlobals();
+    }
+  });
+
   it('keeps Mimo smoke tests on max_completion_tokens only', async () => {
     const originalFetch = globalThis.fetch;
     const calls: RequestInit[] = [];
@@ -1231,6 +1289,83 @@ describe('testApiConnection', () => {
     } finally {
       globalThis.fetch = originalFetch;
       restoreGlobals();
+    }
+  });
+
+  it('sends one OpenRouter Anthropic model request with the discovered output ceiling', async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url.endsWith('/models')) {
+        return new Response(JSON.stringify({
+          data: [{
+            id: 'anthropic/claude-sonnet-4',
+            top_provider: {
+              max_completion_tokens: 64_000
+            }
+          }]
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        id: 'msg-openrouter-chat',
+        content: [{ type: 'text', text: 'pong' }]
+      }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json'
+        }
+      });
+    }) as typeof fetch;
+
+    try {
+      const reply = await requestAssistantReply({
+        api: createProvider({
+          protocol: 'anthropic-messages',
+          baseUrl: 'https://openrouter.ai/api/v1',
+          path: '/messages',
+          model: 'anthropic/claude-opus-4',
+          capabilities: {
+            images: true,
+            streaming: false,
+            thinking: false
+          }
+        }),
+        advanced: createAdvanced({
+          modelOverride: 'anthropic/claude-sonnet-4',
+          streaming: false
+        }),
+        context: {
+          memorySlots: {
+            session: [],
+            profile: [],
+            pin: []
+          },
+          attachmentSlots: {
+            enabled: false,
+            pending: []
+          },
+          segments: [{
+            kind: 'conversation',
+            messages: [{ role: 'user', content: 'ping' }]
+          }]
+        }
+      });
+
+      expect(reply.content).toBe('pong');
+      expect(calls.map((call) => call.url)).toEqual([
+        'https://openrouter.ai/api/v1/models',
+        'https://openrouter.ai/api/v1/messages'
+      ]);
+      const modelRequests = calls.filter((call) => call.url.endsWith('/messages'));
+      expect(modelRequests).toHaveLength(1);
+      expect(unwrapRequestBody(modelRequests[0]?.init)).toMatchObject({
+        model: 'anthropic/claude-sonnet-4',
+        max_tokens: 64_000
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 

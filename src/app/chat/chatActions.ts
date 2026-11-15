@@ -181,8 +181,10 @@ export function createChatActionHandlers({
   };
 
   const retryLatestAssistant = async (message: ChatMessage) => {
-    const activeConversation = derived.activeConversation;
-    if (!activeConversation || ui.sending) return;
+    if (ui.sending) return;
+    const latestState = store.chat.readLatestState();
+    const activeConversation = latestState.conversations.find((candidate) => candidate.id === latestState.activeConversationId);
+    if (!activeConversation) return;
 
     if (activeConversation.collaboratorId === null) {
       ui.setCommandStatus('这条对话已经失去归属，只能查看历史，不能在原线程里重新生成。', true);
@@ -200,6 +202,11 @@ export function createChatActionHandlers({
     }
     const messageIndex = writableConversation.messages.findIndex((candidate) => candidate.id === message.id);
     if (messageIndex <= 0) return;
+    const actualMessage = writableConversation.messages[messageIndex];
+    if (actualMessage.role !== 'assistant' || actualMessage.toolInvocation) return;
+    const removesLaterUserMessages = writableConversation.messages.slice(messageIndex)
+      .some((candidate) => candidate.role === 'user' && !candidate.toolInvocation);
+    if (removesLaterUserMessages && !ui.confirm('重新生成这条回答会移除它之后的消息，包括后续发送的文字和图片。继续吗？')) return;
     const nextMessages = writableConversation.messages.slice(0, messageIndex);
     store.chat.replaceConversationMessages(writableConversation, nextMessages);
     await runReply({
@@ -275,10 +282,9 @@ export function createChatActionHandlers({
       ui.setCommandStatus('新分支还没准备好，先别写入。', true);
       return;
     }
-    const clonedMessages = sourceConversation.messages.slice(0, messageIndex + 1).map((entry, index) => ({
+    const clonedMessages = sourceConversation.messages.slice(0, messageIndex + 1).map((entry) => ({
       ...entry,
-      id: createUid(entry.role),
-      timestamp: Date.now() + index
+      id: createUid(entry.role)
     }));
     store.chat.replaceConversationMessages(writableConversation, clonedMessages);
     store.space.clearPendingAttachments();

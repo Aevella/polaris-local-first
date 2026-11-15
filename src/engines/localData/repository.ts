@@ -301,7 +301,8 @@ function getRowCompletenessRank(row: LocalDataStoredRow) {
 
 async function validateLocalDataUnitOfWorkDoesNotOverwriteProtectedRows(
   backend: LocalDataBackend,
-  unitOfWork: LocalDataUnitOfWork
+  unitOfWork: LocalDataUnitOfWork,
+  committedAt: number
 ) {
   for (const mutation of unitOfWork.mutations) {
     if (mutation.type !== 'put' && mutation.type !== 'restore') continue;
@@ -335,11 +336,13 @@ async function validateLocalDataUnitOfWorkDoesNotOverwriteProtectedRows(
     }
 
     if (existingRow.state === 'complete' && mutation.row.state === 'complete') {
+      const existingRowIsFromFutureClock = existingRow.updatedAt > committedAt;
       if (
         mutation.row.version < existingRow.version
         || (
           mutation.row.version === existingRow.version
           && mutation.row.updatedAt < existingRow.updatedAt
+          && !existingRowIsFromFutureClock
         )
       ) {
         throw new LocalDataContractError(
@@ -517,7 +520,7 @@ export function createLocalDataRepository(options: LocalDataRepositoryOptions): 
       const mutations = buildLocalDataCommitMutations(unitOfWork, meta);
 
       try {
-        await validateLocalDataUnitOfWorkDoesNotOverwriteProtectedRows(options.backend, unitOfWork);
+        await validateLocalDataUnitOfWorkDoesNotOverwriteProtectedRows(options.backend, unitOfWork, meta.committedAt);
         const activeAdvance = await buildActiveAdvanceForAlreadyActiveDomain(meta);
         await commitMutations(activeAdvance
           ? [...mutations, buildActiveDataSourcePromotionMutation(activeAdvance)]
@@ -537,7 +540,7 @@ export function createLocalDataRepository(options: LocalDataRepositoryOptions): 
       const commitMutationsForUnit = buildLocalDataCommitMutations(unitOfWork, meta);
 
       try {
-        await validateLocalDataUnitOfWorkDoesNotOverwriteProtectedRows(options.backend, unitOfWork);
+        await validateLocalDataUnitOfWorkDoesNotOverwriteProtectedRows(options.backend, unitOfWork, meta.committedAt);
         const validationReport = await buildValidationReport(meta, commitMutationsForUnit);
         assertValidMigrationPromotionReport(meta, validationReport);
 

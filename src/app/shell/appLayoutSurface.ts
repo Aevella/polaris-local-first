@@ -10,7 +10,7 @@ export const DESKTOP_LAYOUT_QUERY =
   `(min-width: ${DESKTOP_LAYOUT_MIN_WIDTH}px) and (hover: hover) and (pointer: fine)`;
 export const TABLET_LAYOUT_QUERY = `(min-width: ${TABLET_LAYOUT_MIN_WIDTH}px)`;
 export const NATIVE_IOS_TABLET_LAYOUT_QUERY =
-  `(min-width: ${TABLET_LAYOUT_MIN_WIDTH}px) and (min-height: ${TABLET_LAYOUT_MIN_WIDTH}px) and (orientation: landscape)`;
+  `(min-width: ${TABLET_LAYOUT_MIN_WIDTH}px) and (min-height: ${TABLET_LAYOUT_MIN_WIDTH}px)`;
 
 export function normalizeAppLayoutSurface(value: string | null | undefined): AppLayoutSurface | null {
   if (value === 'phone' || value === 'tablet' || value === 'desktop') return value;

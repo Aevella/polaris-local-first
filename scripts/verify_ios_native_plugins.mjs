@@ -5,6 +5,7 @@ const configPath = resolve('ios/App/App/capacitor.config.json');
 const requiredPluginClasses = [
   'MediaPlugin',
   'AppPlugin',
+  'CAPBrowserPlugin',
   'CAPCameraPlugin',
   'ClipboardPlugin',
   'HapticsPlugin',

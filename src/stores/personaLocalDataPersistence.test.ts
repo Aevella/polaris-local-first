@@ -353,4 +353,66 @@ describe('persona LocalData persistence', () => {
       personas: [expect.objectContaining({ id: 'new-persona' })]
     }));
   });
+
+  it('saves worldbook rules without finalizing missing memory bodies or rewriting neighbors, and reloads them', async () => {
+    await promotePersonaState({ personas: [persona('book-owner', 'missing sidecar'), persona('neighbor', 'neighbor body')], activeCollaboratorId: 'book-owner' });
+    await usePersonaStore.getState().hydrateFromDb();
+    const neighborKey = getLocalDataRowKey(getPersonaObjectLocalDataRef('neighbor'));
+    const neighborBefore = await kvGet(neighborKey);
+    const memoryBefore = usePersonaStore.getState().personas[0]!.memory;
+    await usePersonaStore.getState().saveWorldBookRules('book-owner', [{ pattern: '', prompt: '紫色天空', alwaysOn: true, scanDepth: 8 }]);
+    expect(usePersonaStore.getState().personas[0]!.memory).toEqual(memoryBefore);
+    expect(await kvGet(neighborKey)).toEqual(neighborBefore);
+    usePersonaStore.setState({ personas: [], hydrated: false });
+    await usePersonaStore.getState().hydrateFromDb();
+    expect(JSON.parse(usePersonaStore.getState().personas.find(item => item.id === 'book-owner')!.advanced.regexTriggers!))
+      .toEqual([{ pattern: '', prompt: '紫色天空', alwaysOn: true, scanDepth: 8 }]);
+  });
+
+  it('keeps durable and live worldbooks on write failure and permits retry', async () => {
+    const backend = createMemoryPersistenceBackend();
+    setPersistenceBackendForTesting(backend);
+    await promotePersonaState({ personas: [persona('owner')], activeCollaboratorId: 'owner' });
+    await usePersonaStore.getState().hydrateFromDb();
+    const key = getLocalDataRowKey(getPersonaObjectLocalDataRef('owner'));
+    const before = await kvGet(key);
+    const previous = usePersonaStore.getState().personas.find((item) => item.id === 'owner')!.advanced.regexTriggers;
+    setPersistenceBackendForTesting({ ...backend, kvApplyMutations: async () => { throw new Error('disk full'); } });
+    const rules = [{ pattern: '', prompt: '常驻设定', alwaysOn: true }];
+    await expect(usePersonaStore.getState().saveWorldBookRules('owner', rules)).rejects.toThrow('untrusted persistence state');
+    expect(await kvGet(key)).toEqual(before);
+    expect(usePersonaStore.getState().personas.find((item) => item.id === 'owner')!.advanced.regexTriggers).toBe(previous);
+    setPersistenceBackendForTesting(backend);
+    await usePersonaStore.getState().saveWorldBookRules('owner', rules);
+    expect(JSON.parse(usePersonaStore.getState().personas.find((item) => item.id === 'owner')!.advanced.regexTriggers!)).toEqual(rules);
+  });
+
+  it('serializes additive imports and rejects stale editor replacement', async () => {
+    await promotePersonaState({ personas: [persona('owner')], activeCollaboratorId: 'owner' });
+    await usePersonaStore.getState().hydrateFromDb();
+    const previous = usePersonaStore.getState().personas.find((item) => item.id === 'owner')!.advanced.regexTriggers ?? '';
+    await Promise.all(['one', 'two'].map(prompt => usePersonaStore.getState().saveWorldBookRules('owner',
+      [{ pattern: '', prompt, alwaysOn: true }], { append: true })));
+    expect(JSON.parse(usePersonaStore.getState().personas.find((item) => item.id === 'owner')!.advanced.regexTriggers!).map((rule: { prompt: string }) => rule.prompt)).toEqual(['one', 'two']);
+    await expect(usePersonaStore.getState().saveWorldBookRules('owner', [], { expectedPrevious: previous })).rejects.toThrow('其他修改');
+    expect(JSON.parse(usePersonaStore.getState().personas.find((item) => item.id === 'owner')!.advanced.regexTriggers!)).toHaveLength(2);
+  });
+
+  it('preserves the legacy snapshot on failure and changes only the selected field on retry', async () => {
+    const backend = createMemoryPersistenceBackend();
+    setPersistenceBackendForTesting(backend);
+    const snapshot = { personas: [persona('owner'), persona('neighbor', 'old body')], activeCollaboratorId: 'neighbor' };
+    await kvSet('persona-state-v2', snapshot);
+    await usePersonaStore.getState().hydrateFromDb();
+    setPersistenceBackendForTesting({ ...backend, dbStoreSet: async () => { throw new Error('write failed'); } });
+    const rules = [{ pattern: '海港', prompt: '海港有雾', scanDepth: 12 }];
+    await expect(usePersonaStore.getState().saveWorldBookRules('owner', rules)).rejects.toThrow('write failed');
+    expect(await kvGet('persona-state-v2')).toEqual(snapshot);
+    setPersistenceBackendForTesting(backend);
+    await usePersonaStore.getState().saveWorldBookRules('owner', rules);
+    expect(await kvGet('persona-state-v2')).toEqual({ ...snapshot, personas: [
+      { ...snapshot.personas[0], advanced: { ...snapshot.personas.find((item) => item.id === 'owner')!.advanced, regexTriggers: JSON.stringify(rules, null, 2) } }, snapshot.personas[1]
+    ] });
+  });
+
 });

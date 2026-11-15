@@ -17,6 +17,114 @@ type RawEmbeddingItem = {
   index?: unknown;
 };
 
+export type MemoryVectorEmbeddingErrorKind = 'aborted' | 'route' | 'batch-rejected' | 'input-rejected';
+
+/**
+ * A non-2xx answer from the embeddings endpoint. `status` lets callers decide
+ * whether the whole run should stop (auth, quota, outage) or whether only the
+ * inputs in this request were rejected, without parsing provider prose.
+ */
+export class MemoryVectorEmbeddingRequestError extends Error {
+  readonly status: number;
+  readonly body: string;
+  readonly reason: string;
+
+  constructor(status: number, body: string) {
+    const reason = extractEmbeddingErrorReason(body);
+    super(`embedding API ${status}: ${reason}`);
+    this.name = 'MemoryVectorEmbeddingRequestError';
+    this.status = status;
+    this.body = body;
+    this.reason = reason;
+  }
+}
+
+function extractEmbeddingErrorReason(body: string) {
+  const trimmed = body.trim();
+  if (!trimmed) return '响应为空';
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (parsed && typeof parsed === 'object') {
+      const record = parsed as { error?: unknown; message?: unknown };
+      const nested = record.error && typeof record.error === 'object'
+        ? record.error as { message?: unknown; code?: unknown }
+        : null;
+      const message = typeof nested?.message === 'string'
+        ? nested.message
+        : typeof record.error === 'string'
+          ? record.error
+          : typeof record.message === 'string'
+            ? record.message
+            : null;
+      if (message) {
+        const code = nested && (typeof nested.code === 'string' || typeof nested.code === 'number')
+          ? `${nested.code} `
+          : '';
+        return `${code}${message}`.trim().slice(0, 180);
+      }
+    }
+  } catch {
+    // Not JSON; fall through to the raw text.
+  }
+  return trimmed.slice(0, 180);
+}
+
+const ROUTE_ERROR_STATUSES = new Set([401, 402, 403, 404, 407, 408, 429]);
+
+const BATCH_REJECTED_PATTERNS = [
+  'batch size',
+  'input.contents',
+  'too many inputs',
+  'too many input'
+];
+
+const INPUT_REJECTED_PATTERNS = [
+  'input length',
+  'context length',
+  'maximum context',
+  'too many tokens',
+  'too long',
+  'token limit',
+  '过长',
+  '参数有误'
+];
+
+function isAbortLikeError(error: unknown) {
+  return error instanceof Error && (error.name === 'AbortError' || error.message.includes('已取消'));
+}
+
+/**
+ * Sorts an embeddings failure into what the indexing runner should do next.
+ * Route problems stop the run; batch or input rejections let the runner retry
+ * smaller requests and skip only what the provider keeps refusing.
+ */
+export function classifyMemoryVectorEmbeddingError(error: unknown): MemoryVectorEmbeddingErrorKind {
+  if (isAbortLikeError(error)) return 'aborted';
+
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  const status = error instanceof MemoryVectorEmbeddingRequestError
+    ? error.status
+    : Number(/embedding api (\d{3})/.exec(message)?.[1]);
+  // Transport/authentication failures take precedence over incidental words in
+  // the provider's response (for example a rate-limit message about batch size).
+  if (ROUTE_ERROR_STATUSES.has(status) || status >= 500) return 'route';
+  if (BATCH_REJECTED_PATTERNS.some((pattern) => message.includes(pattern))) return 'batch-rejected';
+
+  if (error instanceof MemoryVectorEmbeddingRequestError) {
+    if (error.status >= 400) return 'input-rejected';
+    return 'route';
+  }
+
+  if (INPUT_REJECTED_PATTERNS.some((pattern) => message.includes(pattern))) return 'input-rejected';
+
+  const legacyStatus = /embedding api (\d{3})/.exec(message)?.[1];
+  if (legacyStatus) {
+    const status = Number(legacyStatus);
+    if (status >= 400) return 'input-rejected';
+  }
+  return 'route';
+}
+
 function normalizeEmbeddingPath(path: string) {
   const trimmed = path.trim();
   const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
@@ -69,7 +177,11 @@ function buildEmbeddingHeaders(api: ProviderProfile) {
 }
 
 function normalizeInputs(inputs: string[]) {
-  return inputs.map((input) => input.trim()).filter(Boolean);
+  const normalized = inputs.map((input) => input.trim());
+  if (normalized.some((input) => !input)) {
+    throw new Error('embedding 输入里有空片段；调用方必须先剔除空片段，否则返回的向量会错位。');
+  }
+  return normalized;
 }
 
 function parseEmbeddingVector(value: unknown) {
@@ -135,8 +247,7 @@ export async function requestMemoryVectorEmbeddings(params: MemoryVectorEmbeddin
   );
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`embedding API ${response.status}: ${text.slice(0, 180)}`);
+    throw new MemoryVectorEmbeddingRequestError(response.status, await response.text());
   }
 
   return parseEmbeddingResponse(await response.json(), inputs.length);

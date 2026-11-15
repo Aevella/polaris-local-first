@@ -41,6 +41,30 @@ describe('extractOpenAiCompatibleReply', () => {
     });
   });
 
+  it('reads and preserves OpenRouter structured reasoning details', () => {
+    const reply = extractOpenAiCompatibleReply({
+      model: 'anthropic/claude-sonnet-4.6',
+      choices: [{
+        message: {
+          content: '结论。',
+          reasoning_details: [
+            { type: 'reasoning.text', text: '先检查约束。', signature: 'sig-a', index: 0 },
+            { type: 'reasoning.encrypted', data: 'cipher-a', index: 1 }
+          ]
+        }
+      }]
+    }, 'fallback-model');
+
+    expect(reply.thinkingText).toBe('先检查约束。');
+    expect(reply.providerReasoning).toEqual({
+      protocol: 'openai-completions',
+      items: [
+        { type: 'reasoning.text', text: '先检查约束。', signature: 'sig-a', index: 0 },
+        { type: 'reasoning.encrypted', data: 'cipher-a', index: 1 }
+      ]
+    });
+  });
+
   it('parses explicit OpenAI-compatible prompt cache hit and miss fields', () => {
     const reply = extractOpenAiCompatibleReply({
       model: 'deepseek-v4-flash',
@@ -268,5 +292,25 @@ describe('extractAnthropicReply', () => {
         message: 'model: invalid-model is not a valid model ID'
       }
     }, 'fallback-model')).toThrow('model: invalid-model is not a valid model ID');
+  });
+
+  it('preserves native thinking signatures for the next tool round', () => {
+    const reply = extractAnthropicReply({
+      model: 'claude-sonnet-4-6',
+      content: [
+        { type: 'thinking', thinking: '先读取工具。', signature: 'sig-anthropic-a' },
+        { type: 'redacted_thinking', data: 'redacted-a' },
+        { type: 'tool_use', id: 'call-1', name: 'readMemory', input: { path: 'x' } }
+      ]
+    }, 'fallback-model');
+
+    expect(reply.thinkingText).toBe('先读取工具。');
+    expect(reply.providerReasoning).toEqual({
+      protocol: 'anthropic-messages',
+      items: [
+        { type: 'thinking', thinking: '先读取工具。', signature: 'sig-anthropic-a' },
+        { type: 'redacted_thinking', data: 'redacted-a' }
+      ]
+    });
   });
 });

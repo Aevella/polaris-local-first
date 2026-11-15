@@ -243,6 +243,7 @@ export async function executeInterruptedWorkspaceDraftActions(args: {
   const reply: AssistantReply = {
     content,
     thinkingText: args.partialReply?.thinkingText ?? args.placeholder.thinkingText,
+    providerReasoning: args.partialReply?.providerReasoning ?? args.placeholder.providerReasoning,
     model: args.partialReply?.model ?? args.placeholder.model,
     tokenCount: args.partialReply?.tokenCount ?? args.placeholder.tokenCount,
     tokenUsage: args.partialReply?.tokenUsage ?? args.placeholder.tokenUsage,

@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import {
-  convertChatboxExportBlobToStructuredExportSnapshot,
-  type ChatboxImportConversionStats
-} from '../stores/chatboxImportAdapter';
+  convertChatboxExportBlobToStructuredExportSnapshot
+} from '../stores/chatboxImportSource';
+import type { ChatboxImportConversionStats } from '../stores/chatboxImportAdapter';
 import { buildStructuredExportPackage } from '../stores/storeExportPackage';
 import './chatboxConverterPage.css';
 
@@ -138,7 +138,7 @@ function ChatboxConverterApp() {
                 ? '转换完成'
                 : '拖入 Chatbox 导出文件'}
             </strong>
-            <span>{fileName || '支持 chatbox-exported-data.json，也支持装着这个 JSON 的 zip'}</span>
+            <span>{fileName || '支持当前 chatbox-backup ZIP，也支持旧版 chatbox-exported-data.json'}</span>
           </div>
           <button type="button" className="converter-primary" onClick={chooseFile} disabled={status === 'reading'}>
             <span aria-hidden="true">＋</span>
@@ -150,7 +150,7 @@ function ChatboxConverterApp() {
         {status === 'idle' && (
           <div className="converter-empty">
             <strong>准备好了</strong>
-            <span>转换不会上传备份。图片和文件会保留为 Chatbox 占位说明，文字会话会进入 Polaris 对话历史。</span>
+            <span>转换不会上传备份。新版 ZIP 里的可读取图片、文件、思考内容和分支会随对话一起保留。</span>
           </div>
         )}
         {status === 'reading' && (
@@ -171,18 +171,21 @@ function ChatboxConverterApp() {
               <StatTile label="会话" value={stats.sessions} />
               <StatTile label="对话" value={stats.conversations} />
               <StatTile label="消息" value={stats.messages} />
-              <StatTile label="线程" value={stats.threadConversations} />
+              <StatTile label="分支 / 线程" value={stats.threadConversations + stats.forkConversations} />
             </div>
             <div className="converter-download">
               <div>
                 <strong>{converted.name}</strong>
-                <span>{formatBytes(converted.size)} · {stats.unsupportedParts} 个非文本片段已转成占位说明</span>
+                <span>{formatBytes(converted.size)} · {stats.unsupportedParts} 个无法原样表达的片段已保留为可读说明</span>
               </div>
               <a className="converter-download-button" href={converted.url} download={converted.name}>
                 <span aria-hidden="true">↓</span>
                 下载 zip
               </a>
             </div>
+            <p className="converter-import-hint">
+              下载后可在 Polaris 的备份页选择「从备份包恢复数据」。这会按普通备份恢复流程替换当前数据，请先导出现有备份。
+            </p>
           </>
         )}
       </section>

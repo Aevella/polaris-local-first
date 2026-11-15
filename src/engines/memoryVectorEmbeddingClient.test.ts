@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderProfile } from '../types/domain';
 import {
+  MemoryVectorEmbeddingRequestError,
   buildMemoryVectorEmbeddingEndpoint,
+  classifyMemoryVectorEmbeddingError,
   requestMemoryVectorEmbeddings
 } from './memoryVectorEmbeddingClient';
 
@@ -133,5 +135,63 @@ describe('memoryVectorEmbeddingClient', () => {
       inputs: ['one', 'two'],
       fetchImpl: fetchImpl as never
     })).rejects.toThrow('不完整');
+  });
+
+  it('turns a non-2xx answer into a typed error that keeps the status and the provider reason', async () => {
+    const zhipuBody = JSON.stringify({
+      error: { code: '1210', message: 'API 调用参数有误，请检查文档。' }
+    });
+    const fetchImpl = vi.fn(async () => new Response(zhipuBody, { status: 400 }));
+
+    const error = await requestMemoryVectorEmbeddings({
+      api: provider,
+      model: 'embedding-3',
+      dimensions: null,
+      inputs: ['很长的一段'],
+      fetchImpl: fetchImpl as never
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(MemoryVectorEmbeddingRequestError);
+    expect(error).toMatchObject({
+      status: 400,
+      reason: '1210 API 调用参数有误，请检查文档。',
+      message: 'embedding API 400: 1210 API 调用参数有误，请检查文档。'
+    });
+  });
+
+  it('classifies embedding failures by status instead of provider wording', () => {
+    const typed = (status: number, body = '{}') => new MemoryVectorEmbeddingRequestError(status, body);
+    const abort = new Error('aborted');
+    abort.name = 'AbortError';
+
+    expect(classifyMemoryVectorEmbeddingError(typed(400, '{"error":{"code":"1210","message":"API 调用参数有误，请检查文档。"}}'))).toBe('input-rejected');
+    expect(classifyMemoryVectorEmbeddingError(typed(413))).toBe('input-rejected');
+    expect(classifyMemoryVectorEmbeddingError(typed(422))).toBe('input-rejected');
+    expect(classifyMemoryVectorEmbeddingError(typed(401))).toBe('route');
+    expect(classifyMemoryVectorEmbeddingError(typed(404))).toBe('route');
+    expect(classifyMemoryVectorEmbeddingError(typed(429))).toBe('route');
+    expect(classifyMemoryVectorEmbeddingError(typed(503))).toBe('route');
+    expect(classifyMemoryVectorEmbeddingError(typed(429, 'batch size rate limit'))).toBe('route');
+    expect(classifyMemoryVectorEmbeddingError(typed(503, 'input.contents unavailable'))).toBe('route');
+    expect(classifyMemoryVectorEmbeddingError(new Error('embedding API 401: input too long'))).toBe('route');
+    expect(classifyMemoryVectorEmbeddingError(new Error('embedding API 429: batch size limit'))).toBe('route');
+    expect(classifyMemoryVectorEmbeddingError(typed(400, 'batch size is invalid, it should not be larger than 1.: input.contents'))).toBe('batch-rejected');
+    expect(classifyMemoryVectorEmbeddingError(abort)).toBe('aborted');
+    expect(classifyMemoryVectorEmbeddingError(new Error('embedding API 400: Range of input length should be less than 8192'))).toBe('input-rejected');
+    expect(classifyMemoryVectorEmbeddingError(new Error('embedding API 401: invalid api key'))).toBe('route');
+    expect(classifyMemoryVectorEmbeddingError(new TypeError('Failed to fetch'))).toBe('route');
+  });
+
+  it('refuses empty inputs instead of silently dropping them and misaligning vectors', async () => {
+    const fetchImpl = vi.fn();
+
+    await expect(requestMemoryVectorEmbeddings({
+      api: provider,
+      model: 'text-embedding-3-small',
+      dimensions: null,
+      inputs: ['first', '   '],
+      fetchImpl: fetchImpl as never
+    })).rejects.toThrow('空片段');
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

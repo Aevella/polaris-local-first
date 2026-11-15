@@ -104,3 +104,17 @@ See [backend and selfhost intent](backend-and-selfhost-intent.md) and [../connec
 This repository can be locally verifiable before it is distributed through any release channel. Source, Web selfhost, Android APK, iOS/TestFlight, and App Store state should be reported separately.
 
 Current status is documented in this `docs/open-source/` pack and the root README.
+
+## Maintenance boundaries added in November 2026
+
+Chatbox archive selection and manifest dispatch belong to `src/stores/chatboxImportSource.ts`; conversion belongs to `chatboxImportAdapter.ts`. `src/infrastructure/backupImportSource.ts` and `backupImportArchive.ts` own ranged transport and archive release. They produce the existing public structured snapshot and do not change SQLite facts or import transaction authority.
+
+MCP catalog/auth orchestration enters through `src/engines/mcpRuntime.ts`. Persistent connections and their availability belong to `mcp-transport/sessionRegistry.ts`; OAuth discovery, refresh, callbacks, and secret storage belong to `mcp-auth/`. Native bridges expose SSE/browser/secret capabilities only. Tool availability still follows the existing user tool-group switches.
+
+Provider reasoning metadata is replay evidence on messages. The existing public typed SQLite serializer persists the message payload; request normalization and native protocol replay live in `provider-runtime/`. Memory confirmation projection records the actual resolved outcome, including cancellation or failure.
+
+Worldbook field writes use the existing `personaPersistenceCommitQueue.ts` and the selected collaborator row through `personaWorldBookPersistence.ts`. The live projection changes only after the durable write succeeds. Timeline reading anchors belong to `TimelineScroll.ts`; viewport, keyboard, and world-presence ownership remain unchanged.
+
+See [the synchronization record](sync-2026-11-15.md) for scope and channel boundaries.
+
+Provider model discovery keeps the public direct-first policy. Its serverless fallback is `api/provider-models.ts`: authenticated GET of a public HTTPS `/models` endpoint, with existing DNS/private-address checks and redirects refused. Native MCP callbacks use the deployer-configured frontend origin, not an official service.

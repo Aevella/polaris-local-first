@@ -50,7 +50,7 @@ See [CONTRIBUTING.md](/CONTRIBUTING.md).
 
 ## Local Development
 
-Install dependencies and start the Vite dev server:
+Use Node.js 22.13+ (22.x) or Node.js 24+. Install dependencies and start the Vite dev server:
 
 ```bash
 npm i

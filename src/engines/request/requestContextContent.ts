@@ -264,7 +264,7 @@ export function buildWorkspaceReferenceSegment(docs: WorkspaceReferenceDocDirect
 }
 
 function formatSemanticRecallKind(kind: AssistantSemanticRecallContextCandidate['kind']) {
-  if (kind === 'recent_tail') return '接着聊';
+  if (kind === 'recent_tail') return '旧对话近期记录';
   if (kind === 'vector_match') return '语义候选';
   if (kind === 'voice_anchor') return '语感锚点';
   return '锚点命中';

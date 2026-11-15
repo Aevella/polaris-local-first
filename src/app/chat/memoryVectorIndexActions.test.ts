@@ -15,6 +15,7 @@ import type {
   MemoryVectorIndexPreparationRequestReply
 } from '../../engines/memoryVectorIndexPreparationRunner';
 import { memoryVectorIndexMetadataKey } from '../../engines/memoryVectorIndexStorage';
+import { MemoryVectorEmbeddingRequestError } from '../../engines/memoryVectorEmbeddingClient';
 import {
   buildChatDomainMetaLocalDataRow,
   buildConversationLocalDataProjection,
@@ -303,6 +304,51 @@ describe('memoryVectorIndexActions', () => {
       totalChunkCount: 1,
       lastIndexedAt: 777,
       lastError: ''
+    });
+  });
+
+  it('finishes as idle with a visible notice when the embedding provider rejected some chunks', async () => {
+    useRuntimeStore.setState({
+      providers: [{ ...provider, apiKey: '' }],
+      activeProviderId: provider.id,
+      conversationSummaryModel: {
+        enabled: false,
+        providerId: provider.id,
+        modelOverride: 'semantic-small',
+        targetSourceChars: 50_000,
+        lastUpdatedAt: 0
+      },
+      memoryVectorRetrieval: {
+        enabled: true,
+        baseUrl: provider.baseUrl,
+        path: '/embeddings',
+        apiKey: 'vector-key',
+        model: 'embedding-3',
+        dimensions: null,
+        lastUpdatedAt: 0
+      }
+    });
+    const requestEmbeddings = vi.fn<MemoryVectorIndexEmbeddingRequest>(async () => {
+      throw new MemoryVectorEmbeddingRequestError(400, JSON.stringify({
+        error: { code: '1210', message: 'API 调用参数有误，请检查文档。' }
+      }));
+    });
+
+    const result = await updateMemoryVectorIndexForCollaborator('aa', {
+      requestEmbeddings,
+      now: 778,
+      yieldToForeground: vi.fn(async () => undefined)
+    });
+    const persona = usePersonaStore.getState().personas.find((item) => item.id === 'aa');
+
+    expect(result.status).toBe('completed');
+    expect(result.skippedChunkCount).toBe(1);
+    expect(persona?.memory.vectorIndex).toMatchObject({
+      status: 'idle',
+      indexedChunkCount: 0,
+      totalChunkCount: 1,
+      lastIndexedAt: 778,
+      lastError: '1 条片段被向量模型拒绝，已跳过，下次整理会重试：1210 API 调用参数有误，请检查文档。'
     });
   });
 

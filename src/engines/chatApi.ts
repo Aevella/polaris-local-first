@@ -23,6 +23,7 @@ import {
 } from './chat-api/chatApiTransport';
 import { resolveProviderCapability } from './provider-runtime/providerCapability';
 import { isPolarisBuiltInProvider } from './freeProvider';
+import { resolveProviderRuntimeMaxOutputTokens } from './provider-runtime/providerRuntimeModelLimits';
 export { testApiConnection } from './providerConnectionTest';
 export type {
   AssistantNativeToolCall,
@@ -68,6 +69,9 @@ export async function requestAssistantReply(params: RequestAssistantReplyParams)
   if (!api.apiKey.trim() && !isPolarisBuiltInProvider(api)) throw new Error('请先在设置里填写 API Key');
 
   const providerCapability = resolveProviderCapability(api, advanced);
+  const providerMaxOutputTokens = advanced?.maxTokens?.trim()
+    ? undefined
+    : await resolveProviderRuntimeMaxOutputTokens(providerCapability.provider, signal);
   const maxAttempts = providerCapability.execution.maxAttempts;
   const streamIdleTimeoutMs = providerCapability.execution.streamIdleTimeoutMs;
   let disableStreamingFallback = false;
@@ -85,6 +89,7 @@ export async function requestAssistantReply(params: RequestAssistantReplyParams)
     let request = buildApiRequest({
       api,
       advanced,
+      providerMaxOutputTokens,
       context: retryContext,
       sessionId,
       bodyOverrides: disableStreamingFallback ? { stream: false } : undefined,
@@ -95,6 +100,7 @@ export async function requestAssistantReply(params: RequestAssistantReplyParams)
       request = buildApiRequest({
         api,
         advanced,
+        providerMaxOutputTokens,
         context: retryContext,
         sessionId,
         bodyOverrides: disableStreamingFallback ? { stream: false } : undefined,

@@ -62,6 +62,7 @@
     "@capacitor-community/media": "^9.1.0",
     "@capacitor/android": "^8.2.0",
     "@capacitor/app": "^8.1.0",
+    "@capacitor/browser": "^8.0.5",
     "@capacitor/camera": "^8.0.2",
     "@capacitor/cli": "^8.2.0",
     "@capacitor/clipboard": "^8.0.1",
@@ -71,10 +72,11 @@
     "@capacitor/keyboard": "^8.0.2",
     "@capacitor/local-notifications": "^8.2.0",
     "@capacitor/push-notifications": "^8.0.3",
+    "@zip.js/zip.js": "^2.25.0",
     "jsqr": "^1.4.0",
     "jszip": "^3.10.1",
-    "katex": "^0.16.46",
-    "pdfjs-dist": "^5.6.205",
+    "katex": "^0.19.1",
+    "pdfjs-dist": "^6.5.438",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -95,5 +97,8 @@
     "typescript": "^5.6.2",
     "vite": "^5.4.8",
     "vitest": "^4.1.1"
+  },
+  "engines": {
+    "node": "^22.13.0 || >=24"
   }
 }

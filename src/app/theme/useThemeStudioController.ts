@@ -118,7 +118,7 @@ export function useThemeStudioController(open: boolean, ui: ThemeStudioUiPorts) 
     }, kind === 'applied' ? 1500 : 2200);
   };
 
-  const handleCustomCssDraftChange = (value: string, options?: { feedback?: boolean; consumeOnApply?: boolean }) => {
+  const handleCustomCssDraftChange = (value: string, options?: { feedback?: boolean }) => {
     setCustomCssDraft(value);
     const partUpsertResult = upsertPolarisCssParts(theme.customCSS, value);
     const nextCss = partUpsertResult.changed ? partUpsertResult.nextCss : value;
@@ -139,9 +139,6 @@ export function useThemeStudioController(open: boolean, ui: ThemeStudioUiPorts) 
     }
 
     if (trimmed === theme.customCSS.trim()) {
-      if (options?.consumeOnApply) {
-        setCustomCssDraft('');
-      }
       if (options?.feedback) {
         showCustomCssApplyFeedback('applied', '已使用');
       }
@@ -152,9 +149,6 @@ export function useThemeStudioController(open: boolean, ui: ThemeStudioUiPorts) 
       snapshotBeforeChange: !liveCustomCssSnapshotTakenRef.current
     });
     liveCustomCssSnapshotTakenRef.current = true;
-    if (options?.consumeOnApply) {
-      setCustomCssDraft('');
-    }
     if (options?.feedback) {
       showCustomCssApplyFeedback('applied', '已使用');
     }

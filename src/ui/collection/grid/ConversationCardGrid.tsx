@@ -49,6 +49,9 @@ export function ConversationCardGrid({
   const hasMessageSearchMatches = Object.keys(conversationMessageSearchIndex ?? {}).length > 0;
   const virtualWindow = useVirtualCardWindow({
     itemCount: conversations.length,
+    // Search hits can expand to variable heights; the fixed-height window would
+    // unmount the very result being read. Ordinary conversation lists stay windowed.
+    minVirtualItems: hasMessageSearchMatches ? Number.POSITIVE_INFINITY : undefined,
     estimateRowHeight: cardsExpanded ? (hasMessageSearchMatches ? 226 : 154) : 54,
     overscanRows: cardsExpanded ? 5 : 10
   });

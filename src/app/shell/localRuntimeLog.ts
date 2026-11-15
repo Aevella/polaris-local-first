@@ -147,7 +147,8 @@ function streamDetail(entry: ReturnType<typeof readStreamDebugEntries>[number]) 
     case 'native-stream-error':
       return compactParts([
         safeNumber(meta.status) !== null ? `status ${safeNumber(meta.status)}` : null,
-        safeNumber(meta.elapsedMs) !== null ? `${safeNumber(meta.elapsedMs)} ms` : null
+        safeNumber(meta.elapsedMs) !== null ? `${safeNumber(meta.elapsedMs)} ms` : null,
+        safeString(meta.message) ? shortText(safeString(meta.message) ?? '') : null
       ]);
     case 'native-stream-start':
       return compactParts([

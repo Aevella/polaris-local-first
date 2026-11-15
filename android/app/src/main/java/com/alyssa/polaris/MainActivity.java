@@ -7,8 +7,11 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(SystemFilePlugin.class);
+        registerPlugin(WebDavPlugin.class);
         registerPlugin(LocalDataSqlitePlugin.class);
         registerPlugin(NativeProviderHttpPlugin.class);
+        registerPlugin(NativeMcpSsePlugin.class);
+        registerPlugin(NativeSecretStorePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

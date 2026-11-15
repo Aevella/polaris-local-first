@@ -172,3 +172,7 @@ Those GET requests may return `405 Method not allowed`; that still proves DNS/TL
 - It does not make this repo a live-user release channel.
 - It does not make the old official Polaris server part of the public default.
 - It does not guarantee the backend surface is complete; missing handlers above must be implemented before those features are advertised.
+
+## Native MCP OAuth callback
+
+Set `VITE_POLARIS_MCP_OAUTH_REDIRECT_URI` to your own deployed HTTPS Polaris frontend page when that page differs from `VITE_POLARIS_API_ORIGIN`. Without the optional value, native OAuth uses the configured API origin. The frontend accepts the callback and relays it to the registered `polaris://mcp/oauth/callback` deep link. No callback is sent to an owner-operated service by default. Web OAuth returns to the current page.

@@ -162,10 +162,21 @@
 
 .conversation-message-search-meta,
 .conversation-message-search-more {
+  align-self: flex-start;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  font-family: inherit;
+  cursor: pointer;
   color: color-mix(in srgb, var(--muted) 82%, var(--text) 18%);
-  font-size: 10px;
-  line-height: 1.2;
+  font-size: var(--type-caption);
+  line-height: 1.4;
 }
+.conversation-message-search-more:hover { background: var(--accent-soft); }
+.conversation-message-search-more:active { background: var(--accent-soft); }
+.conversation-message-search-more:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 
 .conversation-message-search-match {
   width: 100%;

@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { convertChatboxExportBlobToStructuredExportSnapshot } from '../src/stores/chatboxImportAdapter';
+import { convertChatboxExportBlobToStructuredExportSnapshot } from '../src/stores/chatboxImportSource';
 import { buildStructuredExportPackage } from '../src/stores/storeExportPackage';
 
 function readArg(name: string) {

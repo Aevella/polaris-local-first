@@ -29,7 +29,18 @@ export function getProviderProtocolLabelKey(protocol: ProviderProtocol): Provide
   return PROVIDER_PROTOCOL_LABEL_KEYS[protocol];
 }
 
-export function inferProviderProtocol(input: Pick<Partial<ProviderProfile>, 'protocol' | 'path'>): ProviderProtocol {
+export function inferProviderProtocol(input: Pick<Partial<ProviderProfile>, 'protocol' | 'path' | 'baseUrl' | 'model'>): ProviderProtocol {
+  const path = input.path?.trim().split(/[?#]/)[0].replace(/\/+$/, '').toLowerCase() ?? '';
+  if ((!input.protocol || input.protocol === 'openai-completions') && /(?:^|\/)responses$/.test(path)) {
+    return 'openai-responses';
+  }
+  if ((!input.protocol || input.protocol === 'openai-completions') && path.endsWith('/chat/completions')) {
+    let host = '';
+    try { host = new URL(input.baseUrl ?? '').hostname.toLowerCase(); } catch { /* relative/local route */ }
+    if (host === 'api.openai.com' && /^(?:gpt-6(?:[.-]|$)|gpt-5\.[4-9](?:[.-]|$))/.test(input.model ?? '')) {
+      return 'openai-responses';
+    }
+  }
   if (
     input.protocol === 'openai-completions'
     || input.protocol === 'anthropic-messages'

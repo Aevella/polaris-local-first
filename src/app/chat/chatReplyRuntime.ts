@@ -883,8 +883,10 @@ async function requestReplyRound({
     if (isAbortError(error)) {
       const latestPlaceholder = chat.findConversationMessage(conversationId, placeholderId);
 
-      if (!latestPlaceholder?.content.trim() && !latestPlaceholder?.thinkingText?.trim()) {
-        chat.replaceConversationMessages(writableConversation, messages);
+      if (!latestPlaceholder?.content.trim() && !latestPlaceholder?.thinkingText?.trim()
+        && !latestPlaceholder?.nativeToolCalls?.length) {
+        chat.replaceConversationMessages(writableConversation,
+          chat.getConversationMessages(conversationId).filter((message) => message.id !== placeholderId));
       } else {
         streaming.scheduleLifecycleRelease(220);
         preserveStreamingLifecycle = true;

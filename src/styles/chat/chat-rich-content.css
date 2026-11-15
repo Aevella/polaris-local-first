@@ -5,6 +5,47 @@
 .message-rich-text strong { font-weight: 600; color: inherit; }
 .message-rich-text em { font-style: italic; }
 .message-rich-text a { color: color-mix(in srgb, var(--accent) 82%, var(--text) 18%); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 38%, transparent); text-underline-offset: 0.16em; }
+.message-markdown-image-link {
+  position: relative;
+  display: inline-grid;
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 22%, transparent);
+  text-decoration: none;
+  vertical-align: top;
+  -webkit-tap-highlight-color: transparent;
+}
+.message-markdown-image-placeholder,
+.message-markdown-image {
+  grid-area: 1 / 1;
+}
+.message-markdown-image-placeholder {
+  width: min(280px, 68vw);
+  max-width: 100%;
+  aspect-ratio: 4 / 3;
+  background: linear-gradient(105deg, color-mix(in srgb, var(--surface) 20%, transparent) 22%, color-mix(in srgb, var(--surface) 44%, transparent) 42%, color-mix(in srgb, var(--surface) 20%, transparent) 62%);
+  background-size: 220% 100%;
+  animation: markdownImageLoading 1.2s ease-in-out infinite;
+}
+.message-markdown-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(100%, 520px);
+  max-height: min(58vh, 640px);
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+.message-markdown-image-link.is-loaded .message-markdown-image { opacity: 1; }
+.message-markdown-image-fallback,
+.message-markdown-image-unsafe { overflow-wrap: anywhere; }
+@keyframes markdownImageLoading {
+  0% { background-position: 100% 0; }
+  100% { background-position: -120% 0; }
+}
 .message-markdown { gap: 0.82em; white-space: normal; }
 .bubble.assistant > .message-rich-text > * + * { margin-top: 0.56em; }
 .bubble.assistant > .message-markdown > * + * { margin-top: 0.82em; }

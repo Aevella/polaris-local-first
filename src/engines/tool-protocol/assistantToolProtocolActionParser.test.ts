@@ -1152,6 +1152,54 @@ describe('parseAssistantToolAction', () => {
     });
   });
 
+  it('keeps fallback MCP business arguments opaque after the tool discriminator', () => {
+    const result = parseAssistantToolAction({
+      kind: 'mcp__aisay__cli',
+      command: 'help',
+      args: {
+        path: 'account'
+      },
+      arguments: {
+        format: 'full'
+      },
+      targetLabel: 'business-owned-label'
+    }, undefined, 'stable', {
+      mcpTools: [{
+        schemaName: 'mcp__aisay__cli',
+        serverId: 'server-aisay',
+        serverName: 'AISay',
+        serverHandle: 'aisay',
+        transport: 'streamable-http',
+        url: 'https://aisay.top/chatroom/mcp',
+        toolName: 'cli',
+        description: 'AISay CLI',
+        inputSchema: {
+          type: 'object'
+        }
+      }]
+    });
+
+    expect(result.issue).toBeUndefined();
+    expect(result.action).toEqual({
+      kind: 'invokeMcpTool',
+      serverId: 'server-aisay',
+      serverName: 'AISay',
+      schemaName: 'mcp__aisay__cli',
+      toolName: 'cli',
+      argumentsObject: {
+        command: 'help',
+        args: {
+          path: 'account'
+        },
+        arguments: {
+          format: 'full'
+        },
+        targetLabel: 'business-owned-label'
+      },
+      targetLabel: 'AISay / cli'
+    });
+  });
+
   it('reports unavailable dynamic MCP tool actions without calling them unknown', () => {
     const result = parseAssistantToolAction({
       kind: 'mcp__github__github_read_file',

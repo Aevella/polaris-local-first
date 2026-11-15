@@ -1,3 +1,5 @@
+import { useMcpOAuthCallbackRuntime } from '../app/shell/useMcpOAuthCallbackRuntime';
+import { useMcpSessionLifecycle } from './useMcpSessionLifecycle';
 import { Suspense, lazy } from 'react';
 import { AppShellView } from './app-shell/AppShellView';
 import { useAppRuntime } from './app-shell/useAppRuntime';
@@ -15,6 +17,8 @@ const AssetGovernanceDebugLayer = lazy(() =>
 );
 
 export function AppShell() {
+  useMcpSessionLifecycle();
+  useMcpOAuthCallbackRuntime();
   const controller = useAppShellController();
   const appLanguage = useSpaceStore((state) => state.appLanguage);
   const screenshotDebugOverlayEnabled = useSpaceStore((state) => state.screenshotDebugOverlayEnabled);

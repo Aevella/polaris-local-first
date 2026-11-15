@@ -85,6 +85,7 @@ export interface McpServerToolConfig {
 }
 
 export interface McpServerConfig {
+  oauthClientId?: string;
   id: string;
   handle: string;
   name: string;

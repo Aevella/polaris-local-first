@@ -11,15 +11,15 @@
   pointer-events: auto;
 }
 
-.settings-overlay { position: absolute; inset: 0; z-index: 720; background: rgba(0,0,0,0.2); backdrop-filter: blur(6px); display: flex; align-items: flex-end; animation: fadeIn 0.2s ease; transition: background 180ms ease; will-change: opacity; }
-.settings-sheet { width: 100%; max-height: 70%; border-radius: var(--sheet-surface-radius); border: var(--sheet-surface-border); background: var(--sheet-surface-fill); box-shadow: var(--sheet-surface-shadow); backdrop-filter: var(--sheet-surface-backdrop); padding: 20px 24px calc(40px + env(safe-area-inset-bottom, 0px) + var(--keyboard-scroll-padding, 0px)); animation: slideFromBottom 240ms var(--ease-out) both; transition: padding 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease; will-change: transform, opacity; backface-visibility: hidden; transform: translate3d(0, 0, 0); }
+.settings-overlay { position: absolute; inset: 0; z-index: 720; background: rgba(0,0,0,0.2); backdrop-filter: blur(6px); display: flex; align-items: flex-end; animation: fadeIn 140ms ease; transition: background 180ms ease; will-change: opacity; }
+.settings-sheet { width: 100%; max-height: 70%; border-radius: var(--sheet-surface-radius); border: var(--sheet-surface-border); background: var(--sheet-surface-fill); box-shadow: var(--sheet-surface-shadow); backdrop-filter: var(--sheet-surface-backdrop); padding: 20px 24px calc(40px + env(safe-area-inset-bottom, 0px) + var(--keyboard-scroll-padding, 0px)); animation: slideFromBottom 170ms var(--ease-out) both; transition: padding 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease; will-change: transform, opacity; backface-visibility: hidden; transform: translate3d(0, 0, 0); }
 .menu-overlay {
   align-items: stretch;
   justify-content: stretch;
   background:
-    linear-gradient(180deg, rgba(234, 238, 238, 0.78), rgba(222, 228, 227, 0.68));
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-solid) 78%, transparent), color-mix(in srgb, var(--surface-deep) 68%, transparent));
   backdrop-filter: blur(8px) saturate(0.86);
-  animation: menuFullscreenScrimIn 200ms var(--ease-out) both;
+  animation: menuFullscreenScrimIn 140ms var(--ease-out) both;
 }
 .app-global-overlays .menu-overlay > .settings-sheet.menu-sheet {
   position: relative;
@@ -33,16 +33,12 @@
   flex-direction: column;
   overflow: hidden;
   background:
-    radial-gradient(circle at 18% 0%, color-mix(in srgb, rgba(255,255,255,0.64) 74%, var(--accent-glow) 26%), transparent 32%),
-    radial-gradient(circle at 88% 14%, color-mix(in srgb, rgba(255,255,255,0.3) 68%, var(--accent-soft) 32%), transparent 30%),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface-solid) 68%, rgba(255,255,255,0.86)),
-      color-mix(in srgb, var(--surface-solid) 58%, rgba(255,255,255,0.62))
-    );
+    radial-gradient(circle at 18% 0%, var(--accent-glow), transparent 32%),
+    radial-gradient(circle at 88% 14%, var(--accent-soft), transparent 30%),
+    var(--sheet-surface-fill);
   box-shadow: none;
   backdrop-filter: blur(20px) saturate(1.02);
-  animation: menuFullscreenSheetIn 240ms var(--ease-out) both;
+  animation: menuFullscreenSheetIn 170ms var(--ease-out) both;
 }
 .menu-sheet .sheet-handle { display: none; }
 .menu-sheet .menu-sheet-page {

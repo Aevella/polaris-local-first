@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { parseRichCardBlock, parseRichDetailsBlock, renderRichInlineContent } from './messageRichMarkup';
 
 describe('messageRichMarkup', () => {
@@ -42,5 +43,33 @@ describe('messageRichMarkup', () => {
         children: '删掉的话'
       }
     });
+  });
+
+  it('renders markdown images as lazy external images', () => {
+    const html = renderToStaticMarkup(renderRichInlineContent('看这个 ![猫猫](https://example.com/cat.png)'));
+
+    expect(html).toContain('class="message-markdown-image-link is-loading"');
+    expect(html).toContain('<img');
+    expect(html).toContain('src="https://example.com/cat.png"');
+    expect(html).toContain('alt="猫猫"');
+    expect(html).toContain('loading="lazy"');
+    expect(html).toContain('referrerPolicy="no-referrer"');
+  });
+
+  it('does not load markdown images from unsupported protocols', () => {
+    const html = renderToStaticMarkup(renderRichInlineContent('![坏图](javascript:alert(1))'));
+
+    expect(html).not.toContain('<img');
+    expect(html).not.toContain('<a');
+    expect(html).toContain('message-markdown-image-unsafe');
+    expect(html).toContain('坏图');
+  });
+
+  it('renders inline PNG data from a generated Markdown reply', () => {
+    const source = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
+    const html = renderToStaticMarkup(renderRichInlineContent(`![生成图片](${source})`));
+    expect(html).toContain('<img');
+    expect(html).toContain(`src="${source}"`);
+    expect(html).not.toContain('message-markdown-image-unsafe');
   });
 });

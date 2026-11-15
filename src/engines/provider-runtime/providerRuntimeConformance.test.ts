@@ -118,10 +118,10 @@ describe('provider runtime characterization fixtures', () => {
       budgets: expect.objectContaining({ outputTokenField: 'max_output_tokens' })
     }));
     expect(matrix['openai-responses-transcript-history']).toEqual(expect.objectContaining({
-      output: expect.objectContaining({ nativeToolCalls: false, reasoning: 'summary' }),
+      output: expect.objectContaining({ nativeToolCalls: true, reasoning: 'summary' }),
       tools: expect.objectContaining({
-        mode: 'transcript',
-        historyMode: 'transcript',
+        mode: 'native',
+        historyMode: 'native',
         promptProtocol: 'native-first',
         choiceControl: 'required'
       }),
@@ -277,7 +277,9 @@ describe('provider runtime characterization fixtures', () => {
 
     expect(request.body.max_output_tokens).toBe(144);
     expect(request.body.reasoning).toEqual({ effort: 'medium' });
-    expect(String(assistantContent)).toContain('[assistant_tool_calls]');
+    expect(String(assistantContent)).toContain('I will call');
+    expect(input.some(item => readObject(item).type === 'function_call')).toBe(true);
+    expect(input.some(item => readObject(item).type === 'function_call_output')).toBe(true);
     expect(readArray(request.body.tools)[0]).toEqual(expect.objectContaining({
       type: 'function',
       name: 'patchRawCss'
@@ -416,6 +418,35 @@ describe('provider runtime characterization fixtures', () => {
       { type: 'usage', usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7, cachedInputTokens: 2, cacheMissInputTokens: 1 } }
     ]));
 
+    const openRouterReasoningEvents = parseProviderRuntimeStreamEvents({
+      choices: [{
+        delta: {
+          reasoning_details: [{
+            type: 'reasoning.text',
+            text: 'structured thought',
+            signature: 'sig-openrouter-a',
+            index: 0
+          }]
+        }
+      }]
+    });
+
+    expect(openRouterReasoningEvents).toEqual(expect.arrayContaining([
+      { type: 'reasoning.delta', text: 'structured thought', mode: 'text' },
+      {
+        type: 'reasoning.state',
+        state: {
+          protocol: 'openai-completions',
+          items: [{
+            type: 'reasoning.text',
+            text: 'structured thought',
+            signature: 'sig-openrouter-a',
+            index: 0
+          }]
+        }
+      }
+    ]));
+
     const choiceUsageEvents = parseProviderRuntimeStreamEvents({
       choices: [{
         delta: {},
@@ -457,6 +488,22 @@ describe('provider runtime characterization fixtures', () => {
       { type: 'reasoning.delta', text: 'step', mode: 'text' },
       { type: 'usage', usage: { inputTokens: 2, outputTokens: 5, totalTokens: 7 } }
     ]));
+
+    const anthropicSignatureEvents = parseProviderRuntimeStreamEvents({
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'signature_delta',
+        signature: 'sig-anthropic-a'
+      }
+    });
+    expect(anthropicSignatureEvents).toContainEqual({
+      type: 'reasoning.state',
+      state: {
+        protocol: 'anthropic-messages',
+        items: [{ type: 'thinking', index: 0, signature: 'sig-anthropic-a' }]
+      }
+    });
 
     const responsesEvents = parseProviderRuntimeStreamEvents({
       type: 'response.function_call_arguments.done',

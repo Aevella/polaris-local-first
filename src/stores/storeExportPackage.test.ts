@@ -233,6 +233,7 @@ describe('storeExportPackage', () => {
   });
 
   it('exports persona memory document bodies outside the persona store file', async () => {
+    setPersistenceBackendForTesting(createMemoryPersistenceBackend());
     const exported = await buildStructuredExportPackage({
       spaceState: {},
       chatState: {
@@ -489,6 +490,59 @@ describe('storeExportPackage', () => {
       previewPath: 'previews/images/kelivo-avatar.jpg'
     });
     await expect(zip.file('assets/images/kelivo-avatar.png')!.async('uint8array')).resolves.toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it.each([false, true])('exports complete images with optional previews (stored preview: %s)', async (hasPreview) => {
+    const backend = createMemoryPersistenceBackend();
+    setPersistenceBackendForTesting(backend);
+    await backend.dbStoreSet(ASSET_META_STORE, 'image', {
+      id: 'image', kind: 'image', name: 'image.png', mimeType: 'image/png', size: 3, createdAt: 1
+    });
+    await backend.dbStoreSet(ASSET_BINARY_STORE, 'image', new Blob([new Uint8Array([1, 2, 3])]));
+    if (hasPreview) {
+      await backend.dbStoreSet(ASSET_PREVIEW_STORE, 'image', new Blob([new Uint8Array([9])]));
+    }
+    const textEntries = new Map<string, string>();
+    const binaryEntries = new Map<string, Blob>();
+    const result = await streamStructuredExportPackageEntries({
+      spaceState: {},
+      chatState: {
+        conversations: [],
+        activeConversationId: null
+      },
+      collectionState: {
+        cards: [],
+        projectFiles: [],
+        workspaceReferenceDocs: [],
+        roomProjects: [],
+        imageCards: [],
+        deletedBundledCardIds: []
+      },
+      personaState: {
+        personas: [],
+        activeCollaboratorId: null,
+        seededDefaultPersonaIds: []
+      },
+      personaMemoryDocContent: {
+        version: 1,
+        docs: {}
+      },
+      runtimeState: normalizeRuntimePayload(null)
+    }, {
+      onTextEntry: async (path, text) => {
+        textEntries.set(path, text);
+      },
+      onBinaryEntry: async (path, blob) => {
+        binaryEntries.set(path, blob);
+      }
+    });
+
+    expect(result.report.issues).toEqual([]);
+    expect(JSON.parse(textEntries.get('manifest.json')!).completeness).toBe('complete');
+    expect(new Uint8Array(await binaryEntries.get('assets/images/image.png')!.arrayBuffer()))
+      .toEqual(new Uint8Array([1, 2, 3]));
+    expect(new Uint8Array(await binaryEntries.get('previews/images/image.jpg')!.arrayBuffer()))
+      .toEqual(new Uint8Array(hasPreview ? [9] : [1, 2, 3]));
   });
 
   it('streams persisted assets with a report instead of aborting on broken asset rows', async () => {

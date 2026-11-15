@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { renderLatexNode } from './messageMath';
+import { MessageMarkdownImage, resolveMarkdownImageUrl } from './MessageMarkdownImage';
 
 const INLINE_MARKUP_PATTERN = /<br\s*\/?>|<(span|small|sub|sup|mark|strong|b|em|i|u|del|s)([^>]*)>([\s\S]*?)<\/\1>/gi;
 const INLINE_TOKEN_PATTERN = /(`[^`\n]+`|\\\([^\n]+?\\\)|\$(?![\s$])(?:\\.|[^$\\\n])*?[^\s\\]\$|~~[^~\n](?:[\s\S]*?[^~\n])?~~|\*\*[^*\n](?:[\s\S]*?[^*\n])?\*\*|__[^_\n](?:[\s\S]*?[^_\n])?__|\*[^*\n](?:[\s\S]*?[^*\n])?\*|_[^_\n](?:[\s\S]*?[^_\n])?_|!\[[^\]]*\]\([^)]+\)|\[[^\]]+\]\([^)]+\))/g;
@@ -112,7 +113,14 @@ function renderInlineMarkdownOnly(content: string): ReactNode[] {
       const imageMatch = segment.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
       const linkMatch = segment.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
       if (imageMatch) {
-        nodes.push(<a key={`image-${index}`} href={imageMatch[2]} target="_blank" rel="noreferrer">{imageMatch[1] || imageMatch[2]}</a>);
+        const imageUrl = imageMatch[2];
+        nodes.push(
+          <MessageMarkdownImage
+            key={`image-${index}-${resolveMarkdownImageUrl(imageUrl) ?? imageUrl}`}
+            alt={imageMatch[1]}
+            src={imageUrl}
+          />
+        );
       } else if (linkMatch) {
         nodes.push(<a key={`link-${index}`} href={linkMatch[2]} target="_blank" rel="noreferrer">{linkMatch[1]}</a>);
       } else {

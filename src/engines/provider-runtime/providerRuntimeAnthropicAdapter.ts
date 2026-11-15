@@ -1,6 +1,6 @@
 import type { AssistantContextMessage, AssistantMessageContent, AssistantRequestTool } from '../request/requestContext';
 import type { AssistantRequestCacheTtl } from '../request/requestCachePlan';
-import { buildHistoricalToolCallNameMap, extractTextPayload } from './requestShared/messages';
+import { buildHistoricalToolCallNameMap, extractTextPayload, buildSeparatedSystemMessages } from './requestShared/messages';
 import { ANTHROPIC_VERSION } from './requestShared/headers';
 import { resolveRequestBuilderBase, shouldSendTemperature, shouldSendTopP } from './requestShared/sampling';
 import { buildToolResultPayloadText, parseToolCallArguments } from './requestShared/toolResultPayload';
@@ -19,6 +19,7 @@ import {
   canonicalProviderCapabilitiesFromContract,
   resolveProviderCapability
 } from './providerCapability';
+import { buildProviderThinkingRequest } from './providerRuntimeThinking';
 
 const ANTHROPIC_MESSAGES_ADAPTER_ID = 'anthropic-messages';
 const DEFAULT_ANTHROPIC_MAX_TOKENS = 65_536;
@@ -44,7 +45,9 @@ type AnthropicContentBlock =
       tool_use_id: string;
       content: string;
       is_error?: boolean;
-    };
+    }
+  | { type: 'thinking'; thinking: string; signature: string }
+  | { type: 'redacted_thinking'; data: string };
 
 type AnthropicSystemMessage = AssistantContextMessage & { content: string };
 type AnthropicCacheControl = { type: 'ephemeral'; ttl?: AssistantRequestCacheTtl };
@@ -135,16 +138,30 @@ function appendAnthropicMessage(
   });
 }
 
+function buildAnthropicReasoningBlocks(
+  message: ProviderRuntimeRequestInput['context']['segments'][number]['messages'][number]
+): AnthropicContentBlock[] {
+  if (message.providerReasoning?.protocol !== 'anthropic-messages') return [];
+  return message.providerReasoning.items.flatMap((item): AnthropicContentBlock[] => {
+    if (item.type === 'thinking' && item.thinking && item.signature) {
+      return [{ type: 'thinking', thinking: item.thinking, signature: item.signature }];
+    }
+    if (item.type === 'redacted_thinking' && item.data) {
+      return [{ type: 'redacted_thinking', data: item.data }];
+    }
+    return [];
+  });
+}
+
 function buildAnthropicMessages(context: ProviderRuntimeRequestInput['context']) {
-  const orderedMessages = context.segments
-    .flatMap((segment) => segment.messages)
-    .filter((message) => message.role !== 'system');
+  const orderedMessages = buildSeparatedSystemMessages(context).filter((message) => message.role !== 'system');
   const normalizedToolNames = buildHistoricalToolCallNameMap(orderedMessages);
   const messages: Array<{ role: 'user' | 'assistant'; content: string | AnthropicContentBlock[] }> = [];
 
   for (const message of orderedMessages) {
     if (message.role === 'assistant') {
       const blocks = [
+        ...buildAnthropicReasoningBlocks(message),
         ...toAnthropicContentBlocks(message.content),
         ...(message.toolCalls ?? []).map((toolCall) => ({
           type: 'tool_use' as const,
@@ -217,8 +234,7 @@ function resolveAnthropicSystemCacheControlIndexes(
 }
 
 function buildAnthropicSystemContent(context: ProviderRuntimeRequestInput['context']) {
-  const systemMessages = context.segments
-    .flatMap((segment) => segment.messages)
+  const systemMessages = buildSeparatedSystemMessages(context)
     .filter((message) => message.role === 'system')
     .map((message) => ({
       ...message,
@@ -266,7 +282,7 @@ function buildAnthropicTools(tools: AssistantRequestTool[] | undefined) {
 }
 
 export function buildAnthropicRequest(input: ProviderRuntimeRequestInput) {
-  const { api, context, sessionId, advanced, bodyOverrides } = input;
+  const { api, context, sessionId, advanced, providerMaxOutputTokens, bodyOverrides } = input;
   const endpoint = buildApiEndpoint(api.baseUrl, api.path);
   const {
     apiKey,
@@ -287,9 +303,17 @@ export function buildAnthropicRequest(input: ProviderRuntimeRequestInput) {
     throw new Error('field messages is required（当前请求没有可发送的对话消息，Anthropic /messages 至少需要一条 user 或 assistant 消息。）');
   }
 
+  const resolvedMaxTokens = maxTokens ?? providerMaxOutputTokens;
+  if (
+    resolvedMaxTokens === undefined
+    && providerCapability.route.labelKey === 'provider.route.openRouter'
+  ) {
+    throw new Error('OpenRouter Anthropic 请求缺少已验证的模型输出上限，没有发送聊天请求。');
+  }
+
   const body: Record<string, unknown> = {
     model,
-    max_tokens: maxTokens ?? DEFAULT_ANTHROPIC_MAX_TOKENS,
+    max_tokens: resolvedMaxTokens ?? DEFAULT_ANTHROPIC_MAX_TOKENS,
     messages: anthropicMessages
   };
   if (providerCapability.cache.sendsTopLevelCacheControl) {
@@ -308,12 +332,7 @@ export function buildAnthropicRequest(input: ProviderRuntimeRequestInput) {
   if (shouldSendTopP(providerCapability, topP)) {
     body.top_p = topP;
   }
-  if (thinkingBudget !== undefined && providerCapability.thinking.sendBudget) {
-    body.thinking = {
-      type: 'enabled',
-      budget_tokens: thinkingBudget
-    };
-  }
+  Object.assign(body, buildProviderThinkingRequest(providerCapability, thinkingBudget));
   if (providerCapability.streaming.text) {
     body.stream = true;
   }

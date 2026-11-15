@@ -1,5 +1,5 @@
 import type { PersonaAdvancedSettings, ProviderProfile, ProviderProtocol } from '../../types/domain';
-import type { ProviderCompatibilityMode, ProviderRouteLabelKey } from './internal/providerProfile';
+import type { ProviderCompatibilityMode, ProviderRouteLabelKey, ProviderThinkingRequestTransport } from './internal/providerProfile';
 import { isPolarisBuiltInProvider } from '../freeProvider';
 import { resolveProviderEffectiveModel } from './internal/providerEffectiveProfile';
 import {
@@ -51,7 +51,8 @@ export type ProviderCapabilityRoute = {
 export type ProviderCapabilityReasoningTransport =
   | 'none'
   | 'native'
-  | 'openai-reasoning-content';
+  | 'openai-reasoning-content'
+  | 'openai-reasoning-details';
 
 export type ProviderCapabilityReasoningReplay =
   | 'omit'
@@ -130,6 +131,7 @@ export type ProviderCapability = {
   thinking: {
     sendBudget: boolean;
     effortMapping: ProviderCapabilityThinkingEffortMapping;
+    requestTransport: ProviderThinkingRequestTransport;
   };
   budgets: {
     contextWindowTokens: number | null;
@@ -253,8 +255,8 @@ function resolveProtocolShape(args: {
       imageInput: 'data-url',
       reasoningMode: 'summary',
       reasoningTransport: 'native',
-      toolMode: 'transcript',
-      toolHistory: 'transcript',
+      toolMode: 'native',
+      toolHistory: 'native',
       outputTokenField: 'max_output_tokens',
       cacheMode: 'automatic-or-unknown',
       effortMapping: 'responses-effort'
@@ -275,7 +277,7 @@ function resolveProtocolShape(args: {
   }
 
   const reasoningMode =
-    args.reasoningTransport === 'openai-reasoning-content'
+    args.reasoningTransport !== 'none'
       ? 'text'
       : args.sendThinkingBudget ? 'hidden' : 'none';
 
@@ -428,9 +430,9 @@ export function resolveProviderCapability(
   const profile = resolveProviderProfile(runtimeProvider);
   const host = parseProviderHost(runtimeProvider.baseUrl);
   const reasoningTransport =
-    profile.reasoningContentTransport === 'openai-reasoning-content'
-      ? 'openai-reasoning-content'
-      : 'none';
+    profile.reasoningContentTransport === 'unsupported'
+      ? 'none'
+      : profile.reasoningContentTransport;
   const protocolShape = resolveProtocolShape({
     provider: runtimeProvider,
     protocol,
@@ -482,7 +484,7 @@ export function resolveProviderCapability(
       toolCalls: streamingEnabled,
       reasoning: streamingEnabled && runtimeProvider.capabilities.thinking && reasoningMode !== 'none',
       usage: streamingEnabled,
-      disableWhenToolsPresent: isSiliconFlowHost(host) || isN1nHost(host)
+      disableWhenToolsPresent: isN1nHost(host)
     },
     sampling: {
       sendTemperature: !(
@@ -505,7 +507,8 @@ export function resolveProviderCapability(
     },
     thinking: {
       sendBudget: runtimeProvider.capabilities.thinking && profile.sendThinkingBudget,
-      effortMapping: runtimeProvider.capabilities.thinking ? protocolShape.effortMapping : 'none'
+      effortMapping: runtimeProvider.capabilities.thinking ? protocolShape.effortMapping : 'none',
+      requestTransport: runtimeProvider.capabilities.thinking ? profile.thinkingRequestTransport : 'none'
     },
     budgets: {
       contextWindowTokens: profile.contextWindowTokens,

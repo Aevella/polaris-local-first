@@ -3,6 +3,7 @@ import type {
   ChatCardReference,
   ChatMessage,
   ChatNativeToolCall,
+  ChatProviderReasoningState,
   ToolInvocation
 } from '../../types/domain';
 import {
@@ -19,6 +20,7 @@ export type RequestMessage = {
   timestamp: number;
   origin?: ChatMessage['origin'];
   thinkingText?: string;
+  providerReasoning?: ChatProviderReasoningState;
   attachments?: RequestAttachment[];
   nativeToolCalls?: ChatNativeToolCall[];
   toolInvocation?: ToolInvocation;
@@ -57,6 +59,7 @@ export function toRequestMessage(message: ChatMessage): RequestMessage {
     timestamp: message.timestamp,
     origin: message.origin,
     thinkingText: message.thinkingText,
+    ...(message.providerReasoning ? { providerReasoning: message.providerReasoning } : {}),
     attachments: message.attachments as RequestAttachment[] | undefined,
     nativeToolCalls: message.nativeToolCalls,
     toolInvocation: message.toolInvocation,

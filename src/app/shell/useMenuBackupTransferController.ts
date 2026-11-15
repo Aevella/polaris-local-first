@@ -1,3 +1,4 @@
+import { isNativeBackupImportSource, readBackupImportSourceBytes, releaseBackupImportSource, type BackupImportSource } from '../../infrastructure/backupImportSource';
 import { useState } from 'react';
 import { isWebDavConfigured } from '../../engines/webdavBackup';
 import {
@@ -60,9 +61,15 @@ export function resolveMenuLocalBackupDetails(systemBackupAvailability: ReturnTy
   };
 }
 
-async function importBackupData(file: Blob, onProgress: (progress: StoreTransferProgress) => void) {
+async function importBackupData(file: BackupImportSource, onProgress: (progress: StoreTransferProgress) => void) {
   const { importAllData } = await import('../../stores/spaceStoreDataTransfer');
-  return await importAllData(file, { onProgress });
+    if (!isNativeBackupImportSource(file)) return await importAllData(file, { onProgress });
+  try {
+    const bytes = await readBackupImportSourceBytes(file);
+    return await importAllData(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: file.mimeType }), { onProgress });
+  } finally {
+    await releaseBackupImportSource(file);
+  }
 }
 
 export function useMenuBackupTransferController({

@@ -1,3 +1,4 @@
+import { reasoningItemsForReplay } from './providerRuntimeReasoningState';
 import { inferProviderProtocol } from '../providerProtocol';
 import type { AssistantMessageContent } from '../request/requestContext';
 import {
@@ -28,6 +29,7 @@ import {
   resolveProviderCapability,
   type ProviderCapability
 } from './providerCapability';
+import { buildProviderThinkingRequest } from './providerRuntimeThinking';
 
 const OPENAI_RESPONSES_ADAPTER_ID = 'openai-responses';
 
@@ -74,57 +76,47 @@ function buildResponsesInput(
   const orderedMessages = buildOrderedMessages(context, capability.context);
   const normalizedToolNames = buildHistoricalToolCallNameMap(orderedMessages);
 
-  return orderedMessages.map((message) => {
-    if (message.role === 'assistant' && message.toolCalls?.length) {
-      const toolCallTranscript = JSON.stringify(
-        message.toolCalls.map((toolCall) => ({
-          id: toolCall.id,
-          name: toolCall.id ? (normalizedToolNames.get(toolCall.id) ?? toolCall.name) : toolCall.name,
-          arguments: toolCall.argumentsText
-        })),
-        null,
-        2
-      );
-      const text = [extractTextPayload(message.content).trim(), '[assistant_tool_calls]', toolCallTranscript]
-        .filter(Boolean)
-        .join('\n\n');
-
-      return {
-        role: 'assistant',
-        content: toResponsesContent(text)
-      };
+  const items: Record<string, unknown>[] = [];
+  const callIds = new Set(orderedMessages.flatMap(message => message.toolCalls?.map(call => call.id) ?? []));
+  for (const message of orderedMessages) {
+    if (message.role === 'assistant' && message.providerReasoning?.protocol === 'openai-responses') {
+      items.push(...reasoningItemsForReplay(message.providerReasoning)
+        .filter(item => item.type === 'reasoning' && item.encrypted_content)
+        .map(item => ({ ...item, summary: [] })));
     }
-
     if (message.role === 'tool' && message.toolResult) {
-      const normalizedToolName = normalizedToolNames.get(message.toolResult.toolCallId) ?? message.toolResult.toolName;
-      return {
-        role: 'user',
-        content: toResponsesContent([
-          `[tool_result:${normalizedToolName}]`,
-          buildToolResultPayloadText(message, {
-            toolName: normalizedToolName,
-            kind: normalizedToolName
-          })
-        ].join('\n\n'))
-      };
+      const toolName = normalizedToolNames.get(message.toolResult.toolCallId) ?? message.toolResult.toolName;
+      const textOutput = buildToolResultPayloadText(message, { toolName, kind: toolName });
+      const images = Array.isArray(message.content)
+        ? message.content.filter(part => part.type === 'image_url') : [];
+      const output = images.length
+        ? [{ type: 'input_text', text: textOutput }, ...images.map(part => ({ type: 'input_image', image_url: part.image_url.url }))]
+        : textOutput;
+      // A cropped history may contain a result without its call. Keep it as
+      // explicitly attributed data rather than send an invalid native pair.
+      items.push(callIds.has(message.toolResult.toolCallId)
+        ? { type: 'function_call_output', call_id: message.toolResult.toolCallId, output }
+        : { role: 'user', content: `[tool_result:${toolName}]\n${textOutput}` });
+      continue;
     }
-
-    return {
-      role: message.role,
-      content: toResponsesContent(message.content)
-    };
-  });
-}
-
-function resolveResponsesReasoningEffort(thinkingBudget: number) {
-  if (thinkingBudget <= 1024) return 'low';
-  if (thinkingBudget <= 4096) return 'medium';
-  return 'high';
+    const text = extractTextPayload(message.content);
+    if (text || Array.isArray(message.content)) {
+      items.push({ role: message.role, content: toResponsesContent(message.content) });
+    }
+    if (message.role === 'assistant') {
+      for (const call of message.toolCalls ?? []) {
+        items.push({ type: 'function_call', call_id: call.id,
+          name: normalizedToolNames.get(call.id) ?? call.name, arguments: call.argumentsText });
+      }
+    }
+  }
+  return items;
 }
 
 export function buildResponsesRequest(input: ProviderRuntimeRequestInput) {
   const { api, context, sessionId, advanced, bodyOverrides } = input;
-  const endpoint = buildApiEndpoint(api.baseUrl, api.path);
+  const route = buildApiEndpoint(api.baseUrl, api.path);
+  const endpoint = route.replace(/\/chat\/completions(?=[?#]|$)/, '/responses');
   const {
     apiKey,
     model,
@@ -140,6 +132,8 @@ export function buildResponsesRequest(input: ProviderRuntimeRequestInput) {
 
   const body: Record<string, unknown> = {
     model,
+    store: false,
+    include: ['reasoning.encrypted_content'],
     input: buildResponsesInput(context, providerCapability)
   };
   const openRouterSessionId = resolveOpenRouterSessionId(api.baseUrl, sessionId);
@@ -156,11 +150,7 @@ export function buildResponsesRequest(input: ProviderRuntimeRequestInput) {
   if (maxTokens !== undefined) {
     body.max_output_tokens = maxTokens;
   }
-  if (thinkingBudget !== undefined && providerCapability.thinking.sendBudget) {
-    body.reasoning = {
-      effort: resolveResponsesReasoningEffort(thinkingBudget)
-    };
-  }
+  Object.assign(body, buildProviderThinkingRequest(providerCapability, thinkingBudget));
   if (providerCapability.streaming.text) {
     body.stream = true;
   }
@@ -169,7 +159,8 @@ export function buildResponsesRequest(input: ProviderRuntimeRequestInput) {
       type: 'function',
       name: tool.function.name,
       description: tool.function.description,
-      parameters: tool.function.parameters
+      parameters: tool.function.parameters,
+      strict: false
     }));
     const toolChoice = resolveOpenAiToolChoice(context.toolChoice, providerCapability);
     if (toolChoice) {

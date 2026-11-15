@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { startHeavySurfaceOpen } from '../../app/developer/runtime-performance/runtimePerformanceDebug';
 import type { MenuOverlayPage } from '../../app/shell/appShellContracts';
+import { MCP_OAUTH_OPEN_SETTINGS_EVENT } from '../../app/shell/mcpServerConnection';
 import type { useAppModalState } from './useAppModalState';
 import {
   loadApiProviderSheetModule,
@@ -20,6 +22,17 @@ export function useAppShellOverlayNavigation(modals: AppModalState) {
     startHeavySurfaceOpen('menu-sheet');
     modals.setMenuOpen(true);
   };
+
+  useEffect(() => {
+    const openMcpSettings = () => {
+      modals.setMenuInitialPage('mcp');
+      void loadMenuSheetModule();
+      startHeavySurfaceOpen('menu-sheet');
+      modals.setMenuOpen(true);
+    };
+    globalThis.addEventListener(MCP_OAUTH_OPEN_SETTINGS_EVENT, openMcpSettings);
+    return () => globalThis.removeEventListener(MCP_OAUTH_OPEN_SETTINGS_EVENT, openMcpSettings);
+  }, [modals.setMenuInitialPage, modals.setMenuOpen]);
 
   const closeApi = () => {
     modals.setApiOpen(false);
